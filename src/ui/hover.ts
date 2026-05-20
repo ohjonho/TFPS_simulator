@@ -1,15 +1,16 @@
 // Canvas mousemove → axial hex → unit lookup. Calls back with the unit id
-// (or null) whenever it changes. Pass 1 uses this only for side-panel info
-// and unit highlight; later passes will reuse pixel→hex for path drawing.
+// (or null) whenever it changes. Unit list is read via a getter so updates
+// during resolution (movement) immediately reflect in hover state.
 
 import type { Unit } from '../game/types.ts';
 import { pixelToAxial } from '../game/hex.ts';
 
 export type HoverCallback = (unitId: string | null) => void;
+export type UnitsGetter = () => readonly Unit[];
 
 export function attachHover(
   canvas: HTMLCanvasElement,
-  units: readonly Unit[],
+  getUnits: UnitsGetter,
   onChange: HoverCallback,
 ): void {
   let currentId: string | null = null;
@@ -21,7 +22,7 @@ export function attachHover(
     const hex = pixelToAxial(x, y);
 
     let foundId: string | null = null;
-    for (const unit of units) {
+    for (const unit of getUnits()) {
       if (unit.state !== 'alive') continue;
       if (unit.pos.q === hex.q && unit.pos.r === hex.r) {
         foundId = unit.id;

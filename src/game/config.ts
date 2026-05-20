@@ -48,3 +48,40 @@ export const WEAPON_GLYPH = {
   rifle: 'R',
   sniper: 'S',
 } as const;
+
+// --- Pass 2 tunables --------------------------------------------------------
+
+// Real-time tick duration at 1× speed. Higher speeds divide this.
+export const TICK = {
+  msAt1x: 1000,
+} as const;
+
+// Hex-units per tick, per weapon. Sniper at 0.5 means one hex every 2 ticks.
+// Trait modifiers (e.g. Run-n-Gun +0.5) layered on in Pass 5.
+export const SPEED: Record<'shotgun' | 'rifle' | 'sniper', number> = {
+  shotgun: 1.0,
+  rifle: 1.0,
+  sniper: 0.5,
+};
+
+export const PLAYBACK_SPEEDS = [1, 2, 4] as const;
+
+// Per-unit path colors. Light → mid → dark so all three teammates stay
+// distinguishable when paths cross.
+export const PATH_COLORS: Record<string, string> = {
+  D1: '#93c5fd',
+  D2: '#3b82f6',
+  D3: '#1e40af',
+  A1: '#fca5a5',
+  A2: '#ef4444',
+  A3: '#991b1b',
+};
+
+// Path line + waypoint marker sizing, tied to hex size so they scale together.
+export const PATH_STYLE = {
+  lineWidth: 3,
+  trailedOpacity: 0.3,     // breadcrumb opacity for already-traversed hexes
+  waypointRadiusFactor: 0.32,  // multiplied by HEX.size
+  facingArrowLengthFactor: 0.45,
+} as const;
+

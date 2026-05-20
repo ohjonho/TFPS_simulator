@@ -5,6 +5,7 @@
   --text: #d6dae3;
   --text-dim: #8a92a3;
   --accent: #facc15;
+  --accent-dim: #a07f10;
 
   font: 14px/1.45 system-ui, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -24,11 +25,38 @@ body {
 #app {
   display: grid;
   grid-template-columns: 1fr 280px;
-  grid-template-rows: 1fr 64px;
+  grid-template-rows: 48px 1fr 64px;
   grid-template-areas:
+    'top    top'
     'canvas side'
     'bottom bottom';
   min-height: 100vh;
+}
+
+#top-bar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+#top-bar .phase-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+#top-bar .path-status {
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+
+#top-bar .spacer {
+  flex: 1;
 }
 
 #canvas-area {
@@ -37,8 +65,6 @@ body {
   padding: 16px;
   background: var(--bg);
   border-right: 1px solid var(--panel-border);
-  /* Center the canvas in available space; `safe` keeps the top-left
-     reachable when the canvas is larger than the viewport. */
   display: grid;
   place-content: safe center;
   min-height: 0;
@@ -50,6 +76,7 @@ body {
   padding: 16px;
   background: var(--panel);
   border-left: 1px solid var(--panel-border);
+  overflow-y: auto;
 }
 
 #side-panel h2 {
@@ -70,7 +97,7 @@ body {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 4px 12px;
-  margin: 0;
+  margin: 0 0 12px;
 }
 
 .unit-stats dt {
@@ -80,6 +107,21 @@ body {
 .unit-stats dd {
   margin: 0;
   color: var(--text);
+}
+
+.side-action {
+  width: 100%;
+  background: #2a2030;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.side-action:hover {
+  background: #3a2840;
 }
 
 #bottom-bar {
@@ -92,13 +134,153 @@ body {
   border-top: 1px solid var(--panel-border);
 }
 
-#bottom-bar button {
+.speed-group {
+  display: inline-flex;
+  gap: 4px;
+}
+
+button {
   background: #20253080;
   color: var(--text);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 6px 12px;
   font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.5;
+}
+
+button:not(:disabled):hover {
+  background: #2a3040;
+}
+
+button.selected:not(:disabled) {
+  background: var(--accent);
+  color: #1a1606;
+  border-color: var(--accent-dim);
+  font-weight: 600;
+}
+
+.btn-primary:not(:disabled) {
+  background: var(--accent);
+  color: #1a1606;
+  border-color: var(--accent-dim);
+  font-weight: 600;
+}
+
+/* --- Waypoint modal ------------------------------------------------------- */
+
+.waypoint-modal {
+  position: fixed;
+  z-index: 100;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 12px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.waypoint-modal .wp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.waypoint-modal label {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.wp-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wp-stepper button {
+  padding: 2px 8px;
+  min-width: 24px;
+}
+
+.wp-hold-value {
+  min-width: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hex compass rose: N at top, S at bottom, NE/SE on right, NW/SW on left.
+   3 cols × 4 rows, with each button explicitly placed by data-facing. */
+.wp-facing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 36px);
+  grid-template-rows: repeat(4, 28px);
+  gap: 4px;
+  position: relative;
+}
+
+/* Subtle dot in the middle as a "you are here" anchor. */
+.wp-facing-grid::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+}
+
+.wp-facing-btn {
+  padding: 0;
+  font-size: 11px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-facing-btn[data-facing="0"] { grid-column: 2; grid-row: 1; }  /* N  */
+.wp-facing-btn[data-facing="1"] { grid-column: 3; grid-row: 2; }  /* NE */
+.wp-facing-btn[data-facing="2"] { grid-column: 3; grid-row: 3; }  /* SE */
+.wp-facing-btn[data-facing="3"] { grid-column: 2; grid-row: 4; }  /* S  */
+.wp-facing-btn[data-facing="4"] { grid-column: 1; grid-row: 3; }  /* SW */
+.wp-facing-btn[data-facing="5"] { grid-column: 1; grid-row: 2; }  /* NW */
+
+.wp-facing-btn.selected {
+  background: var(--accent);
+  color: #1a1606;
+  border-color: var(--accent-dim);
+  font-weight: 600;
+}
+
+.wp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.waypoint-modal .wp-save {
+  background: var(--accent);
+  color: #1a1606;
+  border-color: var(--accent-dim);
+  font-weight: 600;
+}
+
+.waypoint-modal .wp-remove {
+  background: #4a1e1e;
+  border-color: #6a2a2a;
+  color: #fca5a5;
 }

@@ -42,7 +42,50 @@ export type GameMap = {
   attackerSpawns: Axial[];
 };
 
+// --- Pass 2 additions -------------------------------------------------------
+
+export type Phase = 'planning' | 'resolution';
+
+export type Waypoint = {
+  // Held for this many ticks once the unit reaches the waypoint hex.
+  holdTicks: number;
+  facing: Facing;
+};
+
+// A planned movement path for a single unit. hexes[0] is always the unit's
+// spawn position; hexes[1..N] are the move sequence. Waypoints keyed by index
+// into `hexes`.
+export type Path = {
+  hexes: Axial[];
+  waypoints: Record<number, Waypoint>;
+};
+
+// Resolution-phase bookkeeping for one unit's progress along its path.
+export type MoveCursor = {
+  // Float distance along the path in hex-units. floor(progress) is the
+  // current hexes index; advances by SPEED[weapon] per tick.
+  progress: number;
+  // Hold counter — ticks remaining at the current waypoint. While >0 the
+  // unit doesn't advance and faces the waypoint direction.
+  holdRemaining: number;
+  // Whether this unit has already consumed the waypoint at its current hex
+  // this run (so re-arriving at a waypoint after a circular path would still
+  // trigger; but linear paths only consume each waypoint once).
+  consumedWaypointAtIndex: number | null;
+};
+
+export type PlaybackSpeed = 1 | 2 | 4;
+export type Playback = {
+  playing: boolean;
+  speed: PlaybackSpeed;
+};
+
 export type GameState = {
+  phase: Phase;
   map: GameMap;
   units: Unit[];
+  paths: Record<string, Path>;         // keyed by unit id
+  cursors: Record<string, MoveCursor>;  // keyed by unit id
+  tick: number;
+  playback: Playback;
 };

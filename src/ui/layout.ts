@@ -1,8 +1,8 @@
-// Builds the app shell: canvas area on the left, side panel on the right,
-// placeholder bottom-bar spanning both. Returns the host elements so other
-// modules can mount into them.
+// Builds the app shell: top bar, canvas area, side panel, bottom bar.
+// Returns each slot so the rest of the app can mount into it.
 
 export type Shell = {
+  topBar: HTMLElement;
   canvasArea: HTMLElement;
   sidePanel: HTMLElement;
   bottomBar: HTMLElement;
@@ -10,6 +10,9 @@ export type Shell = {
 
 export function buildShell(root: HTMLElement): Shell {
   root.innerHTML = '';
+
+  const topBar = document.createElement('header');
+  topBar.id = 'top-bar';
 
   const canvasArea = document.createElement('div');
   canvasArea.id = 'canvas-area';
@@ -20,9 +23,10 @@ export function buildShell(root: HTMLElement): Shell {
   const bottomBar = document.createElement('footer');
   bottomBar.id = 'bottom-bar';
 
+  root.appendChild(topBar);
   root.appendChild(canvasArea);
   root.appendChild(sidePanel);
   root.appendChild(bottomBar);
 
-  return { canvasArea, sidePanel, bottomBar };
+  return { topBar, canvasArea, sidePanel, bottomBar };
 }
