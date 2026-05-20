@@ -1,60 +1,34 @@
-import './style.css'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import { setupCounter } from './counter.ts'
+// Entry point. Builds game state, mounts the UI shell + canvas, wires hover.
+// Pass 1 is render-only; no game tick loop yet.
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+import './style.css';
+import { buildInitialState } from './game/state.ts';
+import { setupCanvas } from './render/canvas.ts';
+import { render } from './render/renderer.ts';
+import type { RenderHover } from './render/renderer.ts';
+import { buildShell } from './ui/layout.ts';
+import { renderSidePanel } from './ui/sidePanel.ts';
+import { renderBottomControls } from './ui/bottomControls.ts';
+import { attachHover } from './ui/hover.ts';
 
-<div class="ticks"></div>
+const root = document.querySelector<HTMLDivElement>('#app');
+if (!root) throw new Error('#app root missing in index.html');
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+const shell = buildShell(root);
+renderSidePanel(shell.sidePanel, null);
+renderBottomControls(shell.bottomBar);
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+const state = buildInitialState();
+const handle = setupCanvas(shell.canvasArea);
+const hover: RenderHover = { unitId: null };
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+const draw = () => render(handle.ctx, state, hover, handle.cssWidth, handle.cssHeight);
+
+draw();
+
+attachHover(handle.canvas, state.units, (unitId) => {
+  hover.unitId = unitId;
+  const unit = unitId ? state.units.find((u) => u.id === unitId) ?? null : null;
+  renderSidePanel(shell.sidePanel, unit);
+  draw();
+});
