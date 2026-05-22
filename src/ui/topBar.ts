@@ -2,12 +2,13 @@
 // In Pass 2 this is the planning↔resolution flow control. Round score and
 // half indicator come in Pass 6.
 
-import type { GameState } from '../game/types.ts';
+import type { GameState, Team } from '../game/types.ts';
 import { pathIsBlank } from '../game/path.ts';
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
   onResetToPlanning: () => void;
+  onSetPlayerTeam: (team: Team) => void;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
@@ -23,6 +24,23 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
 
   host.appendChild(phaseLabel);
   host.appendChild(spacer);
+
+  // Fog perspective toggle — flips which team's visibility shades the map.
+  // Available in both phases so the user can pre-select POV before Begin.
+  const fogGroup = document.createElement('div');
+  fogGroup.className = 'fog-group';
+  const fogLabel = document.createElement('span');
+  fogLabel.className = 'fog-label';
+  fogLabel.textContent = 'Fog:';
+  fogGroup.appendChild(fogLabel);
+  for (const team of ['defenders', 'attackers'] as const) {
+    const btn = document.createElement('button');
+    btn.textContent = team === 'defenders' ? 'D' : 'A';
+    if (state.playerTeam === team) btn.classList.add('selected');
+    btn.addEventListener('click', () => cb.onSetPlayerTeam(team));
+    fogGroup.appendChild(btn);
+  }
+  host.appendChild(fogGroup);
 
   if (state.phase === 'planning') {
     const drawn = countDrawnPaths(state);

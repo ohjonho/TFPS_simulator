@@ -85,3 +85,31 @@ export const PATH_STYLE = {
   facingArrowLengthFactor: 0.45,
 } as const;
 
+// --- Pass 3 tunables --------------------------------------------------------
+
+// Vision cone half-angles. The full cone is 2× these values. Sniper narrows
+// to 60° (half = 30°) when stationary per spec §5.3/§6.1.
+// Ghost markers persist for `ghostTicks` after losing sight (spec §6.2).
+// Cone snap reverts once the tracked enemy has been out of sight for
+// `trackLossThreshold` consecutive ticks.
+export const VISION = {
+  defaultConeHalfDeg: 45,
+  sniperStationaryHalfDeg: 30,
+  ghostTicks: 5,
+  trackLossThreshold: 3,
+} as const;
+
+// 'v' / 'V' toggles the debug overlay.
+export const DEBUG_KEY = 'v';
+
+export const VISION_COLORS = {
+  fog: 'rgba(0, 0, 0, 0.55)',
+  coneEdgeDefender: 'rgba(59, 130, 246, 0.7)',
+  coneEdgeAttacker: 'rgba(239, 68, 68, 0.7)',
+  coneHex: 'rgba(250, 204, 21, 0.07)',
+  visibleHex: 'rgba(250, 204, 21, 0.18)',
+  traceLine: 'rgba(34, 197, 94, 0.85)',
+  ghostDefender: 'rgba(59, 130, 246, 0.35)',
+  ghostAttacker: 'rgba(239, 68, 68, 0.35)',
+} as const;
+

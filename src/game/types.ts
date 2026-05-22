@@ -88,4 +88,37 @@ export type GameState = {
   cursors: Record<string, MoveCursor>;  // keyed by unit id
   tick: number;
   playback: Playback;
+  // --- Pass 3 ---
+  visibility: Visibility;
+  ghosts: Record<Team, Record<string, GhostEntry>>;
+  tracking: Record<string, TrackEntry | null>;
+  prevPos: Record<string, Axial>;
+  prevHoldRemaining: Record<string, number>;
+  // Whose POV the fog-of-war overlay applies to. Run-time toggle in top bar.
+  playerTeam: Team;
+};
+
+// --- Pass 3 additions -------------------------------------------------------
+
+// Stringified axial key, used for Set membership in visibility computations.
+export type HexKey = string; // `${q},${r}`
+
+export type GhostEntry = {
+  hex: Axial;
+  ticksRemaining: number;
+};
+
+// One viewer's snap-to-track state. Cleared when the tracked enemy dies or has
+// been out of sight for VISION.trackLossThreshold consecutive ticks.
+export type TrackEntry = {
+  enemyId: string;
+  lastKnownHex: Axial;
+  ticksLost: number;
+};
+
+// Team-shared visible hex sets. A hex is visible to a team if any alive
+// teammate has it in their cone and unblocked by a full wall.
+export type Visibility = {
+  defenders: Set<HexKey>;
+  attackers: Set<HexKey>;
 };

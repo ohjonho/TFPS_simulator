@@ -2,13 +2,14 @@
 // modal, top bar, and the playback loop into a single mutable container.
 
 import './style.css';
-import type { GameState, Path, PlaybackSpeed, Unit } from './game/types.ts';
+import type { GameState, Path, PlaybackSpeed, Team, Unit } from './game/types.ts';
 import { buildInitialState } from './game/state.ts';
 import { clearPath, removeWaypoint, setWaypoint } from './game/path.ts';
 import { PlaybackLoop } from './game/loop.ts';
+import { DEBUG_KEY } from './game/config.ts';
 import { setupCanvas } from './render/canvas.ts';
 import { render } from './render/renderer.ts';
-import type { RenderHover } from './render/renderer.ts';
+import type { DebugOverlay, RenderHover } from './render/renderer.ts';
 import { buildShell } from './ui/layout.ts';
 import { renderSidePanel } from './ui/sidePanel.ts';
 import { renderBottomControls } from './ui/bottomControls.ts';
@@ -29,11 +30,12 @@ for (const u of state.units) initialUnitsById[u.id] = u;
 
 const handle = setupCanvas(shell.canvasArea);
 const hover: RenderHover = { unitId: null };
+const debug: DebugOverlay = { on: false };
 
 // --- Render pipeline --------------------------------------------------------
 
 function rerenderCanvas() {
-  render(handle.ctx, state, hover, handle.cssWidth, handle.cssHeight);
+  render(handle.ctx, state, hover, debug, handle.cssWidth, handle.cssHeight);
 }
 
 function rerenderChrome() {
@@ -70,6 +72,9 @@ function rerenderChrome() {
       loop.pause();
       loop.reset(initialUnitsById);
       setState({ ...state, phase: 'planning' });
+    },
+    onSetPlayerTeam: (team: Team) => {
+      setState({ ...state, playerTeam: team });
     },
   });
 }
@@ -130,9 +135,19 @@ attachDrawing(handle.canvas, {
   },
 });
 
-// Close the modal when the user switches phases.
+// Close the modal when the user switches phases. Also: 'V' toggles the
+// debug vision overlay (cones + visible hexes + tracking lines for all units).
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') closeWaypointModal(document.body);
+  if (ev.key.toLowerCase() === DEBUG_KEY) {
+    // Skip when the user is typing into the waypoint modal.
+    const target = ev.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+      return;
+    }
+    debug.on = !debug.on;
+    rerenderAll();
+  }
 });
 
 rerenderAll();

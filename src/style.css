@@ -59,6 +59,24 @@ body {
   flex: 1;
 }
 
+.fog-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fog-group .fog-label {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.fog-group button {
+  padding: 4px 10px;
+  min-width: 28px;
+}
+
 #canvas-area {
   grid-area: canvas;
   overflow: auto;

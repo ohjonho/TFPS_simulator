@@ -1,14 +1,18 @@
 // Draws each alive unit as a team-colored square with a single weapon glyph.
 // A hovered unit gets a yellow highlight outline.
 
-import type { Unit } from '../game/types.ts';
+import type { Team, Unit } from '../game/types.ts';
 import { axialToPixel } from '../game/hex.ts';
 import { COLORS, HEX, WEAPON_GLYPH } from '../game/config.ts';
 
+// `hiddenUnitIds` lists enemy units that should NOT be rendered (fogged out).
+// Allies are always drawn; the player can always see their own team.
 export function drawUnits(
   ctx: CanvasRenderingContext2D,
   units: readonly Unit[],
   highlightedId: string | null,
+  playerTeam: Team,
+  hiddenEnemyIds: ReadonlySet<string>,
 ): void {
   // Square fits inside the hex flat-to-flat (size * √3 ≈ 1.73 * size).
   // 1.35 * size gives comfortable padding while staying readable.
@@ -18,6 +22,7 @@ export function drawUnits(
 
   for (const unit of units) {
     if (unit.state !== 'alive') continue;
+    if (unit.team !== playerTeam && hiddenEnemyIds.has(unit.id)) continue;
     const { x, y } = axialToPixel(unit.pos);
 
     // Body.

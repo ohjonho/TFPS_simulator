@@ -2,9 +2,17 @@
 // (TICK.msAt1x / speed) cadence. Calls back to the host with the new state
 // after each tick so render + UI can refresh.
 
-import type { GameState, PlaybackSpeed } from './types.ts';
+import type {
+  Axial,
+  GameState,
+  GhostEntry,
+  PlaybackSpeed,
+  Team,
+  TrackEntry,
+} from './types.ts';
 import { TICK } from './config.ts';
 import { allUnitsFinished, stepTick } from './tick.ts';
+import { computeVisibility } from './vision.ts';
 
 export type LoopCallbacks = {
   getState: () => GameState;
@@ -55,6 +63,8 @@ export class PlaybackLoop {
   }
 
   // Reset progress to tick 0 without changing paths. Used by Replay in Pass 2.
+  // Pass 3: also resets visibility / ghosts / tracking / prev-tick snapshots so
+  // the round starts from a clean fog state, then recomputes initial visibility.
   reset(initialPositions: Record<string, GameState['units'][number]>): void {
     this.clearTimer();
     const state = this.cb.getState();
@@ -64,16 +74,33 @@ export class PlaybackLoop {
       return { ...u, pos: init.pos, facing: init.facing, state: 'alive' as const, hp: init.hp };
     });
     const resetCursors: GameState['cursors'] = {};
-    for (const u of state.units) {
+    const resetTracking: Record<string, TrackEntry | null> = {};
+    const resetPrevPos: Record<string, Axial> = {};
+    const resetPrevHold: Record<string, number> = {};
+    for (const u of restoredUnits) {
       resetCursors[u.id] = { progress: 0, holdRemaining: 0, consumedWaypointAtIndex: null };
+      resetTracking[u.id] = null;
+      resetPrevPos[u.id] = u.pos;
+      resetPrevHold[u.id] = 0;
     }
-    this.cb.setState({
+    const resetGhosts: Record<Team, Record<string, GhostEntry>> = {
+      defenders: {},
+      attackers: {},
+    };
+    const seed: GameState = {
       ...state,
       units: restoredUnits,
       cursors: resetCursors,
       tick: 0,
       playback: { ...state.playback, playing: false },
-    });
+      visibility: { defenders: new Set(), attackers: new Set() },
+      ghosts: resetGhosts,
+      tracking: resetTracking,
+      prevPos: resetPrevPos,
+      prevHoldRemaining: resetPrevHold,
+    };
+    const { visibility } = computeVisibility(seed);
+    this.cb.setState({ ...seed, visibility });
     this.cb.onTick();
   }
 
