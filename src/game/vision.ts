@@ -295,15 +295,14 @@ export function visibleEnemiesByTeam(
 }
 
 // preMoveUnits supply each newly-lost enemy's last-seen (pre-movement) hex.
-// prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T. Pass 8:
-// units with Last Stand active and lastAlive skip ghost generation for the
-// opposing team for `lastStandGhostSkipUntilTick` ticks.
+// prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T.
+// Pass 9 m4: Last Stand's ghost-skip branch is gone with Last Stand itself.
 export function updateGhosts(
   preMoveUnits: readonly Unit[],
   prevGhosts: Record<Team, Record<string, GhostEntry>>,
   prevVisibleByTeam: Record<Team, Set<string>>,
   currVisibleByTeam: Record<Team, Set<string>>,
-  currentTick = 0,
+  _currentTick = 0,
 ): Record<Team, Record<string, GhostEntry>> {
   const teams: Team[] = ['defenders', 'attackers'];
   const result: Record<Team, Record<string, GhostEntry>> = { defenders: {}, attackers: {} };
@@ -324,9 +323,6 @@ export function updateGhosts(
       if (currVisibleByTeam[team].has(enemyId)) continue;
       const enemy = preById[enemyId];
       if (!enemy) continue;
-      // Last Stand: while window active, do not refresh/post ghosts.
-      const skipUntil = enemy.cardFlags.lastStandGhostSkipUntilTick ?? -1;
-      if (skipUntil > currentTick) continue;
       next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
     }
     // Currently visible: clear any ghost (re-sighted).

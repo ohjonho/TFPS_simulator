@@ -63,11 +63,14 @@ const HANDLERS: Record<string, Handler> = {
       },
     })),
 
-  // 6. Last Stand (Clutch buff): combat & vision read the flag.
-  last_stand: (state, played) =>
+  // 6. Trade Window (Clutch buff). Pass 9 m4 — when ANY teammate of the
+  // contributor dies, tick.ts auto-marks the killer for 4 ticks and pushes a
+  // +20 HR buff to every surviving teammate (vs the marked killer). Replaces
+  // the old Last Stand "wait until last alive" model.
+  trade_window: (state, played) =>
     updateUnit(state, played.contributor, (u) => ({
       ...u,
-      cardFlags: { ...u.cardFlags, lastStandActive: true },
+      cardFlags: { ...u.cardFlags, tradeWindowEnabled: true },
     })),
 
   // 7. Spearhead (Vanguard directive): Vanguard flag + delay teammates.

@@ -264,8 +264,10 @@ export const CARD_EFFECTS = {
   openingPick: { hitPp: 30, hsPp: 15, windowTicks: 3 },
   // Crossfire: when an ally fires, push a 5-tick +25 HR buff (cap 1 extra).
   crossfire: { hitPp: 25, durationTicks: 5, extraStack: 1 },
-  // Last Stand: when last alive, replace Clutch's 20/15 with these + ghost skip.
-  lastStand: { hitPp: 30, hsPp: 20, ghostSkipTicks: 5 },
+  // Pass 9 m4 — Trade Window: when any teammate of the contributor dies, the
+  // killer is auto-marked for markTicks; surviving allies get a 4-tick HR buff
+  // vs the marked killer.
+  tradeWindow: { markTicks: 4, allyHitPp: 20, allyBuffTicks: 4 },
   // Spearhead: Vanguard +15 HR first engagement; allies delayed N ticks.
   spearhead: { firstEngagementHitPp: 15, allyDelayTicks: 2 },
   // Setup Play: ally +20 HR when shooting from >60° off target's facing.
@@ -294,7 +296,7 @@ export const STRATEGY_CARD_THEMES: Record<string, readonly string[]> = {
   Control:  ['setup_play', 'tactical_scan', 'mark_target'],
   Hold:     ['anchor_position', 'hold_the_line', 'crossfire'],
   Stack:    ['crossfire', 'setup_play', 'spearhead'],
-  Pressure: ['spearhead', 'opening_pick', 'last_stand'],
+  Pressure: ['spearhead', 'opening_pick', 'trade_window'],
 };
 
 export const VISION_COLORS = {

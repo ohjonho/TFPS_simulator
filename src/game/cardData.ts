@@ -58,13 +58,13 @@ const TRAIT_CARDS: CardDef[] = [
       'If any ally fires, this unit gets +25 HR for 5 ticks after; stackable once.',
   },
   {
-    id: 'last_stand',
-    name: 'Last Stand',
+    id: 'trade_window',
+    name: 'Trade Window',
     source: 'Clutch',
     type: 'buff',
     targeting: 'none',
     description:
-      'If last alive: +30 HR / +20 HS AND skip next ghost marker (vanish 5 ticks).',
+      "When any teammate dies, their killer is auto-marked for 4 ticks; surviving allies get +20 HR vs the killer.",
   },
 ];
 

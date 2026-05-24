@@ -129,9 +129,10 @@ export type PlayedCard = {
 export type ActiveCardEffect =
   // Pass 9 m3 — mark_target gained `revealUntilTick`: while > tick, vision adds
   // the marked enemy's hex to the marking team's visibility set even without
-  // LoS. The mark itself (HR/HS bonus) lasts the whole round until startRound
-  // clears state.cardEffects.
-  | { kind: 'mark_target'; team: Team; targetId: string; revealUntilTick?: number }
+  // LoS. Pass 9 m4 — `expiresAtTick` lets Trade Window's mark expire after
+  // 4 ticks while Mark Target's mark (no expiresAtTick) lasts the whole round
+  // (cleared by startRound's cardEffects reset).
+  | { kind: 'mark_target'; team: Team; targetId: string; revealUntilTick?: number; expiresAtTick?: number }
   | { kind: 'guardian_aura'; team: Team; sourceId: string; radius: number }
   | { kind: 'tactical_scan'; team: Team; expiresAtTick: number }
   | { kind: 'hold_the_line'; team: Team; anchorHex: HexCoord; anchorId: string }
@@ -179,8 +180,10 @@ export type CardFlags = {
   crossfireEligible?: boolean;
   // Cap stack: trait gives base; card adds up to 1 extra (max 2 stacks total).
   crossfireBuffsApplied?: number;
-  lastStandActive?: boolean;
-  lastStandGhostSkipUntilTick?: number;
+  // Pass 9 m4 — Last Stand replaced by Trade Window. Set on the contributor
+  // at round start; tick.ts death-handler reads this and, when ANY teammate
+  // of the contributor dies, marks the killer + buffs surviving allies.
+  tradeWindowEnabled?: boolean;
   spearhead?: boolean;
   // Spearhead allies wait this many ticks before they start moving.
   delayedMoveUntilTick?: number;

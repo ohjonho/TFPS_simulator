@@ -357,6 +357,9 @@ export function stepTick(state: GameState): GameState {
   }
 
   // Apply damage simultaneously; deaths at end of tick.
+  // Pass 9 m4 — also collect (deadUnit, killer) pairs so Trade Window can
+  // register its mark + ally buffs after the death loop.
+  const deathsThisTick: { dead: Unit; killer: Unit | null }[] = [];
   for (const u of working) {
     const dmg = damage[u.id];
     if (!dmg || u.state !== 'alive') continue;
@@ -365,6 +368,8 @@ export function stepTick(state: GameState): GameState {
       u.hp = 0;
       u.state = 'dead';
       events.push({ tick, type: 'death', target: u.id });
+      const killerId = damagedBy[u.id];
+      deathsThisTick.push({ dead: u, killer: killerId ? workingById[killerId] ?? null : null });
     }
   }
 
@@ -384,14 +389,37 @@ export function stepTick(state: GameState): GameState {
   //      coverage (allies within radius of a live aura source get +1).
   //   b) Hold the Line: any ally on a Warden's anchor hex gets the safe-window
   //      flag set to expire `safeWindowTicks` ticks from now.
-  //   c) Last Stand: a unit with the flag that just became last alive on its
-  //      team sets lastStandGhostSkipUntilTick so updateGhosts skips it.
   applyCardPostDamage(working, state.cardEffects, tick);
+
+  // Pass 9 m4 — Trade Window trigger: for each death this tick, if the dead
+  // unit's team has any alive teammate with `tradeWindowEnabled`, auto-mark
+  // the killer for the dead unit's team. Mark stays for tradeWindow.markTicks
+  // and is consumed by combat's mark_target check (which adds +20 HR vs the
+  // killer for all allied attacks). Mark Target's reveal-vision is omitted
+  // here (Trade Window's effect is the HR bonus, not the wallhack).
+  const tradeWindowMarks: import('./types.ts').ActiveCardEffect[] = [];
+  for (const { dead, killer } of deathsThisTick) {
+    if (!killer) continue;
+    const teamHasTradeWindow = working.some(
+      (a) => a.team === dead.team && a.state === 'alive' && a.cardFlags.tradeWindowEnabled,
+    );
+    if (!teamHasTradeWindow) continue;
+    tradeWindowMarks.push({
+      kind: 'mark_target',
+      team: dead.team,
+      targetId: killer.id,
+      expiresAtTick: tick + CARD_EFFECTS.tradeWindow.markTicks,
+    });
+  }
+  let nextCardEffects: import('./types.ts').ActiveCardEffect[] =
+    tradeWindowMarks.length > 0 ? [...state.cardEffects, ...tradeWindowMarks] : [...state.cardEffects];
 
   // Buff durations: drop any whose window has elapsed (spec §7.4).
   const nextBuffs = pruneBuffs(state.buffs, tick);
 
   // 5. Recompute vision/tracking/ghosts on the post-move/post-death state.
+  // Pass 9 m4 — postMove carries nextCardEffects (state.cardEffects + Trade
+  // Window marks); m3's Mark Target trigger layers on top of that.
   const postMove: GameState = {
     ...state,
     units: working,
@@ -402,6 +430,7 @@ export function stepTick(state: GameState): GameState {
     tick,
     events: [...state.events, ...events],
     buffs: nextBuffs,
+    cardEffects: nextCardEffects,
   };
   const post = computeVisibility(postMove);
   const visibility = post.visibility;
@@ -513,23 +542,9 @@ function applyCardPostDamage(
     }
   }
 
-  // c) Last Stand — units with the flag that are now last alive on their team
-  // set lastStandGhostSkipUntilTick to suppress fresh ghost markers.
-  const aliveCount: Record<string, number> = {};
-  for (const u of units) {
-    if (u.state !== 'alive') continue;
-    aliveCount[u.team] = (aliveCount[u.team] ?? 0) + 1;
-  }
-  for (const u of units) {
-    if (u.state !== 'alive') continue;
-    if (!u.cardFlags.lastStandActive) continue;
-    if (aliveCount[u.team] !== 1) continue;
-    if ((u.cardFlags.lastStandGhostSkipUntilTick ?? -1) > tick) continue;
-    u.cardFlags = {
-      ...u.cardFlags,
-      lastStandGhostSkipUntilTick: tick + CARD_EFFECTS.lastStand.ghostSkipTicks,
-    };
-  }
+  // Pass 9 m4 — Last Stand removed; the (c) ghost-skip block lived here and is
+  // gone with it. Trade Window's death-trigger lives in stepTick directly (it
+  // needs the deathsThisTick collection from the damage loop).
 }
 
 // True when one team is wiped, or every alive unit is idle (holding) — i.e. all

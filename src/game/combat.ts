@@ -118,10 +118,9 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
       break;
     case 'Trader': if (ctx.allyFiredRecently) pp += TRAITS.trader.hitPp; break;
     case 'Clutch':
-      // Last Stand replaces the trait branch with a bigger bonus.
-      if (ctx.lastAlive) {
-        pp += unit.cardFlags.lastStandActive ? CARD_EFFECTS.lastStand.hitPp : TRAITS.clutch.hitPp;
-      }
+      // Pass 9 m4 — Last Stand removed (replaced by Trade Window); Clutch
+      // trait reverts to its base lastAlive bonus.
+      if (ctx.lastAlive) pp += TRAITS.clutch.hitPp;
       break;
     default: break;
   }
@@ -139,9 +138,8 @@ function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
       if (ctx.engagementTicks <= TRAITS.entry.windowTicks) pp += TRAITS.entry.hsPp;
       break;
     case 'Clutch':
-      if (ctx.lastAlive) {
-        pp += unit.cardFlags.lastStandActive ? CARD_EFFECTS.lastStand.hsPp : TRAITS.clutch.hsPp;
-      }
+      // Pass 9 m4 — Last Stand removed; Clutch trait reverts to base.
+      if (ctx.lastAlive) pp += TRAITS.clutch.hsPp;
       break;
     default: break;
   }
@@ -273,8 +271,14 @@ export function resolveShot(
   }
   const dist = hexDistance(shooter.pos, target.pos);
   // Card-derived flags computed here so callers don't need to know the wiring.
+  // Pass 9 m4 — honor optional expiresAtTick (Trade Window marks expire; Mark
+  // Target marks don't carry the field so stay active round-long).
   const markedTarget = cardEffects.some(
-    (e) => e.kind === 'mark_target' && e.team === shooter.team && e.targetId === target.id,
+    (e) =>
+      e.kind === 'mark_target' &&
+      e.team === shooter.team &&
+      e.targetId === target.id &&
+      (e.expiresAtTick === undefined || currentTick <= e.expiresAtTick),
   );
   const flankedByShooter = isFlanking(shooter, target, CARD_EFFECTS.setupPlay.flankAngleDeg);
   const warderAnchorStationary =
