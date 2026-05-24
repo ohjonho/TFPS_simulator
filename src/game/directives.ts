@@ -71,16 +71,15 @@ function evaluateOne(
 }
 
 // --- hold_angle ------------------------------------------------------------
-// Face the angleHex and stay put. Engaging is allowed (default behavior); the
-// directive only contributes position + facing. The cover-seek shuffle still
-// applies via the legacy tree once the unit's at its anchor.
+// Provide the facing direction once the unit settles. Movement to the strategy
+// region is delegated to the legacy tree (region → move → hold). Returning
+// target: unit.pos here would lock the unit at spawn — that bug bit Pass 9 mB.
 
 function holdAngle(
   d: Extract<Directive, { kind: 'hold_angle' }>,
-  unit: Unit,
+  _unit: Unit,
 ): DirectiveDecision {
   return {
-    target: unit.pos, // stay put — "target = current pos" → 'holding' downstream
     facing: d.facingHex,
     source: 'hold_angle',
   };
@@ -99,16 +98,17 @@ function safeSniper(
   prevAi: AiState,
   visibleEnemies: readonly Unit[],
 ): DirectiveDecision {
-  // Reposition trigger: if engaged and we've fired enough shots, ask for a
-  // move toward a nearby cover hex (claimed-set ignored here — tick.ts handles
-  // occupancy at apply time).
+  // Reposition trigger: if we've fired enough shots THIS engagement and the
+  // engagement is over (no visible enemies), relocate to nearby cover. The
+  // legacy tree would otherwise just keep the unit at its current hex.
   const shouldReposition = prevAi.shotsThisEngagement >= d.repositionAfterShots;
   if (shouldReposition && visibleEnemies.length === 0) {
     const cover = findCoverHoldHex(unit, state.map);
     return { target: cover, facing: d.angleHex, source: 'safe_sniper' };
   }
-  // Default: hold sightline. If enemy visible, allow engage (no suppressEngage).
-  return { target: unit.pos, facing: d.angleHex, source: 'safe_sniper' };
+  // Default: don't override target — the legacy tree handles "go to region,
+  // hold once there." Just provide the facing angle.
+  return { facing: d.angleHex, source: 'safe_sniper' };
 }
 
 // --- rotate_on_team_contact ------------------------------------------------

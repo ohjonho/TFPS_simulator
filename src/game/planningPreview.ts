@@ -17,6 +17,8 @@ import { applyStrategies, commitCards } from './match.ts';
 import { findPath, findPerimeterPath } from './pathfind.ts';
 import { createRng } from './rng.ts';
 import { CARD_EFFECTS } from './config.ts';
+import { evaluateDirectives } from './directives.ts';
+import { initialAi } from './state.ts';
 
 export type PlayerSelection = {
   strategyId: string | null;
@@ -51,7 +53,12 @@ export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanP
   const routes: Record<string, HexCoord[]> = {};
   for (const u of s.units) {
     if (u.team !== state.playerTeam) continue;
-    const goal = s.targets[u.id];
+    // Pass 9: ask the directive evaluator what target the unit will actually
+    // pursue at tick 1. If a directive provides a target (commit_site, peek,
+    // safe_sniper reposition), use it; otherwise fall back to the strategy
+    // target so the preview matches the legacy "go to region" path.
+    const directiveDecision = evaluateDirectives(u, s, initialAi(), []);
+    const goal = directiveDecision?.target ?? s.targets[u.id];
     targets[u.id] = goal;
     if (!goal) continue;
     const useSlow = !!u.cardFlags.slowFlank;

@@ -19,7 +19,7 @@ import type {
 import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
+import { applyAnchorOffset, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
 import type { Directive, Role as RoleType } from './types.ts';
 import { applyCards } from './cardEffects.ts';
@@ -160,7 +160,13 @@ export function applyStrategies(
     // card directive (Anchor / Hold the Line / Setup Play) overrides via
     // commitCards downstream.
     const side = state.teamSide[u.team];
-    const adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
+    let adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
+    // Pass 9 — apply the per-role anchor offset on top of weapon adjustment.
+    // Lets Hold (defender) target the back of mid (anchorOffset=6) instead
+    // of mid's geometric centroid, etc.
+    if (adjusted && plan?.anchorOffset) {
+      adjusted = applyAnchorOffset(adjusted, plan.anchorOffset, side, state.map);
+    }
     nextTargets[u.id] = adjusted;
 
     // Pass 9 — resolve this role's DirectiveSpecs into concrete Directives.

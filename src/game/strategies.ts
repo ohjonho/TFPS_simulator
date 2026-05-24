@@ -17,9 +17,12 @@ export type RoleAssignment = Record<Role, string>;
 // Pass 9: per-role plan = region + directive specs. Directive specs use
 // symbolic HexRefs (region names / spawn refs) so strategy authoring is
 // map-agnostic; resolveDirectiveSpec materializes concrete HexCoords at
-// applyStrategies time.
+// applyStrategies time. `anchorOffset` shifts the resolved target this many
+// rows toward own spawn (positive = back, negative = forward) on top of the
+// weapon adjustment — lets Hold target the back of mid instead of the center.
 export type RolePlan = {
   region: string;
+  anchorOffset?: number;
   directives: DirectiveSpec[];
 };
 
@@ -121,10 +124,10 @@ const FOUNDRY_DEF: Strategy[] = [
     id: 'Hold', name: 'Hold', side: 'defender',
     description: 'Standard: 1 each on A site, B site, mid. Rotate on contact.',
     variants: [{
-      Vanguard:   { region: 'a_site', directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['Warden'], 4)] },
-      Tactician:  { region: 'mid',    directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
-      Warden:     { region: 'b_site', directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 4)] },
-      Specialist: { region: 'mid',    directives: [holdAngle(enemySpawn), tradeFor('Tactician')] },
+      Vanguard:   { region: 'a_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['Warden'], 4)] },
+      Tactician:  { region: 'mid',    anchorOffset: 6, directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
+      Warden:     { region: 'b_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 4)] },
+      Specialist: { region: 'mid',    anchorOffset: 6, directives: [holdAngle(enemySpawn), tradeFor('Tactician')] },
     }],
     fallbackRegion: 'mid',
     aggressionMod: STRATEGY_MODS.Hold.aggression,
@@ -135,16 +138,16 @@ const FOUNDRY_DEF: Strategy[] = [
     description: 'Cluster two on a chosen site; third roams mid.',
     variants: [
       {
-        Vanguard:   { region: 'a_site', directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
-        Tactician:  { region: 'a_site', directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
-        Warden:     { region: 'a_site', directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
-        Specialist: { region: 'mid',    directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 3)] },
+        Vanguard:   { region: 'a_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
+        Tactician:  { region: 'a_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
+        Warden:     { region: 'a_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
+        Specialist: { region: 'mid',    anchorOffset: 6, directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 3)] },
       },
       {
-        Vanguard:   { region: 'b_site', directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
-        Tactician:  { region: 'b_site', directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
-        Warden:     { region: 'b_site', directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
-        Specialist: { region: 'mid',    directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['Vanguard'], 3)] },
+        Vanguard:   { region: 'b_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
+        Tactician:  { region: 'b_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
+        Warden:     { region: 'b_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
+        Specialist: { region: 'mid',    anchorOffset: 6, directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['Vanguard'], 3)] },
       },
     ],
     fallbackRegion: 'mid',
@@ -156,9 +159,9 @@ const FOUNDRY_DEF: Strategy[] = [
     description: 'Push forward off spawn — contest mid and main lanes early.',
     variants: [{
       Vanguard:   { region: 'mid',    directives: [peek(reg('mid')), tradeFor('Tactician')] },
-      Tactician:  { region: 'mid',    directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
-      Warden:     { region: 'a_main', directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['Tactician'], 3)] },
-      Specialist: { region: 'b_main', directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['Tactician'], 3)] },
+      Tactician:  { region: 'mid',    anchorOffset: 2, directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
+      Warden:     { region: 'a_main', anchorOffset: 4, directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['Tactician'], 3)] },
+      Specialist: { region: 'b_main', anchorOffset: 4, directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['Tactician'], 3)] },
     }],
     fallbackRegion: 'mid',
     aggressionMod: STRATEGY_MODS.Pressure.aggression,
@@ -225,10 +228,10 @@ const ATOLL_DEF: Strategy[] = [
     id: 'Hold', name: 'Hold', side: 'defender',
     description: 'Standard: 1 each on A site, B site, mid courtyard. Rotate on contact.',
     variants: [{
-      Vanguard:   { region: 'a_site', directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['Warden'], 4)] },
-      Tactician:  { region: 'mid_courtyard', directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
-      Warden:     { region: 'b_site', directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 4)] },
-      Specialist: { region: 'mid_courtyard', directives: [holdAngle(enemySpawn), tradeFor('Tactician')] },
+      Vanguard:   { region: 'a_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['Warden'], 4)] },
+      Tactician:  { region: 'mid_courtyard', anchorOffset: 6, directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
+      Warden:     { region: 'b_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 4)] },
+      Specialist: { region: 'mid_courtyard', anchorOffset: 6, directives: [holdAngle(enemySpawn), tradeFor('Tactician')] },
     }],
     fallbackRegion: 'mid_courtyard',
     aggressionMod: STRATEGY_MODS.Hold.aggression,
@@ -239,16 +242,16 @@ const ATOLL_DEF: Strategy[] = [
     description: 'Cluster two on a chosen site; third roams mid.',
     variants: [
       {
-        Vanguard:   { region: 'a_site', directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
-        Tactician:  { region: 'a_site', directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
-        Warden:     { region: 'a_site', directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
-        Specialist: { region: 'mid_courtyard', directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 3)] },
+        Vanguard:   { region: 'a_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
+        Tactician:  { region: 'a_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
+        Warden:     { region: 'a_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
+        Specialist: { region: 'mid_courtyard', anchorOffset: 6, directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['Vanguard'], 3)] },
       },
       {
-        Vanguard:   { region: 'b_site', directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
-        Tactician:  { region: 'b_site', directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
-        Warden:     { region: 'b_site', directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
-        Specialist: { region: 'mid_courtyard', directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['Vanguard'], 3)] },
+        Vanguard:   { region: 'b_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Warden', 5)] },
+        Tactician:  { region: 'b_site', anchorOffset: 1, directives: [safeSniper(enemySpawn), tradeFor('Vanguard', 5)] },
+        Warden:     { region: 'b_site', anchorOffset: 1, directives: [holdAngle(enemySpawn), tradeFor('Vanguard', 5)] },
+        Specialist: { region: 'mid_courtyard', anchorOffset: 6, directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['Vanguard'], 3)] },
       },
     ],
     fallbackRegion: 'mid_courtyard',
@@ -260,9 +263,9 @@ const ATOLL_DEF: Strategy[] = [
     description: 'Push forward off spawn — contest mid courtyard and main lanes.',
     variants: [{
       Vanguard:   { region: 'mid_courtyard', directives: [peek(reg('mid_courtyard')), tradeFor('Tactician')] },
-      Tactician:  { region: 'mid_courtyard', directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
-      Warden:     { region: 'a_main',        directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['Tactician'], 3)] },
-      Specialist: { region: 'b_main',        directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['Tactician'], 3)] },
+      Tactician:  { region: 'mid_courtyard', anchorOffset: 2, directives: [holdAngle(enemySpawn), tradeFor('Vanguard')] },
+      Warden:     { region: 'a_main',        anchorOffset: 4, directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['Tactician'], 3)] },
+      Specialist: { region: 'b_main',        anchorOffset: 4, directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['Tactician'], 3)] },
     }],
     fallbackRegion: 'mid_courtyard',
     aggressionMod: STRATEGY_MODS.Pressure.aggression,
@@ -319,6 +322,22 @@ export function weaponAdjustedTarget(
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+// Pass 9 — apply an "anchor" offset toward own spawn. Defenders' spawn is at
+// the top (decreasing rows); attackers' at the bottom. Positive offset moves
+// toward own spawn, negative pushes forward. Snaps to nearest passable hex.
+export function applyAnchorOffset(
+  hex: HexCoord,
+  offset: number,
+  side: Side,
+  map: MapDefinition,
+): HexCoord {
+  if (offset === 0) return hex;
+  const dir = side === 'defender' ? -1 : +1;
+  const wantRow = clamp(hex.row + offset * dir, 0, map.height - 1);
+  const want: HexCoord = { col: hex.col, row: wantRow };
+  return nearestPassable(map, want) ?? hex;
 }
 
 // BFS outward from `start`; returns the first passable hex found (or the start
