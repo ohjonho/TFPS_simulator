@@ -67,6 +67,45 @@ let showEnemiesPlanning = true;
 let playerCard: PlayedCard | null = null;
 let previewRoutes: Record<string, HexCoord[]> | null = null;
 
+// Pass 8 — auto-target a card on selection. Untargeted cards return immediately;
+// targeted cards pick a sensible default so the player can play any card from
+// the hand with one click. A future milestone adds canvas click-to-target.
+function autoTargetCard(defId: string, contributorId: string): PlayedCard | null {
+  const def = cardById(defId);
+  if (!def) return null;
+  const played: PlayedCard = { defId, contributor: contributorId };
+  if (def.targeting === 'none') return played;
+
+  if (defId === 'mark_target') {
+    // Default: opposing-team enemy with the highest HP (lowest-id tiebreak).
+    const opp = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
+    const enemies = state.units.filter((u) => u.team === opp && u.state === 'alive');
+    enemies.sort((a, b) => (b.hp !== a.hp ? b.hp - a.hp : a.id < b.id ? -1 : 1));
+    if (enemies.length === 0) return null;
+    played.target = enemies[0].id;
+    return played;
+  }
+  if (defId === 'setup_play' || defId === 'hold_the_line') {
+    // Default hex = the contributor's current position (will be overridden by
+    // strategy in applyStrategies, but commitCards' handler then sets it back).
+    const u = state.units.find((unit) => unit.id === contributorId);
+    if (!u) return null;
+    played.target = u.pos;
+    if (defId === 'setup_play') {
+      // Bonus ally = first teammate that isn't the contributor.
+      const ally = state.units.find((unit) => unit.team === state.playerTeam && unit.id !== contributorId);
+      if (ally) played.secondaryTarget = ally.id;
+    }
+    return played;
+  }
+  if (defId === 'adapt') {
+    // Default = Spearhead (Vanguard role) — universally useful effect.
+    played.target = 'Vanguard';
+    return played;
+  }
+  return played;
+}
+
 function recomputePreview(): void {
   previewRoutes = previewPlayerPlan(state, {
     strategyId: state.playerStrategy,
@@ -90,6 +129,21 @@ function rerenderChrome() {
       recomputePreview();
       rerenderCanvas();
     },
+    // Pass 8 — pick (or clear) a card from the player's hand. For targeted
+    // cards we auto-pick a sensible default in v0 (a future milestone adds
+    // canvas click-targeting). The handler then triggers a preview recompute.
+    onPickCard: (defId: string | null) => {
+      if (defId === null) {
+        playerCard = null;
+      } else {
+        const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
+        if (!inHand) return;
+        playerCard = autoTargetCard(defId, inHand.contributor);
+      }
+      recomputePreview();
+      rerenderAll();
+    },
+    selectedCardId: playerCard?.defId ?? null,
   });
   renderBottomControls(shell.bottomBar, state, {
     onPlayToggle: () => {

@@ -19,7 +19,7 @@ import type {
 import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { regionCentroid, strategyById } from './strategies.ts';
+import { regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { applyCards } from './cardEffects.ts';
 import { discardPlayed, drawCards } from './cards.ts';
 import {
@@ -138,7 +138,13 @@ export function applyStrategies(
     const variant = isPlayer ? playerVariant : aiVariant;
     const regionName = variant[u.role] ?? strat.fallbackRegion;
     const goal = regionCentroid(state.map, regionName);
-    nextTargets[u.id] = goal;
+    // Pass 8 — weapon-aware position adjustment. Snipers held back, shotguns
+    // pushed forward. Skipped when no centroid (degenerate map) or when a
+    // card directive (Anchor / Hold the Line / Setup Play) overrides via
+    // commitCards downstream.
+    const side = state.teamSide[u.team];
+    const adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
+    nextTargets[u.id] = adjusted;
     nextUnits.push({
       ...u,
       modifiers: {
