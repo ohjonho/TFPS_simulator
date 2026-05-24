@@ -3,7 +3,9 @@
 // halftime/next round → match end).
 
 import './style.css';
-import type { GameState, PlaybackSpeed, Team, Unit } from './game/types.ts';
+import type { GameState, HexCoord, PlayedCard, PlaybackSpeed, Team, Unit } from './game/types.ts';
+import { previewPlayerPlan } from './game/planningPreview.ts';
+import { cardById } from './game/cardData.ts';
 import { buildInitialState } from './game/state.ts';
 import { assignTarget } from './game/movement.ts';
 import { stepTick } from './game/tick.ts';
@@ -58,10 +60,24 @@ const debug: DebugOverlay = { on: false };
 // `true` for build/debug; Pass 9 flips this to `false` as the production default.
 let showEnemiesPlanning = true;
 
+// Pass 8 — planning UI state. `playerCard` is the card the player has chosen
+// (with optional target). `previewRoutes` is the cached preview from
+// previewPlayerPlan; recomputed on every selection change. Both live in UI
+// state (not GameState) and reset to null on Begin Round / round end.
+let playerCard: PlayedCard | null = null;
+let previewRoutes: Record<string, HexCoord[]> | null = null;
+
+function recomputePreview(): void {
+  previewRoutes = previewPlayerPlan(state, {
+    strategyId: state.playerStrategy,
+    card: playerCard,
+  }).routes;
+}
+
 // --- Render pipeline -------------------------------------------------------
 
 function rerenderCanvas() {
-  render(handle.ctx, state, hover, selection, debug, handle.cssWidth, handle.cssHeight, showEnemiesPlanning);
+  render(handle.ctx, state, hover, selection, debug, handle.cssWidth, handle.cssHeight, showEnemiesPlanning, previewRoutes);
 }
 
 function rerenderChrome() {
@@ -69,7 +85,11 @@ function rerenderChrome() {
     ? state.units.find((u) => u.id === hover.unitId) ?? null
     : null;
   renderSidePanel(shell.sidePanel, hovered, state, {
-    onPickStrategy: (id: string) => setState({ ...state, playerStrategy: id }),
+    onPickStrategy: (id: string) => {
+      setState({ ...state, playerStrategy: id });
+      recomputePreview();
+      rerenderCanvas();
+    },
   });
   renderBottomControls(shell.bottomBar, state, {
     onPlayToggle: () => {
@@ -126,11 +146,14 @@ function beginRound(): void {
   const pickRng = createRng((state.seed ^ (state.round * 0x9e3779b1)) >>> 0);
   const aiId = pickAiStrategy(state, aiTeam, aiSide, pickRng);
   let next = applyStrategies(state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng);
-  // Pass 8 — AI picks its card here (player's card is already committed via UI).
+  // Pass 8 — AI picks its card here (player's card is the UI-held playerCard).
   const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
-  next = commitCards(next, state.playerTeam, state.playedCard[state.playerTeam], aiTeam, aiCard, pickRng);
+  next = commitCards(next, state.playerTeam, playerCard, aiTeam, aiCard, pickRng);
   initialUnitsById = snapshotUnits(next.units);
   setState(next);
+  // Clear UI selection so the next planning phase starts fresh.
+  playerCard = null;
+  previewRoutes = null;
   loop.start();
 }
 
@@ -364,6 +387,28 @@ if (import.meta.env.DEV) {
         },
       }),
     getBuffs: () => state.buffs,
+    // --- Pass 8 card hooks ---
+    getHand: (team: Team) => state.cards[team].hand.map((c) => ({
+      defId: c.defId, contributor: c.contributor, name: cardById(c.defId)?.name ?? c.defId,
+    })),
+    getDeck: (team: Team) => ({
+      deck: state.cards[team].deck.length,
+      hand: state.cards[team].hand.map((c) => c.defId),
+      discard: state.cards[team].discard.length,
+    }),
+    setPlayerCard: (defId: string | null, target?: HexCoord | string, secondaryTarget?: string) => {
+      if (!defId) { playerCard = null; recomputePreview(); rerenderCanvas(); return; }
+      // Find a CardInstance in the player's hand matching the def id.
+      const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
+      if (!inHand) { playerCard = null; recomputePreview(); rerenderCanvas(); return; }
+      playerCard = { defId, contributor: inHand.contributor, target, secondaryTarget };
+      recomputePreview();
+      rerenderCanvas();
+    },
+    getPlayerCard: () => playerCard,
+    getPreviewRoutes: () => previewRoutes,
+    getCardEffects: () => state.cardEffects,
+    getPlayedCard: (team: Team) => state.playedCard[team],
     sampleHits: (shooterId: string, targetId: string, n = 400, ctx: Partial<ShotContextInput> & { seed?: number } = {}) => {
       const shooter = state.units.find((u) => u.id === shooterId)!;
       const target = state.units.find((u) => u.id === targetId)!;

@@ -1,7 +1,10 @@
 // Formats the combat event log into spec §18.4-style kill-feed lines.
 // Pure string building; mounted by the side panel. Pass 9 polishes styling.
+// Pass 8: also surfaces cardPlay events so the round-narrative reads cleanly
+// (every played card shows up at the top of the round in the feed).
 
 import type { GameEvent, GameState, Weapon } from '../game/types.ts';
+import { cardById } from '../game/cardData.ts';
 
 const WEAPON_NAME: Record<Weapon, string> = {
   shotgun: 'Shotgun',
@@ -21,10 +24,21 @@ export function killFeedLines(state: GameState, max = 14): string[] {
 
   const lines: string[] = [];
   for (const e of state.events) {
-    if (e.type !== 'shot') continue;
-    lines.push(formatShot(e, deaths));
+    if (e.type === 'shot') {
+      lines.push(formatShot(e, deaths));
+    } else if (e.type === 'cardPlay') {
+      lines.push(formatCardPlay(e));
+    } else if (e.type === 'safeWindowBlock') {
+      lines.push(`T:${e.tick} — ${e.shooter} → ${e.target} [WARDEN BLOCK]`);
+    }
   }
   return lines.slice(-max);
+}
+
+function formatCardPlay(e: Extract<GameEvent, { type: 'cardPlay' }>): string {
+  const name = cardById(e.defId)?.name ?? e.defId;
+  const teamLabel = e.team === 'defenders' ? 'D' : 'A';
+  return `T:${e.tick} — ${teamLabel} plays «${name}» (${e.contributor})`;
 }
 
 function formatShot(e: Extract<GameEvent, { type: 'shot' }>, deaths: Set<string>): string {

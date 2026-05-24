@@ -2,9 +2,9 @@
 //   background → hex grid → routes → fog (resolution) → units (enemy-visibility
 //   filtered) → debug vision overlay (when V toggle on).
 
-import type { GameState, Team } from '../game/types.ts';
+import type { GameState, HexCoord, Team } from '../game/types.ts';
 import { drawHexGrid } from './drawHexGrid.ts';
-import { drawRoutes } from './drawRoutes.ts';
+import { drawPreviewRoutes, drawRoutes } from './drawRoutes.ts';
 import { drawUnits } from './drawUnits.ts';
 import { drawFog } from './drawFog.ts';
 import { drawEngagements } from './drawEngagements.ts';
@@ -33,11 +33,18 @@ export function render(
   cssWidth: number,
   cssHeight: number,
   showEnemiesPlanning = true,
+  previewRoutes: Record<string, HexCoord[]> | null = null,
 ): void {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
   drawHexGrid(ctx, state.map);
-  drawRoutes(ctx, state);
+  if (state.phase === 'resolution') {
+    drawRoutes(ctx, state);
+  } else if (previewRoutes) {
+    // Pass 8 — dashed advisory routes for the player's currently-selected
+    // strategy + card during planning. Updates whenever selection changes.
+    drawPreviewRoutes(ctx, previewRoutes);
+  }
 
   // Fog is on during resolution; in planning, fog respects the dev toggle so
   // builders can see enemy positions. Production defaults this to off in Pass 9.
