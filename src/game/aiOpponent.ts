@@ -70,8 +70,8 @@ export function pickAiCard(
     // Setup Play uses Vanguard's region as the "primary attack"; Hold the Line
     // uses Warden's region as the "anchor."
     const sourceRole = def.id === 'setup_play' ? 'Vanguard' : 'Warden';
-    const region = variant[sourceRole] ?? strat.fallbackRegion;
-    const hex = regionCentroid(state.map, region);
+    const regionName = variant[sourceRole]?.region ?? strat.fallbackRegion;
+    const hex = regionCentroid(state.map, regionName);
     if (!hex) return null;
     played.target = hex;
     if (def.id === 'setup_play') {

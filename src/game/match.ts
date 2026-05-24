@@ -20,6 +20,8 @@ import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
 import { regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
+import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
+import type { Directive, Role as RoleType } from './types.ts';
 import { applyCards } from './cardEffects.ts';
 import { discardPlayed, drawCards } from './cards.ts';
 import {
@@ -132,13 +134,26 @@ export function applyStrategies(
   const playerVariant = playerStrat.variants[rng.int(playerStrat.variants.length)];
   const aiVariant = aiStrat.variants[rng.int(aiStrat.variants.length)];
 
+  // Pass 9 — build per-team role→unitId tables so directive specs that
+  // reference allies by role (trade_for, rotate_on_team_contact) resolve to
+  // concrete ids. First matching role wins (stable).
+  const rolesByTeam: Record<string, Record<RoleType, string | undefined>> = {
+    defenders: {} as Record<RoleType, string | undefined>,
+    attackers: {} as Record<RoleType, string | undefined>,
+  };
+  for (const u of state.units) {
+    const m = rolesByTeam[u.team];
+    if (m[u.role] === undefined) m[u.role] = u.id;
+  }
+
   const nextUnits: Unit[] = [];
   const nextTargets: Record<string, HexCoord | null> = { ...state.targets };
   for (const u of state.units) {
     const isPlayer = u.team === playerTeam;
     const strat = isPlayer ? playerStrat : aiStrat;
     const variant = isPlayer ? playerVariant : aiVariant;
-    const regionName = variant[u.role] ?? strat.fallbackRegion;
+    const plan = variant[u.role];
+    const regionName = plan?.region ?? strat.fallbackRegion;
     const goal = regionCentroid(state.map, regionName);
     // Pass 8 — weapon-aware position adjustment. Snipers held back, shotguns
     // pushed forward. Skipped when no centroid (degenerate map) or when a
@@ -147,6 +162,20 @@ export function applyStrategies(
     const side = state.teamSide[u.team];
     const adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
     nextTargets[u.id] = adjusted;
+
+    // Pass 9 — resolve this role's DirectiveSpecs into concrete Directives.
+    // Specs that can't be resolved (e.g. ally role not on team) are dropped.
+    const ctx: ResolutionContext = {
+      map: state.map,
+      side,
+      rolesToUnitIds: rolesByTeam[u.team],
+    };
+    const directives: Directive[] = [];
+    for (const spec of plan?.directives ?? []) {
+      const resolved = resolveDirectiveSpec(spec, ctx);
+      if (resolved) directives.push(resolved);
+    }
+
     nextUnits.push({
       ...u,
       modifiers: {
@@ -154,6 +183,7 @@ export function applyStrategies(
         aggression: Math.max(0, Math.min(100, ROLE_AGGRESSION[u.role] + strat.aggressionMod)),
         retreatThresholdMod: strat.retreatThresholdMod,
       },
+      directives,
     });
   }
   return {

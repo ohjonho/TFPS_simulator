@@ -14,10 +14,14 @@ import type {
   DirectiveDecision,
   GameState,
   HexCoord,
+  MapDefinition,
+  Role,
+  Side,
   Unit,
 } from './types.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
+import { regionCentroid } from './strategies.ts';
 
 // Evaluate the unit's directives in priority order (higher first); the first
 // directive that produces a non-null decision wins. Returns null when no
@@ -216,4 +220,121 @@ function hexInAnyRegion(hex: HexCoord, regions: readonly string[], state: GameSt
     }
   }
   return false;
+}
+
+// --- DirectiveSpec → Directive resolution ----------------------------------
+// Strategies author directive specs with symbolic hex/role references; we
+// resolve them at applyStrategies time into concrete Directives with HexCoords
+// and unit ids. Keeps strategy tables map-agnostic and portable.
+
+// Symbolic reference to a hex on the map.
+//   { region: 'a_site' }   → regionCentroid(map, 'a_site')
+//   { spawn: 'enemy' }     → middle enemy-side spawn hex
+//   { spawn: 'own' }       → middle own-side spawn hex
+export type HexRef =
+  | { region: string }
+  | { spawn: 'enemy' | 'own' };
+
+export type DirectiveSpec =
+  | { kind: 'hold_angle'; priority?: number; facing: HexRef }
+  | { kind: 'safe_sniper'; priority?: number; angle: HexRef; repositionAfterShots?: number; repositionRadius?: number }
+  | { kind: 'rotate_on_team_contact'; priority?: number; rotateTo: HexRef; watchRoles: Role[]; delayTicks?: number }
+  | { kind: 'trade_for'; priority?: number; allyRole: Role; windowTicks?: number }
+  | { kind: 'peek_and_retreat'; priority?: number; peek: HexRef; cover?: HexRef; cadenceTicks?: number }
+  | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] };
+
+export type ResolutionContext = {
+  map: MapDefinition;
+  side: Side;
+  // Teammate roles → unit id, so directives that reference allies by role can
+  // be resolved at apply time. Multiple units per role pick the first id.
+  rolesToUnitIds: Record<Role, string | undefined>;
+};
+
+export function resolveHexRef(ref: HexRef, ctx: ResolutionContext): HexCoord | null {
+  if ('region' in ref) return regionCentroid(ctx.map, ref.region);
+  // Spawn refs: 'own' = the team's current side spawn; 'enemy' = opposite.
+  const ownKey = ctx.side === 'attacker' ? 'attackers' : 'defenders';
+  const enemyKey = ctx.side === 'attacker' ? 'defenders' : 'attackers';
+  const spawns = ctx.map.spawns[ref.spawn === 'own' ? ownKey : enemyKey];
+  if (!spawns || spawns.length === 0) return null;
+  return spawns[Math.floor(spawns.length / 2)];
+}
+
+// Resolve a DirectiveSpec into a Directive ready to plug into Unit.directives.
+// Returns null when references can't be resolved (e.g. ally role not on team).
+export function resolveDirectiveSpec(
+  spec: DirectiveSpec,
+  ctx: ResolutionContext,
+): Directive | null {
+  const priority = spec.priority ?? 50;
+  switch (spec.kind) {
+    case 'hold_angle': {
+      const facing = resolveHexRef(spec.facing, ctx);
+      if (!facing) return null;
+      return { kind: 'hold_angle', priority, facingHex: facing };
+    }
+    case 'safe_sniper': {
+      const angle = resolveHexRef(spec.angle, ctx);
+      if (!angle) return null;
+      return {
+        kind: 'safe_sniper',
+        priority,
+        angleHex: angle,
+        repositionAfterShots: spec.repositionAfterShots ?? 2,
+        repositionRadius: spec.repositionRadius ?? 2,
+      };
+    }
+    case 'rotate_on_team_contact': {
+      const rotateTo = resolveHexRef(spec.rotateTo, ctx);
+      if (!rotateTo) return null;
+      const watchAllies: string[] = [];
+      for (const role of spec.watchRoles) {
+        const id = ctx.rolesToUnitIds[role];
+        if (id) watchAllies.push(id);
+      }
+      if (watchAllies.length === 0) return null;
+      return {
+        kind: 'rotate_on_team_contact',
+        priority,
+        rotateToHex: rotateTo,
+        watchAllies,
+        delayTicks: spec.delayTicks ?? 3,
+      };
+    }
+    case 'trade_for': {
+      const allyId = ctx.rolesToUnitIds[spec.allyRole];
+      if (!allyId) return null;
+      return {
+        kind: 'trade_for',
+        priority,
+        allyId,
+        windowTicks: spec.windowTicks ?? 4,
+      };
+    }
+    case 'peek_and_retreat': {
+      const peek = resolveHexRef(spec.peek, ctx);
+      if (!peek) return null;
+      // Cover defaults to own_spawn direction (1 hex back from peek).
+      const cover = spec.cover ? resolveHexRef(spec.cover, ctx) : peek;
+      if (!cover) return null;
+      return {
+        kind: 'peek_and_retreat',
+        priority,
+        peekHex: peek,
+        coverHex: cover,
+        cadenceTicks: spec.cadenceTicks ?? 4,
+      };
+    }
+    case 'commit_site': {
+      const site = resolveHexRef(spec.site, ctx);
+      if (!site) return null;
+      return {
+        kind: 'commit_site',
+        priority,
+        siteHex: site,
+        leaveOnContactInRegions: spec.leaveOnContactInRegions ?? [],
+      };
+    }
+  }
 }
