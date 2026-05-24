@@ -1,48 +1,40 @@
-// Pass 3 — Vision Cones & Fog of War.
-// All functions are pure: take a state snapshot and return derived data.
+// Pass 3 — Vision Cones & Fog of War. All functions pure: take a state
+// snapshot, return derived data. Ported from the legacy flat-top/axial version
+// onto the pointy-top odd-row offset grid.
 //
 // Pipeline per tick (called from stepTick AFTER movement):
 //   1. computeVisibility(state) → { visibility, perUnit }
 //   2. updateTracking(state, perUnit) → tracking
-//   3. updateGhosts(state, currVisibleEnemiesByTeam) → ghosts
+//   3. updateGhosts(preMoveUnits, …) → ghosts
 //
-// Cone math is done in pixel space (so flat-top hex geometry maps cleanly to
-// angles). Occlusion uses a supercover hex-line trace in cube coords with
-// double-sampling, so the line catches hexes it merely grazes at boundaries.
-//
-// Coordinate / angle convention:
-//   Facing 0 = N, clockwise 1=NE, 2=SE, 3=S, 4=SW, 5=NW.
-//   Pixel-angle(facing) = facing*60 - 90  (degrees). 0=N maps to -90° (straight
-//   up in pixel coords, since +y is down).
+// Cone math is done in pixel space (offsetToPixel) so hex geometry maps cleanly
+// to angles. Occlusion uses a supercover hex-line trace in axial coords with
+// double-sampling so the line catches hexes it merely grazes at boundaries.
 
 import type {
-  Axial,
-  GameMap,
   GameState,
   GhostEntry,
+  HexCoord,
   HexKey,
+  MapDefinition,
   Team,
   TrackEntry,
   Unit,
   Visibility,
 } from './types.ts';
-import { axialToPixel, hexDistance, offsetToAxial } from './hex.ts';
-import { terrainAt } from './path.ts';
+import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
+import { neighbors } from './pathfind.ts';
 import { VISION } from './config.ts';
 
 // --- Keys / angle helpers ---------------------------------------------------
 
-export function axialKey(a: Axial): HexKey {
-  return `${a.q},${a.r}`;
+export function hexKey(h: HexCoord): HexKey {
+  return `${h.col},${h.row}`;
 }
 
-export function parseAxialKey(k: HexKey): Axial {
+export function parseHexKey(k: HexKey): HexCoord {
   const i = k.indexOf(',');
-  return { q: Number(k.slice(0, i)), r: Number(k.slice(i + 1)) };
-}
-
-export function facingToAngleRad(facing: number): number {
-  return ((facing * 60 - 90) * Math.PI) / 180;
+  return { col: Number(k.slice(0, i)), row: Number(k.slice(i + 1)) };
 }
 
 function wrapToPi(a: number): number {
@@ -52,19 +44,44 @@ function wrapToPi(a: number): number {
   return x;
 }
 
-export function bearingPixelRad(from: Axial, to: Axial): number {
-  const a = axialToPixel(from);
-  const b = axialToPixel(to);
+function bearingPixelRad(from: HexCoord, to: HexCoord): number {
+  const a = offsetToPixel(from.col, from.row);
+  const b = offsetToPixel(to.col, to.row);
   return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+// Bearing the unit "faces": geometric direction toward the neighbor in its
+// facing index (parity-correct, since neighbor deltas differ by row parity).
+export function facingBearingRad(pos: HexCoord, facing: number): number {
+  const nb = neighbors(pos)[facing];
+  return bearingPixelRad(pos, nb);
+}
+
+// --- Sniper stationary rule -------------------------------------------------
+
+// In v0 there are no waypoint holds, so "stationary" reduces to: the unit did
+// not change hex this tick (prevPos === current pos).
+export function isStationary(unit: Unit, prevPos: HexCoord | undefined): boolean {
+  if (!prevPos) return true;
+  return unit.pos.col === prevPos.col && unit.pos.row === prevPos.row;
+}
+
+function coneHalfRad(unit: Unit, state: GameState): number {
+  let halfDeg: number = VISION.defaultConeHalfDeg;
+  if (unit.weapon === 'sniper' && isStationary(unit, state.prevPos[unit.id])) {
+    halfDeg = VISION.sniperStationaryHalfDeg;
+  }
+  if (unit.skillTrait === 'Eagle Eye') {
+    halfDeg += VISION.eagleEyeBonusHalfDeg;
+  }
+  return (halfDeg * Math.PI) / 180;
 }
 
 // --- Cone center ------------------------------------------------------------
 
-// If the viewer is currently tracking a live enemy, the cone points at the
-// tracked enemy's last-known hex; otherwise it points along the unit's
-// natural facing. Tracking that became stale (dead enemy) is treated as null
-// here defensively — updateTracking will clear it for the next tick.
-export function coneCenterAngle(
+// Point at the tracked enemy's last-known hex if tracking a live enemy; else
+// face the natural facing direction.
+export function coneCenterRad(
   unit: Unit,
   tracking: TrackEntry | null,
   unitsById: Record<string, Unit>,
@@ -75,60 +92,27 @@ export function coneCenterAngle(
       return bearingPixelRad(unit.pos, tracking.lastKnownHex);
     }
   }
-  return facingToAngleRad(unit.facing);
-}
-
-// --- Sniper stationary rule -------------------------------------------------
-
-// stationary at tick T = position unchanged this tick AND not the first tick
-// leaving a hold. We compare prev-tick pos vs current pos, and detect "first
-// tick leaving hold" as the transition prevHoldRemaining > 0 → currHoldRemaining == 0.
-export function isUnitStationary(
-  unit: Unit,
-  prevPos: Axial,
-  prevHoldRemaining: number,
-  currHoldRemaining: number,
-): boolean {
-  if (unit.pos.q !== prevPos.q || unit.pos.r !== prevPos.r) return false;
-  if (prevHoldRemaining > 0 && currHoldRemaining === 0) return false;
-  return true;
-}
-
-function halfConeRad(unit: Unit, state: GameState): number {
-  let halfDeg: number = VISION.defaultConeHalfDeg;
-  if (unit.weapon === 'sniper') {
-    const prevPos = state.prevPos[unit.id] ?? unit.pos;
-    const prevHold = state.prevHoldRemaining[unit.id] ?? 0;
-    const currHold = state.cursors[unit.id]?.holdRemaining ?? 0;
-    if (isUnitStationary(unit, prevPos, prevHold, currHold)) {
-      halfDeg = VISION.sniperStationaryHalfDeg;
-    }
-  }
-  return (halfDeg * Math.PI) / 180;
+  return facingBearingRad(unit.pos, unit.facing);
 }
 
 // --- Cone hex enumeration ---------------------------------------------------
 
-// Returns every map hex inside this unit's cone, ignoring occlusion. Includes
-// the viewer's own hex unconditionally. Iterates the full map — fine at 600
-// hexes; if we ever scale up, switch to a BFS expansion outward.
 export function hexesInCone(
   viewer: Unit,
-  map: GameMap,
-  coneCenterRad: number,
+  map: MapDefinition,
+  centerRad: number,
   halfRad: number,
 ): Set<HexKey> {
   const out = new Set<HexKey>();
-  out.add(axialKey(viewer.pos));
-  const viewerPx = axialToPixel(viewer.pos);
-  for (let row = 0; row < map.rows; row++) {
-    for (let col = 0; col < map.cols; col++) {
-      const hex = offsetToAxial(col, row);
-      if (hex.q === viewer.pos.q && hex.r === viewer.pos.r) continue;
-      const px = axialToPixel(hex);
-      const bearing = Math.atan2(px.y - viewerPx.y, px.x - viewerPx.x);
-      if (Math.abs(wrapToPi(bearing - coneCenterRad)) <= halfRad) {
-        out.add(axialKey(hex));
+  out.add(hexKey(viewer.pos));
+  const vpx = offsetToPixel(viewer.pos.col, viewer.pos.row);
+  for (let row = 0; row < map.height; row++) {
+    for (let col = 0; col < map.width; col++) {
+      if (col === viewer.pos.col && row === viewer.pos.row) continue;
+      const px = offsetToPixel(col, row);
+      const bearing = Math.atan2(px.y - vpx.y, px.x - vpx.x);
+      if (Math.abs(wrapToPi(bearing - centerRad)) <= halfRad) {
+        out.add(`${col},${row}`);
       }
     }
   }
@@ -137,40 +121,17 @@ export function hexesInCone(
 
 // --- Supercover line trace --------------------------------------------------
 
-function cubeRoundAxial(qf: number, rf: number): Axial {
-  const sf = -qf - rf;
-  let q = Math.round(qf);
-  let r = Math.round(rf);
-  const s = Math.round(sf);
-  const dq = Math.abs(q - qf);
-  const dr = Math.abs(r - rf);
-  const ds = Math.abs(s - sf);
-  if (dq > dr && dq > ds) q = -r - s;
-  else if (dr > ds) r = -q - s;
-  return { q, r };
-}
-
-// Visible iff no full-wall hex lies strictly between `from` and `to`. The two
-// endpoints themselves are skipped (a viewer can see out of its own hex, and
-// the target hex is by definition the candidate we're testing).
-export function isVisibleAlongLine(from: Axial, to: Axial, map: GameMap): boolean {
-  if (from.q === to.q && from.r === to.r) return true;
-  const N = hexDistance(from, to);
-  if (N <= 1) return true;
-  const steps = 2 * N;
-  let lastQ = Number.NaN;
-  let lastR = Number.NaN;
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    const qf = from.q + (to.q - from.q) * t;
-    const rf = from.r + (to.r - from.r) * t;
-    const rounded = cubeRoundAxial(qf, rf);
-    if (rounded.q === from.q && rounded.r === from.r) continue;
-    if (rounded.q === to.q && rounded.r === to.r) continue;
-    if (rounded.q === lastQ && rounded.r === lastR) continue;
-    lastQ = rounded.q;
-    lastR = rounded.r;
-    if (terrainAt(map, rounded) === 'fullWall') return false;
+// Visible iff no full-wall hex lies strictly between `from` and `to`. Endpoints
+// are skipped (a viewer sees out of its own hex; the target is the candidate).
+// Cover does NOT block vision — only 'wall' does.
+export function isVisibleAlongLine(from: HexCoord, to: HexCoord, map: MapDefinition): boolean {
+  if (from.col === to.col && from.row === to.row) return true;
+  const line = hexLine(from, to);
+  // Skip the endpoints (viewer sees out of its own hex; target is the candidate).
+  for (let i = 1; i < line.length - 1; i++) {
+    const h = line[i];
+    if (h.row < 0 || h.row >= map.height || h.col < 0 || h.col >= map.width) continue;
+    if (map.grid[h.row][h.col] === 'wall') return false;
   }
   return true;
 }
@@ -196,18 +157,16 @@ export function computeVisibility(state: GameState): VisibilityComputation {
       perUnit[u.id] = new Set();
       continue;
     }
-    const center = coneCenterAngle(u, state.tracking[u.id] ?? null, unitsById);
-    const half = halfConeRad(u, state);
+    const center = coneCenterRad(u, state.tracking[u.id] ?? null, unitsById);
+    const half = coneHalfRad(u, state);
     const cone = hexesInCone(u, state.map, center, half);
     const visible = new Set<HexKey>();
-    const selfKey = axialKey(u.pos);
+    const selfKey = hexKey(u.pos);
     visible.add(selfKey);
     for (const key of cone) {
       if (key === selfKey) continue;
-      const target = parseAxialKey(key);
-      if (isVisibleAlongLine(u.pos, target, state.map)) {
-        visible.add(key);
-      }
+      const target = parseHexKey(key);
+      if (isVisibleAlongLine(u.pos, target, state.map)) visible.add(key);
     }
     perUnit[u.id] = visible;
     const teamSet = visibility[u.team];
@@ -216,9 +175,8 @@ export function computeVisibility(state: GameState): VisibilityComputation {
   return { visibility, perUnit };
 }
 
-// Debug-only helper: per-unit cone hex set and visible hex set, plus the cone
-// center and half-angle that produced them. Used by the V overlay so the
-// renderer can draw arc edges that exactly match the live cone math.
+// Debug-only: per-unit cone + visible sets plus the center/half that produced
+// them, so the V overlay draws arc edges matching the live cone math.
 export type PerUnitDebugInfo = {
   coneCenterRad: number;
   halfRad: number;
@@ -232,15 +190,15 @@ export function computePerUnitDebug(state: GameState): Record<string, PerUnitDeb
   for (const u of state.units) unitsById[u.id] = u;
   for (const u of state.units) {
     if (u.state !== 'alive') continue;
-    const center = coneCenterAngle(u, state.tracking[u.id] ?? null, unitsById);
-    const half = halfConeRad(u, state);
+    const center = coneCenterRad(u, state.tracking[u.id] ?? null, unitsById);
+    const half = coneHalfRad(u, state);
     const cone = hexesInCone(u, state.map, center, half);
     const visible = new Set<HexKey>();
-    const selfKey = axialKey(u.pos);
+    const selfKey = hexKey(u.pos);
     visible.add(selfKey);
     for (const key of cone) {
       if (key === selfKey) continue;
-      const target = parseAxialKey(key);
+      const target = parseHexKey(key);
       if (isVisibleAlongLine(u.pos, target, state.map)) visible.add(key);
     }
     out[u.id] = { coneCenterRad: center, halfRad: half, cone, visible };
@@ -271,37 +229,24 @@ export function updateTracking(
       const enemy = unitsById[track.enemyId];
       if (!enemy || enemy.state !== 'alive') {
         track = null;
-      } else if (myVis.has(axialKey(enemy.pos))) {
+      } else if (myVis.has(hexKey(enemy.pos))) {
         track = { enemyId: enemy.id, lastKnownHex: enemy.pos, ticksLost: 0 };
       } else {
         const nextLost = track.ticksLost + 1;
-        if (nextLost >= VISION.trackLossThreshold) {
-          track = null;
-        } else {
-          track = { ...track, ticksLost: nextLost };
-        }
+        track = nextLost >= VISION.trackLossThreshold ? null : { ...track, ticksLost: nextLost };
       }
     }
 
-    // Step B: try to acquire if no track.
+    // Step B: acquire if no track — closest visible enemy, lowest-id tiebreak.
     if (!track) {
       const candidates: Array<{ id: string; dist: number }> = [];
       for (const e of state.units) {
-        if (e.team === u.team) continue;
-        if (e.state !== 'alive') continue;
-        if (myVis.has(axialKey(e.pos))) {
-          candidates.push({ id: e.id, dist: hexDistance(u.pos, e.pos) });
-        }
+        if (e.team === u.team || e.state !== 'alive') continue;
+        if (myVis.has(hexKey(e.pos))) candidates.push({ id: e.id, dist: hexDistance(u.pos, e.pos) });
       }
       if (candidates.length > 0) {
-        candidates.sort((a, b) => {
-          if (a.dist !== b.dist) return a.dist - b.dist;
-          if (a.id < b.id) return -1;
-          if (a.id > b.id) return 1;
-          return 0;
-        });
-        const winnerId = candidates[0].id;
-        const winner = unitsById[winnerId];
+        candidates.sort((a, b) => (a.dist !== b.dist ? a.dist - b.dist : a.id < b.id ? -1 : 1));
+        const winner = unitsById[candidates[0].id];
         track = { enemyId: winner.id, lastKnownHex: winner.pos, ticksLost: 0 };
       }
     }
@@ -313,69 +258,50 @@ export function updateTracking(
 
 // --- Ghost markers ----------------------------------------------------------
 
-// Snapshot of which enemies are visible to each team THIS tick. Used by
-// updateGhosts to detect newly-lost enemies and to suppress ghosts for
-// currently-visible enemies.
+// Which enemies are visible to each team given a visibility snapshot.
 export function visibleEnemiesByTeam(
   state: GameState,
   visibility: Visibility,
 ): Record<Team, Set<string>> {
-  const out: Record<Team, Set<string>> = {
-    defenders: new Set<string>(),
-    attackers: new Set<string>(),
-  };
+  const out: Record<Team, Set<string>> = { defenders: new Set(), attackers: new Set() };
   for (const u of state.units) {
     if (u.state !== 'alive') continue;
     const enemyTeam: Team = u.team === 'defenders' ? 'attackers' : 'defenders';
-    if (visibility[enemyTeam].has(axialKey(u.pos))) {
-      out[enemyTeam].add(u.id);
-    }
+    if (visibility[enemyTeam].has(hexKey(u.pos))) out[enemyTeam].add(u.id);
   }
   return out;
 }
 
-// state passed in is the PRE-MOVEMENT snapshot (so state.units[id].pos is the
-// enemy's last-seen position from the perspective of end-of-T-1), and
-// state.visibility is end-of-T-1. currVisibleByTeam is end-of-T.
+// preMoveUnits supply each newly-lost enemy's last-seen (pre-movement) hex.
+// prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T.
 export function updateGhosts(
-  preMovementUnits: readonly Unit[],
+  preMoveUnits: readonly Unit[],
   prevGhosts: Record<Team, Record<string, GhostEntry>>,
   prevVisibleByTeam: Record<Team, Set<string>>,
   currVisibleByTeam: Record<Team, Set<string>>,
 ): Record<Team, Record<string, GhostEntry>> {
   const teams: Team[] = ['defenders', 'attackers'];
-  const result: Record<Team, Record<string, GhostEntry>> = {
-    defenders: {},
-    attackers: {},
-  };
+  const result: Record<Team, Record<string, GhostEntry>> = { defenders: {}, attackers: {} };
   const preById: Record<string, Unit> = {};
-  for (const u of preMovementUnits) preById[u.id] = u;
+  for (const u of preMoveUnits) preById[u.id] = u;
 
   for (const team of teams) {
     const prev = prevGhosts[team];
     const next: Record<string, GhostEntry> = {};
 
-    // Carry existing ghosts forward, decrementing their counter.
+    // Carry existing ghosts forward, decrementing.
     for (const enemyId of Object.keys(prev)) {
-      const entry = prev[enemyId];
-      const remaining = entry.ticksRemaining - 1;
-      if (remaining > 0) next[enemyId] = { hex: entry.hex, ticksRemaining: remaining };
+      const remaining = prev[enemyId].ticksRemaining - 1;
+      if (remaining > 0) next[enemyId] = { hex: prev[enemyId].hex, ticksRemaining: remaining };
     }
-
-    // Newly lost: visible last tick, not visible this tick → drop a fresh ghost
-    // at the enemy's last-seen (pre-movement) position. Replaces any older
-    // ghost we might have decremented above.
+    // Newly lost: drop a fresh ghost at the enemy's last-seen position.
     for (const enemyId of prevVisibleByTeam[team]) {
       if (currVisibleByTeam[team].has(enemyId)) continue;
       const enemy = preById[enemyId];
-      if (!enemy) continue;
-      next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
+      if (enemy) next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
     }
-
     // Currently visible: clear any ghost (re-sighted).
-    for (const enemyId of currVisibleByTeam[team]) {
-      delete next[enemyId];
-    }
+    for (const enemyId of currVisibleByTeam[team]) delete next[enemyId];
 
     result[team] = next;
   }

@@ -1,45 +1,100 @@
-// Hex coordinate math. Flat-top hexes, odd-q offset for map sources.
-// Algorithms from https://www.redblobgames.com/grids/hexagons/
+// Hex coordinate math. Pointy-top hexes, odd-row offset — matching the
+// hex_maps_foundry_atoll.html prototype (row%2===1 shifts right by ½ column).
+// Algorithms adapted from https://www.redblobgames.com/grids/hexagons/
 
-import type { Axial } from './types.ts';
+import type { Axial, HexCoord } from './types.ts';
 import { HEX } from './config.ts';
 
 const SQRT3 = Math.sqrt(3);
 
-export type OffsetCoord = { col: number; row: number };
-
-// odd-q: odd columns are pushed down by half a hex.
-export function offsetToAxial(col: number, row: number): Axial {
-  const q = col;
-  const r = row - (col - (col & 1)) / 2;
-  return { q, r };
-}
-
-export function axialToOffset(hex: Axial): OffsetCoord {
-  const col = hex.q;
-  const row = hex.r + (hex.q - (hex.q & 1)) / 2;
-  return { col, row };
-}
-
-// Pixel position of the hex CENTER, given the top-left of the grid at (0,0).
-// Includes a half-hex padding so the leftmost / topmost hexes aren't clipped.
-export function axialToPixel(hex: Axial): { x: number; y: number } {
-  const size = HEX.size;
-  const { col, row } = axialToOffset(hex);
-  const x = size * 1.5 * col + size;
-  const y = size * SQRT3 * (row + 0.5 * (col & 1)) + size * SQRT3 * 0.5;
+// Pixel position of a hex CENTER for the given offset (col,row).
+// Mirrors the prototype's hctr(): x = MX + col*W + (odd row ? W/2 : 0).
+export function offsetToPixel(col: number, row: number): { x: number; y: number } {
+  const x = HEX.mx + col * HEX.w + (row % 2 === 1 ? HEX.w / 2 : 0);
+  const y = HEX.my + row * HEX.vs;
   return { x, y };
 }
 
-// Inverse of axialToPixel. Used for hover -> hex lookup.
-export function pixelToAxial(x: number, y: number): Axial {
-  const size = HEX.size;
-  // Undo the half-hex padding before fractional conversion.
-  const px = x - size;
-  const py = y - size * SQRT3 * 0.5;
-  const qf = (2 / 3) * px / size;
-  const rf = (-1 / 3 * px + (SQRT3 / 3) * py) / size;
-  return cubeRoundToAxial(qf, rf);
+export function hexToPixel(hex: HexCoord): { x: number; y: number } {
+  return offsetToPixel(hex.col, hex.row);
+}
+
+// Inverse of offsetToPixel — used for hover. Converts to fractional axial,
+// rounds via cube rounding, then back to offset for an exact cell hit.
+export function pixelToOffset(x: number, y: number): HexCoord {
+  const px = x - HEX.mx;
+  const py = y - HEX.my;
+  const qf = (px * (SQRT3 / 3) - py / 3) / HEX.size;
+  const rf = (py * (2 / 3)) / HEX.size;
+  const axial = cubeRoundToAxial(qf, rf);
+  return axialToOffset(axial);
+}
+
+// 6 corner offsets relative to a hex center, in drawing order.
+// Pointy-top: corners at angle = π/3*i − π/6 (matches prototype drawHex).
+export function hexCorners(cx: number, cy: number): Array<{ x: number; y: number }> {
+  const corners: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i - Math.PI / 6;
+    corners.push({ x: cx + HEX.size * Math.cos(a), y: cy + HEX.size * Math.sin(a) });
+  }
+  return corners;
+}
+
+// Total pixel extents of a cols × rows pointy-top odd-row grid.
+// Matches the prototype canvas sizing: width accounts for the ½-col shift on
+// odd rows; height spans the last row's bottom corner.
+export function gridPixelSize(cols: number, rows: number): { width: number; height: number } {
+  const width = HEX.mx * 2 + (cols - 1) * HEX.w + HEX.w;
+  const height = HEX.my * 2 + (rows - 1) * HEX.vs + HEX.size * 2;
+  return { width, height };
+}
+
+// --- Offset <-> axial + distance (odd-row "odd-r" convention) --------------
+
+export function offsetToAxial(col: number, row: number): Axial {
+  const q = col - (row - (row & 1)) / 2;
+  const r = row;
+  return { q, r };
+}
+
+export function axialToOffset(hex: Axial): HexCoord {
+  const col = hex.q + (hex.r - (hex.r & 1)) / 2;
+  const row = hex.r;
+  return { col, row };
+}
+
+// Ordered hexes along the line from `from` to `to` (inclusive of both),
+// de-duplicated. Supercover double-sampling so the line catches hexes it merely
+// grazes at boundaries. Shared by vision occlusion and combat cover checks.
+export function hexLine(from: HexCoord, to: HexCoord): HexCoord[] {
+  if (from.col === to.col && from.row === to.row) return [from];
+  const a = offsetToAxial(from.col, from.row);
+  const b = offsetToAxial(to.col, to.row);
+  const n = hexDistance(from, to);
+  const steps = 2 * n;
+  const out: HexCoord[] = [];
+  let lastCol = Number.NaN;
+  let lastRow = Number.NaN;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const hex = cubeRoundToAxial(a.q + (b.q - a.q) * t, a.r + (b.r - a.r) * t);
+    const h = axialToOffset(hex);
+    if (h.col === lastCol && h.row === lastRow) continue;
+    lastCol = h.col;
+    lastRow = h.row;
+    out.push(h);
+  }
+  return out;
+}
+
+// Hex distance between two offset coords (via cube coords).
+export function hexDistance(a: HexCoord, b: HexCoord): number {
+  const aa = offsetToAxial(a.col, a.row);
+  const ba = offsetToAxial(b.col, b.row);
+  const dq = aa.q - ba.q;
+  const dr = aa.r - ba.r;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
 }
 
 function cubeRoundToAxial(qf: number, rf: number): Axial {
@@ -56,37 +111,4 @@ function cubeRoundToAxial(qf: number, rf: number): Axial {
     r = -q - s;
   }
   return { q, r };
-}
-
-// Manhattan distance on a hex grid (cube coords).
-export function hexDistance(a: Axial, b: Axial): number {
-  const dq = a.q - b.q;
-  const dr = a.r - b.r;
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
-}
-
-// 6 corner offsets relative to a hex center, in drawing order.
-// Flat-top: corners at 0°, 60°, 120°, 180°, 240°, 300°.
-export function hexCorners(cx: number, cy: number): Array<{ x: number; y: number }> {
-  const size = HEX.size;
-  const corners: Array<{ x: number; y: number }> = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 180) * (60 * i);
-    corners.push({
-      x: cx + size * Math.cos(angle),
-      y: cy + size * Math.sin(angle),
-    });
-  }
-  return corners;
-}
-
-// Total pixel extents of a `cols × rows` flat-top odd-q grid.
-// Width: leftmost corner at x=0, rightmost corner at x = size*1.5*(cols-1) + 2*size.
-// Height: topmost corner at y=0 (even col, row 0), bottommost corner at
-//   y = size*sqrt(3)*(rows + 0.5) (odd col, last row, shifted down ½ hex).
-export function gridPixelSize(cols: number, rows: number): { width: number; height: number } {
-  const size = HEX.size;
-  const width = size * 1.5 * (cols - 1) + size * 2;
-  const height = size * SQRT3 * (rows + 0.5);
-  return { width, height };
 }

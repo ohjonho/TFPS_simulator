@@ -1,23 +1,34 @@
 // Drives the resolution phase. Owns the setInterval that fires stepTick at
-// (TICK.msAt1x / speed) cadence. Calls back to the host with the new state
-// after each tick so render + UI can refresh.
+// (TICK.msAt1x / speed) cadence and calls back to the host after each tick so
+// render + UI refresh. Salvaged from the legacy loop, trimmed to Pass 2 state
+// (no vision/ghosts/tracking).
 
 import type {
-  Axial,
+  AiState,
+  Buff,
   GameState,
   GhostEntry,
-  PlaybackSpeed,
+  HexCoord,
+  MoveState,
   Team,
   TrackEntry,
 } from './types.ts';
-import { TICK } from './config.ts';
-import { allUnitsFinished, stepTick } from './tick.ts';
+import type { PlaybackSpeed, Unit } from './types.ts';
+import { ROUND_TICK_LIMIT, TICK } from './config.ts';
+import { roundFinished, stepTick } from './tick.ts';
+import { blankMove } from './movement.ts';
+import { findPath } from './pathfind.ts';
 import { computeVisibility } from './vision.ts';
+import { initialAi } from './state.ts';
+import { defenderTeam, eliminationWinner, endRound } from './match.ts';
 
 export type LoopCallbacks = {
   getState: () => GameState;
   setState: (next: GameState) => void;
   onTick: () => void;
+  // Called once after a round ends (elimination → endRound). Host shows the
+  // round-result modal and decides whether to halftime-swap / advance / match-end.
+  onRoundEnd?: () => void;
 };
 
 export class PlaybackLoop {
@@ -31,10 +42,7 @@ export class PlaybackLoop {
   start(): void {
     const state = this.cb.getState();
     if (state.playback.playing) return;
-    const next: GameState = {
-      ...state,
-      playback: { ...state.playback, playing: true },
-    };
+    const next: GameState = { ...state, playback: { ...state.playback, playing: true } };
     this.cb.setState(next);
     this.schedule(next.playback.speed);
     this.cb.onTick();
@@ -44,44 +52,42 @@ export class PlaybackLoop {
     const state = this.cb.getState();
     if (!state.playback.playing) return;
     this.clearTimer();
-    this.cb.setState({
-      ...state,
-      playback: { ...state.playback, playing: false },
-    });
+    this.cb.setState({ ...state, playback: { ...state.playback, playing: false } });
     this.cb.onTick();
   }
 
   setSpeed(speed: PlaybackSpeed): void {
     const state = this.cb.getState();
-    const next: GameState = {
-      ...state,
-      playback: { ...state.playback, speed },
-    };
+    const next: GameState = { ...state, playback: { ...state.playback, speed } };
     this.cb.setState(next);
     if (next.playback.playing) this.schedule(speed);
     this.cb.onTick();
   }
 
-  // Reset progress to tick 0 without changing paths. Used by Replay in Pass 2.
-  // Pass 3: also resets visibility / ghosts / tracking / prev-tick snapshots so
-  // the round starts from a clean fog state, then recomputes initial visibility.
-  reset(initialPositions: Record<string, GameState['units'][number]>): void {
+  // Restore units to their spawn snapshot, recompute each route from spawn so a
+  // replay reruns identically, reset tick to 0, and pause. Used by Replay and
+  // Back-to-Planning.
+  reset(initialUnitsById: Record<string, Unit>): void {
     this.clearTimer();
     const state = this.cb.getState();
     const restoredUnits = state.units.map((u) => {
-      const init = initialPositions[u.id];
+      const init = initialUnitsById[u.id];
       if (!init) return u;
-      return { ...u, pos: init.pos, facing: init.facing, state: 'alive' as const, hp: init.hp };
+      return { ...u, pos: init.pos, facing: init.facing, hp: init.hp, state: init.state };
     });
-    const resetCursors: GameState['cursors'] = {};
+    const resetMoves: Record<string, MoveState> = {};
     const resetTracking: Record<string, TrackEntry | null> = {};
-    const resetPrevPos: Record<string, Axial> = {};
-    const resetPrevHold: Record<string, number> = {};
+    const resetPrevPos: Record<string, HexCoord> = {};
+    const resetAi: Record<string, AiState> = {};
+    const resetBuffs: Record<string, Buff[]> = {};
     for (const u of restoredUnits) {
-      resetCursors[u.id] = { progress: 0, holdRemaining: 0, consumedWaypointAtIndex: null };
+      const goal = state.targets[u.id];
+      const path = goal ? findPath(state.map, u.pos, goal) : null;
+      resetMoves[u.id] = path ? { path, progress: 0 } : blankMove(u.pos);
       resetTracking[u.id] = null;
       resetPrevPos[u.id] = u.pos;
-      resetPrevHold[u.id] = 0;
+      resetAi[u.id] = initialAi();
+      resetBuffs[u.id] = [];
     }
     const resetGhosts: Record<Team, Record<string, GhostEntry>> = {
       defenders: {},
@@ -90,14 +96,16 @@ export class PlaybackLoop {
     const seed: GameState = {
       ...state,
       units: restoredUnits,
-      cursors: resetCursors,
+      moves: resetMoves,
       tick: 0,
       playback: { ...state.playback, playing: false },
       visibility: { defenders: new Set(), attackers: new Set() },
       ghosts: resetGhosts,
       tracking: resetTracking,
       prevPos: resetPrevPos,
-      prevHoldRemaining: resetPrevHold,
+      ai: resetAi,
+      events: [],
+      buffs: resetBuffs,
     };
     const { visibility } = computeVisibility(seed);
     this.cb.setState({ ...seed, visibility });
@@ -120,15 +128,31 @@ export class PlaybackLoop {
       this.clearTimer();
       return;
     }
-    const next = stepTick(state);
-    this.cb.setState(next);
-    this.cb.onTick();
-    if (allUnitsFinished(next)) {
+    const after = stepTick(state);
+    // Pass 7: a team eliminated → end of round.
+    const winner = eliminationWinner(after);
+    if (winner) {
       this.clearTimer();
-      this.cb.setState({
-        ...next,
-        playback: { ...next.playback, playing: false },
-      });
+      const ended = endRound(after, winner);
+      this.cb.setState(ended);
+      this.cb.onTick();
+      this.cb.onRoundEnd?.();
+      return;
+    }
+    // Pass 7.5: round time limit — defender side wins on timeout.
+    if (after.tick >= ROUND_TICK_LIMIT) {
+      this.clearTimer();
+      const ended = endRound(after, defenderTeam(after));
+      this.cb.setState(ended);
+      this.cb.onTick();
+      this.cb.onRoundEnd?.();
+      return;
+    }
+    this.cb.setState(after);
+    this.cb.onTick();
+    if (roundFinished(after)) {
+      this.clearTimer();
+      this.cb.setState({ ...after, playback: { ...after.playback, playing: false } });
       this.cb.onTick();
     }
   }

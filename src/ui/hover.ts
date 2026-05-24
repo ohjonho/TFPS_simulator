@@ -3,7 +3,7 @@
 // during resolution (movement) immediately reflect in hover state.
 
 import type { Unit } from '../game/types.ts';
-import { pixelToAxial } from '../game/hex.ts';
+import { pixelToOffset } from '../game/hex.ts';
 
 export type HoverCallback = (unitId: string | null) => void;
 export type UnitsGetter = () => readonly Unit[];
@@ -19,12 +19,12 @@ export function attachHover(
     const rect = canvas.getBoundingClientRect();
     const x = ev.clientX - rect.left;
     const y = ev.clientY - rect.top;
-    const hex = pixelToAxial(x, y);
+    const hex = pixelToOffset(x, y);
 
     let foundId: string | null = null;
     for (const unit of getUnits()) {
       if (unit.state !== 'alive') continue;
-      if (unit.pos.q === hex.q && unit.pos.r === hex.r) {
+      if (unit.pos.col === hex.col && unit.pos.row === hex.row) {
         foundId = unit.id;
         break;
       }

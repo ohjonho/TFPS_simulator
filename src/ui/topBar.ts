@@ -1,32 +1,61 @@
-// Top bar: phase indicator + tick counter + Begin Round / Reset buttons.
-// In Pass 2 this is the planning↔resolution flow control. Round score and
-// half indicator come in Pass 6.
+// Top bar: map name + match score + round + player's current half (ATK/DEF) +
+// phase/tick indicator + flow buttons (Begin Round / Back to Planning) +
+// optional Timeout button (match-point only) + fog POV toggle.
 
 import type { GameState, Team } from '../game/types.ts';
-import { pathIsBlank } from '../game/path.ts';
+import { MATCH_WIN_SCORE } from '../game/config.ts';
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
-  onResetToPlanning: () => void;
+  onBackToPlanning: () => void;
   onSetPlayerTeam: (team: Team) => void;
+  onTimeout: () => void;
+  onToggleShowEnemies: () => void;
+  showEnemiesPlanning: boolean;
+  onSetMap: (name: 'Foundry' | 'Atoll') => void;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
   host.innerHTML = '';
 
-  const phaseLabel = document.createElement('span');
-  phaseLabel.className = 'phase-label';
-  phaseLabel.textContent =
+  // Map toggle (Foundry / Atoll). Switching starts a new match on that map.
+  const mapName = document.createElement('div');
+  mapName.className = 'map-name';
+  for (const m of ['Foundry', 'Atoll'] as const) {
+    const b = document.createElement('button');
+    b.textContent = m;
+    if (state.map.name === m) b.classList.add('selected');
+    b.title = 'Switch map (starts a new match).';
+    b.addEventListener('click', () => cb.onSetMap(m));
+    mapName.appendChild(b);
+  }
+
+  const playerScore = state.scores[state.playerTeam];
+  const oppTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
+  const oppScore = state.scores[oppTeam];
+  const score = document.createElement('span');
+  score.className = 'score';
+  score.textContent = `${playerScore} – ${oppScore}`;
+
+  const round = document.createElement('span');
+  round.className = 'round-label';
+  round.textContent = `Round ${state.round}`;
+
+  const playerSide = state.teamSide[state.playerTeam];
+  const half = document.createElement('span');
+  half.className = 'half-label';
+  half.textContent = playerSide === 'defender' ? 'DEF' : 'ATK';
+
+  const phase = document.createElement('span');
+  phase.className = 'phase-label';
+  phase.textContent =
     state.phase === 'planning' ? 'Planning' : `Resolution — tick ${state.tick}`;
 
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
+  host.append(mapName, score, round, half, phase, spacer);
 
-  host.appendChild(phaseLabel);
-  host.appendChild(spacer);
-
-  // Fog perspective toggle — flips which team's visibility shades the map.
-  // Available in both phases so the user can pre-select POV before Begin.
+  // Fog perspective toggle.
   const fogGroup = document.createElement('div');
   fogGroup.className = 'fog-group';
   const fogLabel = document.createElement('span');
@@ -42,33 +71,40 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   }
   host.appendChild(fogGroup);
 
-  if (state.phase === 'planning') {
-    const drawn = countDrawnPaths(state);
-    const total = state.units.length;
-    const status = document.createElement('span');
-    status.className = 'path-status';
-    status.textContent = `${drawn} / ${total} paths drawn`;
-    host.appendChild(status);
+  // "Show enemies" dev toggle (default on while building). Off → planning phase
+  // also gets fog of war for the player team.
+  const seBtn = document.createElement('button');
+  seBtn.textContent = cb.showEnemiesPlanning ? 'Show enemies: on' : 'Show enemies: off';
+  seBtn.title = 'Toggle whether enemy units are visible during planning (dev aid).';
+  if (cb.showEnemiesPlanning) seBtn.classList.add('selected');
+  seBtn.addEventListener('click', cb.onToggleShowEnemies);
+  host.appendChild(seBtn);
 
+  // Timeout button (spec §9.3, §17): available when the player team is at match
+  // point — own score = MATCH_WIN_SCORE − 1 (=3) and opponent < MATCH_WIN_SCORE.
+  const atMatchPoint =
+    playerScore === MATCH_WIN_SCORE - 1 &&
+    oppScore < MATCH_WIN_SCORE &&
+    !state.timeoutUsed[state.playerTeam];
+  if (state.phase === 'planning' && atMatchPoint) {
+    const tBtn = document.createElement('button');
+    tBtn.textContent = 'Timeout';
+    tBtn.title = 'Replan strategy before the next round (1 per match).';
+    tBtn.addEventListener('click', cb.onTimeout);
+    host.appendChild(tBtn);
+  }
+
+  if (state.phase === 'planning') {
     const begin = document.createElement('button');
     begin.className = 'btn-primary';
     begin.textContent = 'Begin Round';
-    begin.disabled = drawn < total;
+    begin.disabled = !state.playerStrategy;
     begin.addEventListener('click', cb.onBeginRound);
     host.appendChild(begin);
   } else {
     const back = document.createElement('button');
     back.textContent = 'Back to Planning';
-    back.addEventListener('click', cb.onResetToPlanning);
+    back.addEventListener('click', cb.onBackToPlanning);
     host.appendChild(back);
   }
-}
-
-function countDrawnPaths(state: GameState): number {
-  let n = 0;
-  for (const u of state.units) {
-    const p = state.paths[u.id];
-    if (p && !pathIsBlank(p)) n++;
-  }
-  return n;
 }

@@ -1,78 +1,83 @@
 // Shared types across game / render / ui layers.
 // erasableSyntaxOnly is on in tsconfig, so no enums — union literals only.
 
-export type Axial = { q: number; r: number };
+import type { CellType, HexCoord, MapDefinition } from '../maps/types.ts';
 
-export type Terrain =
-  | 'open'
-  | 'fullWall'
-  | 'halfWall'
-  | 'defenderSpawn'
-  | 'attackerSpawn';
+// Re-export the map schema so game/render/ui import map types from one place.
+export type { CellType, HexCoord, MapDefinition };
+
+// Axial cube-ish coordinate, used internally by hex distance math.
+export type Axial = { q: number; r: number };
 
 export type Weapon = 'shotgun' | 'rifle' | 'sniper';
 
+// Team is the identity tag (= team color). The role a team plays this half is
+// `state.teamSide[team]` (Side). At halftime, teamSide swaps so the team that
+// was defending now attacks (and reposistions to the opposite spawn).
 export type Team = 'defenders' | 'attackers';
+export type Side = 'attacker' | 'defender';
 
-// Flat-top hex facing directions, clockwise from north.
+// Pointy-top hex facing directions, clockwise from north.
 // 0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW
 export type Facing = 0 | 1 | 2 | 3 | 4 | 5;
 
 export type UnitState = 'alive' | 'dead';
 
+// Dynamic per-unit modifiers (spec §13). Neutral defaults in Pass 5; Pass 6
+// assigns real per-role/handling/off-position values and wires their formulas.
+// Pass 7 adds the per-round strategy-driven retreat-threshold delta.
+export type Modifiers = {
+  aggression: number;             // 0–100; affects push tendency + early-round HR
+  weaponHandling: number;         // 0–100; HR modifier
+  offPosition: boolean;           // off-preferred-role penalty
+  retreatThresholdMod: number;    // added to AI.retreatHpThreshold (e.g. Rush = −1)
+};
+
+// Temporary stat modifier applied by cards (Pass 8) or systems. Read additively
+// in the effective-stat summation; expired entries are dropped each tick.
+export type Buff = {
+  id: string;
+  source?: string;
+  hitPp?: number;
+  headshotPp?: number;
+  maxHpDelta?: number;
+  expiresAtTick: number;
+};
+
+// Trait unions (spec §12), role (§10), hero (§11).
+export type SkillTrait = 'Sharp Aim' | 'Headhunter' | 'Eagle Eye' | 'First Shot';
+export type BehavioralTrait =
+  | 'Sentinel'
+  | 'Run-n-Gun'
+  | 'Lurker'
+  | 'Entry'
+  | 'Trader'
+  | 'Clutch';
+export type Role = 'Vanguard' | 'Tactician' | 'Warden' | 'Specialist';
+export type Hero = 'Angelic' | 'Techy' | 'Cursed';
+
 export type Unit = {
   id: string;
   team: Team;
   weapon: Weapon;
-  pos: Axial;
+  // Offset coordinate (col,row), matching MapDefinition.grid indexing.
+  pos: HexCoord;
   hp: number;
   facing: Facing;
   state: UnitState;
-  // Trait fields are placeholders until Pass 5.
-  skillTrait: null;
-  behavioralTrait: null;
+  // Attributes assigned at match start (Pass 6).
+  skillTrait: SkillTrait | null;
+  behavioralTrait: BehavioralTrait | null;
+  role: Role;
+  preferredRole: Role;
+  hero: Hero;
+  // Dynamic modifiers.
+  modifiers: Modifiers;
 };
 
-export type GameMap = {
-  cols: number;
-  rows: number;
-  // cells[row][col] — offset indexing matches the map source string.
-  cells: Terrain[][];
-  defenderSpawns: Axial[];
-  attackerSpawns: Axial[];
-};
-
-// --- Pass 2 additions -------------------------------------------------------
+// --- Match flow -------------------------------------------------------------
 
 export type Phase = 'planning' | 'resolution';
-
-export type Waypoint = {
-  // Held for this many ticks once the unit reaches the waypoint hex.
-  holdTicks: number;
-  facing: Facing;
-};
-
-// A planned movement path for a single unit. hexes[0] is always the unit's
-// spawn position; hexes[1..N] are the move sequence. Waypoints keyed by index
-// into `hexes`.
-export type Path = {
-  hexes: Axial[];
-  waypoints: Record<number, Waypoint>;
-};
-
-// Resolution-phase bookkeeping for one unit's progress along its path.
-export type MoveCursor = {
-  // Float distance along the path in hex-units. floor(progress) is the
-  // current hexes index; advances by SPEED[weapon] per tick.
-  progress: number;
-  // Hold counter — ticks remaining at the current waypoint. While >0 the
-  // unit doesn't advance and faces the waypoint direction.
-  holdRemaining: number;
-  // Whether this unit has already consumed the waypoint at its current hex
-  // this run (so re-arriving at a waypoint after a circular path would still
-  // trigger; but linear paths only consume each waypoint once).
-  consumedWaypointAtIndex: number | null;
-};
 
 export type PlaybackSpeed = 1 | 2 | 4;
 export type Playback = {
@@ -80,31 +85,21 @@ export type Playback = {
   speed: PlaybackSpeed;
 };
 
-export type GameState = {
-  phase: Phase;
-  map: GameMap;
-  units: Unit[];
-  paths: Record<string, Path>;         // keyed by unit id
-  cursors: Record<string, MoveCursor>;  // keyed by unit id
-  tick: number;
-  playback: Playback;
-  // --- Pass 3 ---
-  visibility: Visibility;
-  ghosts: Record<Team, Record<string, GhostEntry>>;
-  tracking: Record<string, TrackEntry | null>;
-  prevPos: Record<string, Axial>;
-  prevHoldRemaining: Record<string, number>;
-  // Whose POV the fog-of-war overlay applies to. Run-time toggle in top bar.
-  playerTeam: Team;
+// A unit's pending movement: the A* route (inclusive of start hex) and a float
+// cursor along it. floor(progress) is the current hex index; the fractional
+// part lets the sniper advance half a hex per tick.
+export type MoveState = {
+  path: HexCoord[];
+  progress: number;
 };
 
-// --- Pass 3 additions -------------------------------------------------------
+// --- Pass 3: vision & fog ---------------------------------------------------
 
-// Stringified axial key, used for Set membership in visibility computations.
-export type HexKey = string; // `${q},${r}`
+// Stringified offset key for Set membership in visibility computations.
+export type HexKey = string; // `${col},${row}`
 
 export type GhostEntry = {
-  hex: Axial;
+  hex: HexCoord;
   ticksRemaining: number;
 };
 
@@ -112,13 +107,97 @@ export type GhostEntry = {
 // been out of sight for VISION.trackLossThreshold consecutive ticks.
 export type TrackEntry = {
   enemyId: string;
-  lastKnownHex: Axial;
+  lastKnownHex: HexCoord;
   ticksLost: number;
 };
 
 // Team-shared visible hex sets. A hex is visible to a team if any alive
-// teammate has it in their cone and unblocked by a full wall.
+// teammate has it in their cone, unblocked by a full wall.
 export type Visibility = {
   defenders: Set<HexKey>;
   attackers: Set<HexKey>;
+};
+
+// --- Pass 4: per-unit AI ----------------------------------------------------
+
+export type AiMode = 'moving' | 'engaged' | 'retreating' | 'holding';
+
+export type AiState = {
+  mode: AiMode;
+  // Enemy id this unit is shooting at while engaged (null otherwise).
+  firingTarget: string | null;
+  // Ticks since this unit last had any enemy in sight (drives resume).
+  ticksSinceEnemySeen: number;
+  // Counts down to the next allowed shot; gates fire rate (sniper every 2).
+  shotClock: number;
+  // --- Pass 6 combat-context counters ---
+  // Consecutive ticks the unit has not changed hex (Sentinel).
+  stationaryTicks: number;
+  // Consecutive ticks in the engaged state (Entry window).
+  engagementTicks: number;
+  // Shots fired in the current engagement (First Shot).
+  shotsThisEngagement: number;
+  // Tick of this unit's last shot (Trader: ally fired recently).
+  lastFiredTick: number;
+};
+
+// Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.
+export type RangeBand = 'short' | 'medium' | 'long';
+
+// Combat event log (spec §18.4 kill feed source). A discriminated union: each
+// resolved shot is one `shot` event; lethal damage adds a `death`.
+export type GameEvent =
+  | {
+      tick: number;
+      type: 'shot';
+      shooter: string;
+      target: string;
+      weapon: Weapon;
+      range: RangeBand;
+      hit: boolean;
+      headshot: boolean;
+      damage: number;
+      cover: boolean;
+    }
+  | { tick: number; type: 'death'; target: string };
+
+export type GameState = {
+  phase: Phase;
+  map: MapDefinition;
+  units: Unit[];
+  playback: Playback;
+  // Whose POV the fog overlay applies to. Run-time toggle in top bar.
+  playerTeam: Team;
+  // --- Pass 2 ---
+  tick: number;
+  // Seed for the deterministic PRNG (replay reproducibility).
+  seed: number;
+  // Assigned destination per unit id (null = no order).
+  targets: Record<string, HexCoord | null>;
+  // Active movement cursor per unit id.
+  moves: Record<string, MoveState>;
+  // --- Pass 3 ---
+  visibility: Visibility;
+  ghosts: Record<Team, Record<string, GhostEntry>>;
+  tracking: Record<string, TrackEntry | null>;
+  // Pre-tick positions, used for the sniper-stationary cone test.
+  prevPos: Record<string, HexCoord>;
+  // --- Pass 4 ---
+  ai: Record<string, AiState>;
+  events: GameEvent[];
+  // --- Pass 5 ---
+  // Active temporary buffs per unit id (cards/systems). Empty until Pass 8.
+  buffs: Record<string, Buff[]>;
+  // --- Pass 7: match flow ---
+  round: number;                          // 1..MATCH_ROUND_COUNT (extra rounds → sudden death TBD)
+  scores: Record<Team, number>;
+  teamSide: Record<Team, Side>;           // each team's role this half; swaps at halftime
+  playerStrategy: string | null;          // chosen strategy id this round (player team)
+  aiStrategy: string | null;              // opponent's pick (set by aiOpponent at Begin Round)
+  roundResult: { winner: Team | 'draw' } | null;
+  timeoutUsed: Record<Team, boolean>;
+  // AI win-rate tracker per team for §16 weighted strategy pick.
+  aiStrategyWins: Record<Team, Record<string, number>>;
+  matchOver: boolean;
+  matchWinner: Team | 'draw' | null;
 };

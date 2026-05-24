@@ -1,14 +1,17 @@
 // Creates the player and AI teams from spawn positions + loadout assignments.
 // Pass 1: traits are null, HP is full, facing points toward enemy side.
 
-import type { Axial, Facing, Team, Unit, Weapon } from './types.ts';
+import type { Facing, HexCoord, Team, Unit, Weapon } from './types.ts';
 import { LOADOUTS, UNIT_DEFAULTS } from './config.ts';
 
-// 0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW.
-const DEFENDER_FACING: Facing = 3; // defenders face south (toward attackers)
-const ATTACKER_FACING: Facing = 0; // attackers face north (toward defenders)
+// Pointy-top facing index (canonical neighbor order): 0=E, 1=NE, 2=NW, 3=W,
+// 4=SW, 5=SE. There's no due-N/S neighbor, so spawn-frame cones point toward
+// the enemy half via a downward/upward diagonal. Movement overrides facing on
+// the first step regardless.
+const DEFENDER_FACING: Facing = 5; // SE — defenders (north) look downward toward attackers
+const ATTACKER_FACING: Facing = 1; // NE — attackers (south) look upward toward defenders
 
-export function createTeam(team: Team, spawns: readonly Axial[]): Unit[] {
+export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
   const loadouts = LOADOUTS[team] as readonly Weapon[];
   const slotCount = loadouts.length;
   if (spawns.length < slotCount) {
@@ -27,7 +30,13 @@ export function createTeam(team: Team, spawns: readonly Axial[]): Unit[] {
     hp: UNIT_DEFAULTS.maxHp,
     facing,
     state: 'alive',
+    // Attributes are assigned by assignAttributes() at match start; these are
+    // placeholder defaults.
     skillTrait: null,
     behavioralTrait: null,
+    role: 'Specialist',
+    preferredRole: 'Specialist',
+    hero: 'Angelic',
+    modifiers: { aggression: 50, weaponHandling: 50, offPosition: false, retreatThresholdMod: 0 },
   }));
 }

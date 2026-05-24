@@ -1,66 +1,100 @@
-// Builds the initial GameState: load Map A, spawn both teams, seed empty
-// paths and cursors, default to planning phase at 1× paused. Pass 3 also
-// pre-computes initial visibility so the map can render fog as soon as
-// resolution begins.
+// Builds the initial GameState: load Foundry, spawn both teams at the map's
+// spawn hexes, default to planning phase at 1× paused, with empty movement
+// orders, the deterministic seed set, and an initial visibility computed so the
+// first frame already has fog populated.
 
 import type {
-  Axial,
+  AiState,
+  Buff,
   GameState,
   GhostEntry,
-  MoveCursor,
-  Path,
+  HexCoord,
+  MoveState,
+  Side,
   Team,
   TrackEntry,
 } from './types.ts';
-import { parseMap } from './map.ts';
 import { createTeam } from './units.ts';
-import { clearPath } from './path.ts';
-import { initialCursor } from './movement.ts';
+import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { MAP_A } from '../maps/mapA.ts';
+import { assignAttributes } from './attributes.ts';
+import { createRng } from './rng.ts';
+import { foundry } from '../maps/foundry.ts';
+import { atoll } from '../maps/atoll.ts';
+import type { MapDefinition } from './types.ts';
+import { AI, RNG_SEED_DEFAULT } from './config.ts';
 
-export function buildInitialState(): GameState {
-  const map = parseMap(MAP_A);
-  const defenders = createTeam('defenders', map.defenderSpawns);
-  const attackers = createTeam('attackers', map.attackerSpawns);
+export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): GameState {
+  const map = mapName === 'Atoll' ? atoll : foundry;
+  const defenders = createTeam('defenders', map.spawns.defenders);
+  const attackers = createTeam('attackers', map.spawns.attackers);
   const units = [...defenders, ...attackers];
+  // Random trait/role/hero/handling assignment at match start (spec §10–13).
+  assignAttributes(units, createRng(RNG_SEED_DEFAULT));
 
-  const paths: Record<string, Path> = {};
-  const cursors: Record<string, MoveCursor> = {};
+  const targets: Record<string, null> = {};
+  const moves: Record<string, MoveState> = {};
   const tracking: Record<string, TrackEntry | null> = {};
-  const prevPos: Record<string, Axial> = {};
-  const prevHoldRemaining: Record<string, number> = {};
+  const prevPos: Record<string, HexCoord> = {};
+  const ai: Record<string, AiState> = {};
+  const buffs: Record<string, Buff[]> = {};
   for (const u of units) {
-    paths[u.id] = clearPath(u.pos);
-    cursors[u.id] = initialCursor();
+    targets[u.id] = null;
+    moves[u.id] = blankMove(u.pos);
     tracking[u.id] = null;
     prevPos[u.id] = u.pos;
-    prevHoldRemaining[u.id] = 0;
+    ai[u.id] = initialAi();
+    buffs[u.id] = [];
   }
-
-  const ghosts: Record<Team, Record<string, GhostEntry>> = {
-    defenders: {},
-    attackers: {},
-  };
+  const ghosts: Record<Team, Record<string, GhostEntry>> = { defenders: {}, attackers: {} };
+  // Match-flow defaults (Pass 7). The team named 'defenders' starts on the
+  // defender side; halftime swaps these.
+  const teamSide: Record<Team, Side> = { defenders: 'defender', attackers: 'attacker' };
 
   const seed: GameState = {
     phase: 'planning',
     map,
     units,
-    paths,
-    cursors,
-    tick: 0,
     playback: { playing: false, speed: 1 },
+    playerTeam: 'defenders',
+    tick: 0,
+    seed: RNG_SEED_DEFAULT,
+    targets,
+    moves,
     visibility: { defenders: new Set(), attackers: new Set() },
     ghosts,
     tracking,
     prevPos,
-    prevHoldRemaining,
-    playerTeam: 'defenders',
+    ai,
+    events: [],
+    buffs,
+    round: 1,
+    scores: { defenders: 0, attackers: 0 },
+    teamSide,
+    playerStrategy: null,
+    aiStrategy: null,
+    roundResult: null,
+    timeoutUsed: { defenders: false, attackers: false },
+    aiStrategyWins: { defenders: {}, attackers: {} },
+    matchOver: false,
+    matchWinner: null,
   };
 
-  // Initial visibility — useful so the planning preview and the first frame
-  // of resolution both have a populated fog overlay.
   const { visibility } = computeVisibility(seed);
   return { ...seed, visibility };
+}
+
+// Fresh AI state — starts moving (ticksSinceEnemySeen at the resume threshold so
+// a unit heads to its region immediately).
+export function initialAi(): AiState {
+  return {
+    mode: 'moving',
+    firingTarget: null,
+    ticksSinceEnemySeen: AI.resumeAfterTicks,
+    shotClock: 0,
+    stationaryTicks: 0,
+    engagementTicks: 0,
+    shotsThisEngagement: 0,
+    lastFiredTick: -999,
+  };
 }

@@ -1,82 +1,63 @@
-// Per-tick movement: advance a single unit's cursor along its planned path,
-// handling waypoint holds and end-of-path. Pure: takes a unit + path + cursor,
-// returns the next position / facing / cursor.
+// Per-tick movement: advance one unit's cursor along its A* route at its
+// effective speed. Pure. Salvaged from the legacy fractional-progress stepper,
+// minus the waypoint/hold model (movement is now A*-toward-target).
 
-import type { Axial, Facing, MoveCursor, Path, Unit } from './types.ts';
-import { SPEED } from './config.ts';
-import { facingBetween } from './path.ts';
+import type { Facing, GameState, HexCoord, MoveState, Unit } from './types.ts';
+import { MOVE, SPEED } from './config.ts';
+import { directionBetween, findPath } from './pathfind.ts';
 
 export type AdvanceResult = {
-  pos: Axial;
+  pos: HexCoord;
   facing: Facing;
-  cursor: MoveCursor;
+  move: MoveState;
 };
 
-export function advanceUnit(unit: Unit, path: Path, cursor: MoveCursor): AdvanceResult {
-  // No path drawn (only spawn hex) → stationary, facing unchanged.
-  if (path.hexes.length <= 1) {
-    return { pos: unit.pos, facing: unit.facing, cursor };
+// Hexes per tick for this unit. The Run-n-Gun bonus is a Pass 6 hook — inert
+// while behavioral traits are null.
+export function effectiveSpeed(unit: Unit): number {
+  const base = SPEED[unit.weapon];
+  const runGun = unit.behavioralTrait === 'Run-n-Gun' ? MOVE.runAndGunBonus : 0;
+  return base + runGun;
+}
+
+export function advanceUnit(unit: Unit, move: MoveState): AdvanceResult {
+  const lastIndex = move.path.length - 1;
+  // No route, or already at the destination — stay put.
+  if (lastIndex <= 0 || move.progress >= lastIndex) {
+    return { pos: unit.pos, facing: unit.facing, move };
   }
 
-  // Hold tick: tick down the counter, hold position and facing.
-  if (cursor.holdRemaining > 0) {
-    return {
-      pos: unit.pos,
-      facing: unit.facing,
-      cursor: { ...cursor, holdRemaining: cursor.holdRemaining - 1 },
-    };
-  }
-
-  const lastIndex = path.hexes.length - 1;
-  const currentIndex = Math.floor(cursor.progress);
-
-  // Already at end of path — sit and face whatever direction we last set.
-  if (currentIndex >= lastIndex) {
-    return { pos: unit.pos, facing: unit.facing, cursor };
-  }
-
-  // Advance progress by weapon speed, clamped to the path end.
-  const speed = SPEED[unit.weapon];
-  const newProgress = Math.min(cursor.progress + speed, lastIndex);
+  const currentIndex = Math.floor(move.progress);
+  const newProgress = Math.min(move.progress + effectiveSpeed(unit), lastIndex);
   const newIndex = Math.floor(newProgress);
 
-  // If we haven't crossed into a new hex this tick, position stays put.
+  // Didn't cross into a new hex this tick (e.g. sniper mid-step).
   if (newIndex === currentIndex) {
-    return {
-      pos: unit.pos,
-      facing: unit.facing,
-      cursor: { ...cursor, progress: newProgress },
-    };
+    return { pos: unit.pos, facing: unit.facing, move: { ...move, progress: newProgress } };
   }
 
-  // Physically moved into a new hex.
-  const newPos = path.hexes[newIndex];
-  const stepFrom = path.hexes[newIndex - 1];
-  const stepFacing = facingBetween(stepFrom, newPos);
-  let nextFacing: Facing = stepFacing ?? unit.facing;
-  let holdRemaining = 0;
-  let consumedWaypointAtIndex = cursor.consumedWaypointAtIndex;
+  const newPos = move.path[newIndex];
+  const stepFrom = move.path[newIndex - 1];
+  const facing = directionBetween(stepFrom, newPos) ?? unit.facing;
+  return { pos: newPos, facing, move: { ...move, progress: newProgress } };
+}
 
-  // Waypoint check: if the hex we just landed on has a waypoint and we
-  // haven't already consumed it this run, apply hold + facing.
-  const wp = path.waypoints[newIndex];
-  if (wp && consumedWaypointAtIndex !== newIndex) {
-    holdRemaining = wp.holdTicks;
-    nextFacing = wp.facing;
-    consumedWaypointAtIndex = newIndex;
-  }
+// Assign a destination to a unit: compute an A* route from its current hex and
+// reset its movement cursor. No-op if the goal is unreachable.
+export function assignTarget(state: GameState, unitId: string, goal: HexCoord): GameState {
+  const unit = state.units.find((u) => u.id === unitId);
+  if (!unit || unit.state !== 'alive') return state;
+
+  const path = findPath(state.map, unit.pos, goal);
+  if (!path) return state;
 
   return {
-    pos: newPos,
-    facing: nextFacing,
-    cursor: {
-      progress: newProgress,
-      holdRemaining,
-      consumedWaypointAtIndex,
-    },
+    ...state,
+    targets: { ...state.targets, [unitId]: goal },
+    moves: { ...state.moves, [unitId]: { path, progress: 0 } },
   };
 }
 
-export function initialCursor(): MoveCursor {
-  return { progress: 0, holdRemaining: 0, consumedWaypointAtIndex: null };
+export function blankMove(pos: HexCoord): MoveState {
+  return { path: [pos], progress: 0 };
 }

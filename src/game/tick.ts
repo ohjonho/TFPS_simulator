@@ -1,90 +1,478 @@
-// Per-tick simulation step. Pass 2 advanced movement; Pass 3 adds the vision
-// pipeline immediately after movement, per spec §14:
-//   positions → vision → engagements → damage → round-end
-// Engagements/damage/round-end land in Passes 4–6.
+// Per-tick simulation step (spec §21 pipeline):
+//   AI decisions → movement → fire/damage → vision recompute → round-end.
+// Pass 5 resolves combat via the real nested-roll pipeline (combat.ts) and ticks
+// down active buffs.
 
-import type { Axial, GameState, MoveCursor, Unit } from './types.ts';
+import type {
+  AiState,
+  Buff,
+  GameEvent,
+  GameState,
+  HexCoord,
+  MoveState,
+  Unit,
+} from './types.ts';
 import { advanceUnit } from './movement.ts';
+import { findPath, neighbors, passableAt } from './pathfind.ts';
 import {
   computeVisibility,
+  hexKey,
   updateGhosts,
   updateTracking,
   visibleEnemiesByTeam,
 } from './vision.ts';
+import {
+  findCoverHoldHex,
+  nearestFacing,
+  nearestWallRetreatHex,
+  shouldEngage,
+  shouldRetreat,
+} from './unit-ai.ts';
+import { resolveShot } from './combat.ts';
+import type { ShotContextInput } from './combat.ts';
+import { createRng } from './rng.ts';
+import {
+  AGGRESSION_PUSH_THRESHOLD,
+  AI,
+  FIRE_RATE,
+  MIN_ROUND_TICKS_FOR_HOLD_END,
+  ROTATE_AFTER_HOLD_TICKS,
+  TRAITS,
+} from './config.ts';
 
 export function stepTick(state: GameState): GameState {
-  const nextUnits: Unit[] = [];
-  const nextCursors: Record<string, MoveCursor> = {};
-  // Snapshot pre-movement state so vision (sniper-stationary check) and ghosts
-  // (last-seen position) can compare end-of-T-1 against end-of-T.
-  const newPrevPos: Record<string, Axial> = {};
-  const newPrevHold: Record<string, number> = {};
+  const tick = state.tick + 1;
+  const events: GameEvent[] = [];
+  const unitsById: Record<string, Unit> = {};
+  for (const u of state.units) unitsById[u.id] = u;
 
-  for (const unit of state.units) {
-    const path = state.paths[unit.id];
-    const cursor = state.cursors[unit.id];
-    newPrevPos[unit.id] = unit.pos;
-    newPrevHold[unit.id] = cursor?.holdRemaining ?? 0;
-    if (!path || !cursor || unit.state !== 'alive') {
-      nextUnits.push(unit);
-      if (cursor) nextCursors[unit.id] = cursor;
+  // 1. Vision at current positions drives AI sight (what each unit sees now).
+  const { perUnit } = computeVisibility(state);
+
+  const newAi: Record<string, AiState> = {};
+  const nextMoves: Record<string, MoveState> = { ...state.moves };
+  // Targets may shift mid-round when a unit cover-seeks (it commits to its new
+  // cover hex so subsequent ticks don't pull it back to the strategy centroid).
+  const nextTargets: Record<string, HexCoord | null> = { ...state.targets };
+  const prevPos: Record<string, HexCoord> = {};
+  // Work on a mutable copy of units (pos/facing updated by movement; hp/state
+  // by combat).
+  const working: Unit[] = state.units.map((u) => ({ ...u }));
+  const workingById: Record<string, Unit> = {};
+  for (const u of working) workingById[u.id] = u;
+  // Pass 7.7 — per-tick occupancy: blocks a unit from moving into a hex still
+  // held by another live unit. Updated as movement is applied below.
+  const claimed = new Set<string>();
+  for (const u of working) {
+    if (u.state === 'alive') claimed.add(`${u.pos.col},${u.pos.row}`);
+  }
+
+  // 2. AI decisions + 3. movement (per unit, stable order).
+  for (const u of working) {
+    prevPos[u.id] = u.pos;
+    const prevAi = state.ai[u.id] ?? freshAi();
+    if (u.state !== 'alive') {
+      newAi[u.id] = prevAi;
       continue;
     }
-    const result = advanceUnit(unit, path, cursor);
-    nextCursors[unit.id] = result.cursor;
-    if (result.pos === unit.pos && result.facing === unit.facing) {
-      nextUnits.push(unit);
+
+    const visibleEnemies = enemiesVisibleTo(u, working, perUnit[u.id]);
+    const seesEnemy = visibleEnemies.length > 0;
+    const ticksSinceEnemySeen = seesEnemy ? 0 : prevAi.ticksSinceEnemySeen + 1;
+
+    const retreat = shouldRetreat(u).retreat;
+    const engage = shouldEngage(u, visibleEnemies);
+
+    let mode: AiState['mode'];
+    let firingTarget: string | null = null;
+    let effectiveTarget: HexCoord | null = null;
+
+    if (retreat) {
+      mode = 'retreating';
+      effectiveTarget = nearestWallRetreatHex(u, state.map);
+    } else if (engage.engage) {
+      mode = 'engaged';
+      firingTarget = engage.targetId;
+    } else if (ticksSinceEnemySeen >= AI.resumeAfterTicks) {
+      const region = state.targets[u.id];
+      if (region && !sameHex(u.pos, region)) {
+        mode = 'moving';
+        effectiveTarget = region;
+      } else if (!region && u.modifiers.aggression >= AGGRESSION_PUSH_THRESHOLD) {
+        // No assigned region: high-aggression roles advance toward the enemy
+        // spawn (lightweight role tendency; superseded by Pass 7 strategy).
+        const push = enemyPushTarget(u, state);
+        if (push && !sameHex(u.pos, push)) {
+          mode = 'moving';
+          effectiveTarget = push;
+        } else {
+          mode = 'holding';
+        }
+      } else {
+        mode = 'holding';
+      }
     } else {
-      nextUnits.push({ ...unit, pos: result.pos, facing: result.facing });
+      // Recently lost sight (spec §7.1/§8). Pass 7.8 — reactive peek: if the
+      // unit had a tracked enemy that just slipped out of view, advance
+      // toward the last-known hex instead of standing still. Lets a unit
+      // chase a fleeing target one step before the resume timer kicks in
+      // and the region/holding branches take over. Tracking state from the
+      // previous tick (ticksLost >= 1) is what indicates a fresh loss.
+      const track = state.tracking[u.id];
+      if (
+        track &&
+        track.ticksLost >= 1 &&
+        passableAt(state.map, track.lastKnownHex) &&
+        !sameHex(u.pos, track.lastKnownHex)
+      ) {
+        mode = 'moving';
+        effectiveTarget = track.lastKnownHex;
+      } else {
+        mode = 'holding';
+      }
+    }
+
+    // Pass 7.7 — light stalemate breaker: a unit that's been idle for a long
+    // stretch without seeing anyone re-targets to the mid centroid (where
+    // contact is most likely). Applies to both sides equally.
+    if (mode === 'holding' && ticksSinceEnemySeen >= ROTATE_AFTER_HOLD_TICKS) {
+      const midGoal = midCentroid(state);
+      if (midGoal && !sameHex(midGoal, u.pos)) {
+        mode = 'moving';
+        effectiveTarget = midGoal;
+        nextTargets[u.id] = midGoal;
+      }
+    }
+
+    // Pass 7.6 cover-seek: if we'd still hold, see if a neighbor hex offers
+    // better defensive geometry (wall- or cover-adjacent). Shuffle there if
+    // so, and commit the cover hex as the unit's region target so subsequent
+    // ticks don't oscillate back to the strategy centroid. Pass 7.8: pass the
+    // enemy spawn as the threat bearing so cover scoring prefers hexes where
+    // a wall sits between the unit and where shots will come from (not just
+    // any wall-adjacent — which leaves units hugging walls facing nothing).
+    if (mode === 'holding') {
+      const threat = enemySpawnForSide(u, state) ?? undefined;
+      const cover = findCoverHoldHex(u, state.map, claimed, threat);
+      if (!sameHex(cover, u.pos)) {
+        mode = 'moving';
+        effectiveTarget = cover;
+        nextTargets[u.id] = cover;
+      }
+    }
+
+    // Movement for moving/retreating units (engaged/holding stay put). Block
+    // moves into hexes claimed by other live units (Pass 7.7). Pass 7.8: when
+    // blocked, try once to recompute a detour around all other live units —
+    // fixes the "stuck behind a teammate" clustering when two units share a
+    // path through a chokepoint.
+    if (effectiveTarget && (mode === 'moving' || mode === 'retreating')) {
+      let move = ensurePathToward(nextMoves[u.id], u.pos, effectiveTarget, state);
+      let result = advanceUnit(u, move);
+      const oldKey = `${u.pos.col},${u.pos.row}`;
+      let newKey = `${result.pos.col},${result.pos.row}`;
+      if (newKey !== oldKey && claimed.has(newKey)) {
+        // Detour: A* with all other live unit hexes treated as impassable.
+        // Our own hex is removed from the avoid set so the search can start.
+        const detourAvoid = new Set(claimed);
+        detourAvoid.delete(oldKey);
+        const detour = findPath(state.map, u.pos, effectiveTarget, detourAvoid);
+        if (detour && detour.length > 1) {
+          move = { path: detour, progress: 0 };
+          result = advanceUnit(u, move);
+          newKey = `${result.pos.col},${result.pos.row}`;
+        }
+      }
+      if (newKey === oldKey || !claimed.has(newKey)) {
+        if (newKey !== oldKey) {
+          claimed.delete(oldKey);
+          claimed.add(newKey);
+        }
+        u.pos = result.pos;
+        u.facing = result.facing;
+        nextMoves[u.id] = result.move;
+      }
+      // Still blocked? The unit stays this tick; recompute again next tick.
+    }
+
+    // Pass 7.7 face-threat-on-hold: if the unit's final mode is 'holding'
+    // (didn't move this tick), point it at the enemy spawn so it actually
+    // watches a useful angle instead of whatever direction it last walked in
+    // from. Snap-on-hit below overrides this when a unit takes fire.
+    // Pass 7.8: if the unit has a fresh tracking entry, prefer its
+    // last-known hex as the threat bearing (the tracked enemy is the actual
+    // immediate threat — facing the spawn direction would point the wrong
+    // way if the enemy is flanking).
+    if (mode === 'holding') {
+      const track = state.tracking[u.id];
+      const threat = track ? track.lastKnownHex : enemySpawnForSide(u, state);
+      if (threat) u.facing = nearestFacing(u.pos, threat);
+    }
+
+    const stationaryTicks = sameHex(prevPos[u.id], u.pos) ? prevAi.stationaryTicks + 1 : 0;
+    const engagementTicks = mode === 'engaged' ? prevAi.engagementTicks + 1 : 0;
+    newAi[u.id] = {
+      mode,
+      firingTarget,
+      ticksSinceEnemySeen,
+      shotClock: prevAi.shotClock,
+      stationaryTicks,
+      engagementTicks,
+      // Reset shot count when not engaged; fire loop increments it.
+      shotsThisEngagement: mode === 'engaged' ? prevAi.shotsThisEngagement : 0,
+      lastFiredTick: prevAi.lastFiredTick,
+    };
+  }
+
+  // 4. Fire/damage — nested-roll combat (§7.2). One seeded RNG per tick,
+  // consumed in stable unit order; damage applied simultaneously below.
+  const rng = createRng(hashSeed(state.seed, tick));
+  const damage: Record<string, number> = {};
+  // Pass 7.7 turn-on-hit: last shooter to land a hit on each target this tick.
+  // After damage application, surviving targets snap facing toward that shooter
+  // so they can engage next tick (covers shots from outside the cone).
+  const damagedBy: Record<string, string> = {};
+  for (const u of working) {
+    if (u.state !== 'alive') continue;
+    const ai = newAi[u.id];
+    if (ai.mode !== 'engaged') {
+      ai.shotClock = 0; // ready to fire the instant it engages
+      continue;
+    }
+    const target = ai.firingTarget ? workingById[ai.firingTarget] : null;
+    if (!target || target.state !== 'alive') continue;
+    if (ai.shotClock > 0) {
+      ai.shotClock -= 1;
+      continue;
+    }
+    // Engaged units don't move, so the shooter is stationary this tick.
+    const stationary = sameHex(prevPos[u.id], u.pos);
+    const ctxInput: ShotContextInput = {
+      stationary,
+      stationaryTicks: ai.stationaryTicks,
+      engagementTicks: ai.engagementTicks,
+      firstShot: ai.shotsThisEngagement === 0,
+      allyFiredRecently: allyFiredRecently(u, working, state, tick),
+      lastAlive: aliveTeamCount(working, u.team) === 1,
+      adjacentToWall: isWallAdjacent(u.pos, state),
+      ticksIntoRound: tick,
+    };
+    const shot = resolveShot(u, target, state.map, ctxInput, state.buffs[u.id] ?? [], rng);
+    if (shot.hit) {
+      damage[target.id] = (damage[target.id] ?? 0) + shot.damage;
+      damagedBy[target.id] = u.id;
+    }
+    ai.shotsThisEngagement += 1;
+    ai.lastFiredTick = tick;
+    events.push({
+      tick,
+      type: 'shot',
+      shooter: u.id,
+      target: target.id,
+      weapon: u.weapon,
+      range: shot.band,
+      hit: shot.hit,
+      headshot: shot.headshot,
+      damage: shot.damage,
+      cover: shot.cover,
+    });
+    ai.shotClock = FIRE_RATE[u.weapon] - 1;
+  }
+
+  // Apply damage simultaneously; deaths at end of tick.
+  for (const u of working) {
+    const dmg = damage[u.id];
+    if (!dmg || u.state !== 'alive') continue;
+    u.hp -= dmg;
+    if (u.hp <= 0) {
+      u.hp = 0;
+      u.state = 'dead';
+      events.push({ tick, type: 'death', target: u.id });
     }
   }
 
-  // Intermediate state after movement; vision functions read from this.
-  const postMoveState: GameState = {
+  // Pass 7.7 turn-on-hit: surviving targets snap facing toward the last shooter
+  // that hit them this tick — so units shot from outside their cone turn to
+  // engage on the next tick (overrides the face-threat-on-hold set earlier).
+  for (const targetId of Object.keys(damagedBy)) {
+    const t = workingById[targetId];
+    if (!t || t.state !== 'alive') continue;
+    const shooter = workingById[damagedBy[targetId]];
+    if (!shooter) continue;
+    t.facing = nearestFacing(t.pos, shooter.pos);
+  }
+
+  // Buff durations: drop any whose window has elapsed (spec §7.4).
+  const nextBuffs = pruneBuffs(state.buffs, tick);
+
+  // 5. Recompute vision/tracking/ghosts on the post-move/post-death state.
+  const postMove: GameState = {
     ...state,
-    units: nextUnits,
-    cursors: nextCursors,
-    prevPos: newPrevPos,
-    prevHoldRemaining: newPrevHold,
-    tick: state.tick + 1,
+    units: working,
+    moves: nextMoves,
+    targets: nextTargets,
+    ai: newAi,
+    prevPos,
+    tick,
+    events: [...state.events, ...events],
+    buffs: nextBuffs,
   };
-
-  const { visibility, perUnit } = computeVisibility(postMoveState);
-  const tracking = updateTracking(postMoveState, perUnit);
-
-  // Ghost computation uses end-of-T-1 visibility (state.visibility from input)
-  // and end-of-T visibility (just computed). Pre-movement unit positions
-  // (state.units, NOT nextUnits) supply the "last-seen" hex for newly lost
-  // enemies.
+  const post = computeVisibility(postMove);
+  const visibility = post.visibility;
+  const tracking = updateTracking(postMove, post.perUnit);
   const prevVisibleByTeam = visibleEnemiesByTeam(state, state.visibility);
-  const currVisibleByTeam = visibleEnemiesByTeam(postMoveState, visibility);
-  const ghosts = updateGhosts(
-    state.units,
-    state.ghosts,
-    prevVisibleByTeam,
-    currVisibleByTeam,
-  );
+  const currVisibleByTeam = visibleEnemiesByTeam(postMove, visibility);
+  const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam);
 
+  return { ...postMove, visibility, tracking, ghosts };
+}
+
+// True when one team is wiped, or every alive unit is idle (holding) — i.e. all
+// arrived and no engagements remain. Pass 7.8 — the "all holding" path only
+// fires after MIN_ROUND_TICKS_FOR_HOLD_END so a no-LoS map can't end a round
+// at tick ~5 with zero shots; rotation gets a chance to force contact first.
+// Wipe-out is checked unconditionally (an actual elimination ends the round
+// whenever it happens).
+export function roundFinished(state: GameState): boolean {
+  let aliveDef = 0;
+  let aliveAtk = 0;
+  let allHolding = true;
+  for (const u of state.units) {
+    if (u.state !== 'alive') continue;
+    if (u.team === 'defenders') aliveDef++;
+    else aliveAtk++;
+    if (state.ai[u.id]?.mode !== 'holding') allHolding = false;
+  }
+  if (aliveDef === 0 || aliveAtk === 0) return true;
+  return allHolding && state.tick >= MIN_ROUND_TICKS_FOR_HOLD_END;
+}
+
+// --- helpers ---------------------------------------------------------------
+
+// Keep only buffs whose window still includes this tick.
+function pruneBuffs(
+  buffs: Record<string, Buff[]>,
+  tick: number,
+): Record<string, Buff[]> {
+  const out: Record<string, Buff[]> = {};
+  for (const id of Object.keys(buffs)) {
+    const live = buffs[id].filter((b) => b.expiresAtTick >= tick);
+    out[id] = live;
+  }
+  return out;
+}
+
+function freshAi(): AiState {
   return {
-    ...postMoveState,
-    visibility,
-    tracking,
-    ghosts,
+    mode: 'moving',
+    firingTarget: null,
+    ticksSinceEnemySeen: AI.resumeAfterTicks,
+    shotClock: 0,
+    stationaryTicks: 0,
+    engagementTicks: 0,
+    shotsThisEngagement: 0,
+    lastFiredTick: -999,
   };
 }
 
-// True once every alive unit has reached the end of its path with no holds
-// pending. The playback loop uses this to auto-pause at the end of resolution
-// in Pass 2; later passes swap this for round-end detection (one team wiped).
-export function allUnitsFinished(state: GameState): boolean {
-  for (const unit of state.units) {
-    if (unit.state !== 'alive') continue;
-    const path = state.paths[unit.id];
-    const cursor = state.cursors[unit.id];
-    if (!path || !cursor) continue;
-    const lastIndex = path.hexes.length - 1;
-    if (lastIndex <= 0) continue;
-    if (cursor.progress < lastIndex || cursor.holdRemaining > 0) return false;
+function sameHex(a: HexCoord, b: HexCoord): boolean {
+  return a.col === b.col && a.row === b.row;
+}
+
+// Enemy-spawn push target (middle enemy spawn hex) for the role-movement tendency.
+function enemyPushTarget(unit: Unit, state: GameState): HexCoord | null {
+  const enemySpawns =
+    unit.team === 'defenders' ? state.map.spawns.attackers : state.map.spawns.defenders;
+  if (enemySpawns.length === 0) return null;
+  return enemySpawns[Math.floor(enemySpawns.length / 2)];
+}
+
+// Pass 7.7 — side-aware enemy spawn for face-threat-on-hold. Uses teamSide so
+// it's correct post-halftime (when team identity and side are decoupled).
+function enemySpawnForSide(unit: Unit, state: GameState): HexCoord | null {
+  const oppositeSpawnKey =
+    state.teamSide[unit.team] === 'attacker' ? 'defenders' : 'attackers';
+  const spawns = state.map.spawns[oppositeSpawnKey];
+  if (spawns.length === 0) return null;
+  return spawns[Math.floor(spawns.length / 2)];
+}
+
+// Pass 7.7 — middle passable hex of the mid region, used as the rotation
+// target when a unit has been holding too long without contact.
+function midCentroid(state: GameState): HexCoord | null {
+  const hexes = state.map.regions['mid'];
+  if (!hexes || hexes.length === 0) return null;
+  const passableHexes = hexes.filter((h) => {
+    if (h.row < 0 || h.row >= state.map.height || h.col < 0 || h.col >= state.map.width) return false;
+    const t = state.map.grid[h.row][h.col];
+    return t !== 'wall' && t !== 'cover';
+  });
+  if (passableHexes.length === 0) return null;
+  return passableHexes[Math.floor(passableHexes.length / 2)];
+}
+
+function aliveTeamCount(units: readonly Unit[], team: Unit['team']): number {
+  let n = 0;
+  for (const u of units) if (u.team === team && u.state === 'alive') n++;
+  return n;
+}
+
+// Trader: any living teammate (not self) fired within the last `windowTicks`.
+function allyFiredRecently(
+  unit: Unit,
+  units: readonly Unit[],
+  state: GameState,
+  tick: number,
+): boolean {
+  const cutoff = tick - TRAITS.trader.windowTicks;
+  for (const a of units) {
+    if (a.id === unit.id || a.team !== unit.team || a.state !== 'alive') continue;
+    if ((state.ai[a.id]?.lastFiredTick ?? -999) >= cutoff) return true;
   }
-  return true;
+  return false;
+}
+
+function isWallAdjacent(hex: HexCoord, state: GameState): boolean {
+  for (const nb of neighbors(hex)) {
+    if (nb.row < 0 || nb.row >= state.map.height || nb.col < 0 || nb.col >= state.map.width) continue;
+    if (state.map.grid[nb.row][nb.col] === 'wall') return true;
+  }
+  return false;
+}
+
+function enemiesVisibleTo(
+  unit: Unit,
+  units: readonly Unit[],
+  visibleHexes: Set<string> | undefined,
+): Unit[] {
+  if (!visibleHexes) return [];
+  const out: Unit[] = [];
+  for (const e of units) {
+    if (e.team === unit.team || e.state !== 'alive') continue;
+    if (visibleHexes.has(hexKey(e.pos))) out.push(e);
+  }
+  return out;
+}
+
+// Keep the cached route if it still ends at `target` and the unit is on it;
+// otherwise recompute from the current hex. Preserving progress lets the sniper
+// accumulate its 0.5/tick across ticks.
+function ensurePathToward(
+  move: MoveState | undefined,
+  pos: HexCoord,
+  target: HexCoord,
+  state: GameState,
+): MoveState {
+  if (move && move.path.length > 0) {
+    const last = move.path[move.path.length - 1];
+    const cur = move.path[Math.floor(move.progress)];
+    const onPath = cur && sameHex(cur, pos);
+    if (onPath && sameHex(last, target)) return move;
+  }
+  const path = findPath(state.map, pos, target) ?? [pos];
+  return { path, progress: 0 };
+}
+
+function hashSeed(seed: number, tick: number): number {
+  return (seed ^ Math.imul(tick + 1, 2654435761)) >>> 0;
 }
