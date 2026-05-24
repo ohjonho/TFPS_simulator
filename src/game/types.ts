@@ -63,6 +63,8 @@ export type Unit = {
   // Offset coordinate (col,row), matching MapDefinition.grid indexing.
   pos: HexCoord;
   hp: number;
+  // Pass 8 — max HP can be raised by Guardian Aura; restored at round end.
+  maxHp: number;
   facing: Facing;
   state: UnitState;
   // Attributes assigned at match start (Pass 6).
@@ -73,6 +75,80 @@ export type Unit = {
   hero: Hero;
   // Dynamic modifiers.
   modifiers: Modifiers;
+  // Pass 8 — card-driven flags set at round start, cleared at round end.
+  // All optional; unset = no card effect on this unit.
+  cardFlags: CardFlags;
+};
+
+// --- Pass 8: cards ---------------------------------------------------------
+
+// Card sources span all three attribute unions (1 card per trait, role, hero).
+export type CardSource = BehavioralTrait | Role | Hero;
+export type CardType = 'directive' | 'buff' | 'utility';
+export type TargetingKind = 'none' | 'enemy' | 'ally' | 'hex' | 'role';
+
+export type CardDef = {
+  id: string;
+  name: string;
+  source: CardSource;
+  type: CardType;
+  targeting: TargetingKind;
+  description: string;
+};
+
+// A card in someone's deck/hand/discard — references a CardDef by id and the
+// unit that contributed it (for source labels in the UI).
+export type CardInstance = { defId: string; contributor: string };
+
+export type TeamDeck = {
+  deck: CardInstance[];
+  hand: CardInstance[];
+  discard: CardInstance[];
+};
+
+// A played card snapshot. `target` shape depends on the card's TargetingKind:
+//   'none' → undefined; 'enemy'/'ally' → unit id; 'hex' → HexCoord;
+//   'role' → Role string; Setup Play uses { hex, allyId } in a HexCoord-shaped
+//   target combined with a separate allyId effect (handler reads both).
+export type PlayedCard = {
+  defId: string;
+  contributor: string;
+  target?: HexCoord | string | Role;
+  // Setup Play needs a hex + ally; rather than overload `target`, carry a
+  // second field for the rare two-pick card.
+  secondaryTarget?: string;
+};
+
+// Round-scoped non-buff effects card handlers register. Read by combat/vision/
+// tick each step; cleared on round start.
+export type ActiveCardEffect =
+  | { kind: 'mark_target'; team: Team; targetId: string }
+  | { kind: 'guardian_aura'; team: Team; sourceId: string; radius: number }
+  | { kind: 'tactical_scan'; team: Team; expiresAtTick: number }
+  | { kind: 'hold_the_line'; team: Team; anchorHex: HexCoord; anchorId: string }
+  | { kind: 'setup_play'; team: Team; allyId: string; expiresAtTick: number }
+  | { kind: 'spearhead'; team: Team; vanguardId: string };
+
+// Per-unit card flags. Mostly booleans set by handlers and read by combat/AI;
+// some carry numeric counters (e.g. delayedMoveUntilTick for Spearhead allies).
+export type CardFlags = {
+  anchorPosition?: boolean;
+  recklessPush?: boolean;
+  slowFlank?: boolean;
+  openingPickActive?: boolean;
+  crossfireEligible?: boolean;
+  // Cap stack: trait gives base; card adds up to 1 extra (max 2 stacks total).
+  crossfireBuffsApplied?: number;
+  lastStandActive?: boolean;
+  lastStandGhostSkipUntilTick?: number;
+  spearhead?: boolean;
+  // Spearhead allies wait this many ticks before they start moving.
+  delayedMoveUntilTick?: number;
+  setupPlayBonus?: boolean;
+  holdTheLineAnchor?: HexCoord;
+  // Set when an ally reaches a Hold-the-Line anchor; shots vs this unit forced
+  // miss while tick < safeWindowUntilTick.
+  safeWindowUntilTick?: number;
 };
 
 // --- Match flow -------------------------------------------------------------
@@ -159,7 +235,21 @@ export type GameEvent =
       damage: number;
       cover: boolean;
     }
-  | { tick: number; type: 'death'; target: string };
+  | { tick: number; type: 'death'; target: string }
+  | {
+      tick: number;
+      type: 'cardPlay';
+      team: Team;
+      defId: string;
+      contributor: string;
+      target?: HexCoord | string;
+    }
+  | {
+      tick: number;
+      type: 'safeWindowBlock';
+      shooter: string;
+      target: string;
+    };
 
 export type GameState = {
   phase: Phase;
@@ -200,4 +290,11 @@ export type GameState = {
   aiStrategyWins: Record<Team, Record<string, number>>;
   matchOver: boolean;
   matchWinner: Team | 'draw' | null;
+  // --- Pass 8: cards ---
+  cards: Record<Team, TeamDeck>;
+  // Card committed for this round by each team (null until played / if skipped).
+  // Reset to null on startRound.
+  playedCard: Record<Team, PlayedCard | null>;
+  // Round-scoped non-buff card effects; cleared on startRound.
+  cardEffects: ActiveCardEffect[];
 };

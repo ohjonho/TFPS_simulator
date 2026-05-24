@@ -28,6 +28,7 @@ export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
     weapon,
     pos: spawns[i],
     hp: UNIT_DEFAULTS.maxHp,
+    maxHp: UNIT_DEFAULTS.maxHp,
     facing,
     state: 'alive',
     // Attributes are assigned by assignAttributes() at match start; these are
@@ -38,5 +39,6 @@ export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
     preferredRole: 'Specialist',
     hero: 'Angelic',
     modifiers: { aggression: 50, weaponHandling: 50, offPosition: false, retreatThresholdMod: 0 },
+    cardFlags: {},
   }));
 }

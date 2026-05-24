@@ -10,8 +10,10 @@ import type {
   GhostEntry,
   HexCoord,
   MoveState,
+  PlayedCard,
   Side,
   Team,
+  TeamDeck,
   TrackEntry,
 } from './types.ts';
 import { createTeam } from './units.ts';
@@ -19,6 +21,7 @@ import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
 import { assignAttributes } from './attributes.ts';
 import { createRng } from './rng.ts';
+import { buildDeck, drawCards } from './cards.ts';
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
 import type { MapDefinition } from './types.ts';
@@ -51,6 +54,20 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
   // defender side; halftime swaps these.
   const teamSide: Record<Team, Side> = { defenders: 'defender', attackers: 'attacker' };
 
+  // Pass 8 — build each team's 9-card deck from their units' trait/role/hero,
+  // then draw the 3-card starting hand. Deck shuffles use the seeded RNG so
+  // hands replay identically. (Per team we derive a separate RNG stream so the
+  // attacker deck doesn't depend on the defender's first.)
+  const defenderDeckRng = createRng(RNG_SEED_DEFAULT ^ 0xdec0de);
+  const attackerDeckRng = createRng(RNG_SEED_DEFAULT ^ 0xa77ac4);
+  const defenderDeck = drawCards(buildDeck(defenders, defenderDeckRng), 3, defenderDeckRng);
+  const attackerDeck = drawCards(buildDeck(attackers, attackerDeckRng), 3, attackerDeckRng);
+  const cards: Record<Team, TeamDeck> = {
+    defenders: defenderDeck,
+    attackers: attackerDeck,
+  };
+  const playedCard: Record<Team, PlayedCard | null> = { defenders: null, attackers: null };
+
   const seed: GameState = {
     phase: 'planning',
     map,
@@ -78,6 +95,9 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
     aiStrategyWins: { defenders: {}, attackers: {} },
     matchOver: false,
     matchWinner: null,
+    cards,
+    playedCard,
+    cardEffects: [],
   };
 
   const { visibility } = computeVisibility(seed);

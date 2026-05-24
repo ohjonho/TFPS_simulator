@@ -242,6 +242,53 @@ export const MIN_ROUND_TICKS_FOR_HOLD_END = 20;
 // uniform [0, AI_STRATEGY_EXPLORATION) is added on top of `1 + wins`.
 export const AI_STRATEGY_EXPLORATION = 2;
 
+// --- Pass 8: cards (spec §15) --------------------------------------------
+// Every per-card tunable. Card handlers read these — no magic numbers in the
+// handler bodies. Hit-pp values are additive to the effective-stat sum in
+// combat.ts; HS-pp likewise to the headshot pct.
+export const CARD_EFFECTS = {
+  // Anchor Position adds these on top of the Sentinel trait bonus when active
+  // and the unit is stationary 3+ ticks (so total = trait 25/20 + card 25/20).
+  anchorPosition: { hitPp: 25, hsPp: 20 },
+  // Reckless Push: ignores retreat, +1 speed, +15 HR when moving.
+  recklessPush: { speedBonus: 1.0, movingHitPp: 15 },
+  // Slow Flank: A* weight for non-perimeter hexes (added to base step cost).
+  slowFlank: { perimeterPenalty: 0.5 },
+  // Opening Pick overrides Entry's stock first-3-tick bonus and skips post.
+  openingPick: { hitPp: 30, hsPp: 15, windowTicks: 3 },
+  // Crossfire: when an ally fires, push a 5-tick +25 HR buff (cap 1 extra).
+  crossfire: { hitPp: 25, durationTicks: 5, extraStack: 1 },
+  // Last Stand: when last alive, replace Clutch's 20/15 with these + ghost skip.
+  lastStand: { hitPp: 30, hsPp: 20, ghostSkipTicks: 5 },
+  // Spearhead: Vanguard +15 HR first engagement; allies delayed N ticks.
+  spearhead: { firstEngagementHitPp: 15, allyDelayTicks: 2 },
+  // Setup Play: ally +20 HR when shooting from >60° off target's facing.
+  setupPlay: { flankHitPp: 20, flankAngleDeg: 60, windowTicks: 30 },
+  // Hold the Line: Warden stationary +20 HR; ally at anchor takes 0 dmg N ticks.
+  holdTheLine: { stationaryHitPp: 20, safeWindowTicks: 3 },
+  // Guardian Aura: +1 maxHp within N hexes of source.
+  guardianAura: { radius: 5, maxHpBonus: 1 },
+  // Tactical Scan: reveal all enemies for N ticks at round start.
+  tacticalScan: { ticks: 5 },
+  // Mark Target: all allied attacks vs the marked enemy +20 HR / +10 HS.
+  markTarget: { hitPp: 20, hsPp: 10 },
+} as const;
+
+// AI plays a card this fraction of rounds (spec §15.6).
+export const AI_CARD_PLAY_CHANCE = 0.7;
+
+// Card themes per strategy — AI weighting prefers these for the chosen strategy.
+// Card ids match cardData.ts. Cards not in a theme are still eligible at lower
+// weight (fallback uniform when none of the themed ids are in hand).
+export const STRATEGY_CARD_THEMES: Record<string, readonly string[]> = {
+  Execute:  ['spearhead', 'setup_play', 'mark_target'],
+  Rush:     ['spearhead', 'opening_pick', 'reckless_push'],
+  Control:  ['setup_play', 'tactical_scan', 'mark_target'],
+  Hold:     ['anchor_position', 'hold_the_line', 'crossfire'],
+  Stack:    ['crossfire', 'setup_play', 'spearhead'],
+  Pressure: ['spearhead', 'opening_pick', 'last_stand'],
+};
+
 export const VISION_COLORS = {
   fog: 'rgba(0, 0, 0, 0.55)',
   coneEdgeDefender: 'rgba(59, 130, 246, 0.7)',
