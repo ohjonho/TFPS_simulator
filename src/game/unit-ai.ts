@@ -50,6 +50,8 @@ export function shouldRetreat(unit: Unit): RetreatDecision {
   if (unit.behavioralTrait && NO_RETREAT_TRAITS.has(unit.behavioralTrait)) {
     return { retreat: false };
   }
+  // Pass 8 — Reckless Push card ignores retreat for the round.
+  if (unit.cardFlags.recklessPush) return { retreat: false };
   return { retreat: true };
 }
 

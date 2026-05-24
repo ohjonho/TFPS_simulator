@@ -172,6 +172,18 @@ export function computeVisibility(state: GameState): VisibilityComputation {
     const teamSet = visibility[u.team];
     for (const k of visible) teamSet.add(k);
   }
+
+  // Pass 8 — Tactical Scan (Techy card): while active for a team, union all
+  // live enemy positions into that team's visibility set (overrides fog).
+  for (const fx of state.cardEffects) {
+    if (fx.kind !== 'tactical_scan') continue;
+    if (state.tick > fx.expiresAtTick) continue;
+    for (const u of state.units) {
+      if (u.state !== 'alive') continue;
+      if (u.team === fx.team) continue;
+      visibility[fx.team].add(hexKey(u.pos));
+    }
+  }
   return { visibility, perUnit };
 }
 
@@ -273,12 +285,15 @@ export function visibleEnemiesByTeam(
 }
 
 // preMoveUnits supply each newly-lost enemy's last-seen (pre-movement) hex.
-// prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T.
+// prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T. Pass 8:
+// units with Last Stand active and lastAlive skip ghost generation for the
+// opposing team for `lastStandGhostSkipUntilTick` ticks.
 export function updateGhosts(
   preMoveUnits: readonly Unit[],
   prevGhosts: Record<Team, Record<string, GhostEntry>>,
   prevVisibleByTeam: Record<Team, Set<string>>,
   currVisibleByTeam: Record<Team, Set<string>>,
+  currentTick = 0,
 ): Record<Team, Record<string, GhostEntry>> {
   const teams: Team[] = ['defenders', 'attackers'];
   const result: Record<Team, Record<string, GhostEntry>> = { defenders: {}, attackers: {} };
@@ -298,7 +313,11 @@ export function updateGhosts(
     for (const enemyId of prevVisibleByTeam[team]) {
       if (currVisibleByTeam[team].has(enemyId)) continue;
       const enemy = preById[enemyId];
-      if (enemy) next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
+      if (!enemy) continue;
+      // Last Stand: while window active, do not refresh/post ghosts.
+      const skipUntil = enemy.cardFlags.lastStandGhostSkipUntilTick ?? -1;
+      if (skipUntil > currentTick) continue;
+      next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
     }
     // Currently visible: clear any ghost (re-sighted).
     for (const enemyId of currVisibleByTeam[team]) delete next[enemyId];

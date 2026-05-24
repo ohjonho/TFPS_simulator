@@ -104,6 +104,61 @@ export function findPath(
   return null;
 }
 
+// Pass 8 — perimeter A*: penalizes interior hexes so the route hugs the map
+// edge before turning in. Used by Slow Flank (Lurker card). Same shape as
+// findPath but with a step-cost factor based on distance-to-nearest-edge.
+export function findPerimeterPath(
+  map: MapDefinition,
+  start: HexCoord,
+  goal: HexCoord,
+  perimeterPenalty: number,
+  avoid?: ReadonlySet<string>,
+): HexCoord[] | null {
+  if (!passableAt(map, start) || !passableAt(map, goal)) return null;
+  if (start.col === goal.col && start.row === goal.row) return [start];
+
+  const startKey = key(start);
+  const goalKey = key(goal);
+  const cameFrom = new Map<string, HexCoord>();
+  const gScore = new Map<string, number>([[startKey, 0]]);
+  const maxEdge = Math.max(1, Math.floor(Math.min(map.width, map.height) / 2));
+  const stepCost = (hex: HexCoord): number => {
+    const distToEdge = Math.min(hex.col, map.width - 1 - hex.col, hex.row, map.height - 1 - hex.row);
+    return 1 + perimeterPenalty * (distToEdge / maxEdge);
+  };
+  const open = new Map<string, number>([[startKey, hexDistance(start, goal)]]);
+  const openHex = new Map<string, HexCoord>([[startKey, start]]);
+
+  while (open.size > 0) {
+    let curKey = '';
+    let curF = Infinity;
+    for (const [k, f] of open) {
+      if (f < curF) { curF = f; curKey = k; }
+    }
+    const current = openHex.get(curKey)!;
+    if (current.col === goal.col && current.row === goal.row) {
+      return reconstruct(cameFrom, current, startKey);
+    }
+    open.delete(curKey);
+    openHex.delete(curKey);
+    const curG = gScore.get(curKey)!;
+
+    for (const nb of neighbors(current)) {
+      if (!passableAt(map, nb)) continue;
+      const nbKey = key(nb);
+      if (avoid && nbKey !== goalKey && avoid.has(nbKey)) continue;
+      const tentativeG = curG + stepCost(nb);
+      if (tentativeG < (gScore.get(nbKey) ?? Infinity)) {
+        cameFrom.set(nbKey, current);
+        gScore.set(nbKey, tentativeG);
+        open.set(nbKey, tentativeG + hexDistance(nb, goal));
+        openHex.set(nbKey, nb);
+      }
+    }
+  }
+  return null;
+}
+
 function reconstruct(
   cameFrom: Map<string, HexCoord>,
   goal: HexCoord,

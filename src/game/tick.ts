@@ -13,7 +13,7 @@ import type {
   Unit,
 } from './types.ts';
 import { advanceUnit } from './movement.ts';
-import { findPath, neighbors, passableAt } from './pathfind.ts';
+import { findPath, findPerimeterPath, neighbors, passableAt } from './pathfind.ts';
 import {
   computeVisibility,
   hexKey,
@@ -34,11 +34,13 @@ import { createRng } from './rng.ts';
 import {
   AGGRESSION_PUSH_THRESHOLD,
   AI,
+  CARD_EFFECTS,
   FIRE_RATE,
   MIN_ROUND_TICKS_FOR_HOLD_END,
   ROTATE_AFTER_HOLD_TICKS,
   TRAITS,
 } from './config.ts';
+import { hexDistance } from './hex.ts';
 
 export function stepTick(state: GameState): GameState {
   const tick = state.tick + 1;
@@ -161,13 +163,21 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
+    // Pass 8 — Spearhead delays non-Vanguard allies for the first N ticks of
+    // the round (allies follow behind). While the delay window is active, the
+    // unit stays put even if moving/retreating was decided. The cardFlag is
+    // cleared by match.startRound at round start, so it's per-round automatic.
+    const delayedUntil = u.cardFlags.delayedMoveUntilTick ?? -1;
+    const moveSuppressedByDelay = tick < delayedUntil;
+
     // Movement for moving/retreating units (engaged/holding stay put). Block
     // moves into hexes claimed by other live units (Pass 7.7). Pass 7.8: when
     // blocked, try once to recompute a detour around all other live units —
     // fixes the "stuck behind a teammate" clustering when two units share a
-    // path through a chokepoint.
-    if (effectiveTarget && (mode === 'moving' || mode === 'retreating')) {
-      let move = ensurePathToward(nextMoves[u.id], u.pos, effectiveTarget, state);
+    // path through a chokepoint. Pass 8: Slow Flank uses the perimeter
+    // variant of A* so the route hugs the map edge.
+    if (effectiveTarget && (mode === 'moving' || mode === 'retreating') && !moveSuppressedByDelay) {
+      let move = ensurePathToward(nextMoves[u.id], u.pos, effectiveTarget, state, !!u.cardFlags.slowFlank);
       let result = advanceUnit(u, move);
       const oldKey = `${u.pos.col},${u.pos.row}`;
       let newKey = `${result.pos.col},${result.pos.row}`;
@@ -257,7 +267,7 @@ export function stepTick(state: GameState): GameState {
       adjacentToWall: isWallAdjacent(u.pos, state),
       ticksIntoRound: tick,
     };
-    const shot = resolveShot(u, target, state.map, ctxInput, state.buffs[u.id] ?? [], rng);
+    const shot = resolveShot(u, target, state.map, ctxInput, state.buffs[u.id] ?? [], state.cardEffects, tick, rng);
     if (shot.hit) {
       damage[target.id] = (damage[target.id] ?? 0) + shot.damage;
       damagedBy[target.id] = u.id;
@@ -277,6 +287,27 @@ export function stepTick(state: GameState): GameState {
       cover: shot.cover,
     });
     ai.shotClock = FIRE_RATE[u.weapon] - 1;
+
+    // Pass 8 — Crossfire trigger: when this unit fires, any teammate with
+    // crossfireEligible and < extraStack card buffs gets a +25 HR / N-tick buff.
+    for (const ally of working) {
+      if (ally.id === u.id) continue;
+      if (ally.team !== u.team || ally.state !== 'alive') continue;
+      if (!ally.cardFlags.crossfireEligible) continue;
+      const applied = ally.cardFlags.crossfireBuffsApplied ?? 0;
+      if (applied >= CARD_EFFECTS.crossfire.extraStack) continue;
+      ally.cardFlags = { ...ally.cardFlags, crossfireBuffsApplied: applied + 1 };
+      const ally_buffs = state.buffs[ally.id] ?? [];
+      state.buffs[ally.id] = [
+        ...ally_buffs,
+        {
+          id: `crossfire-${u.id}-${tick}`,
+          source: 'crossfire',
+          hitPp: CARD_EFFECTS.crossfire.hitPp,
+          expiresAtTick: tick + CARD_EFFECTS.crossfire.durationTicks,
+        },
+      ];
+    }
   }
 
   // Apply damage simultaneously; deaths at end of tick.
@@ -302,6 +333,15 @@ export function stepTick(state: GameState): GameState {
     t.facing = nearestFacing(t.pos, shooter.pos);
   }
 
+  // Pass 8 — post-damage card-effect housekeeping:
+  //   a) Guardian Aura: bring each ally's maxHp/hp in line with current aura
+  //      coverage (allies within radius of a live aura source get +1).
+  //   b) Hold the Line: any ally on a Warden's anchor hex gets the safe-window
+  //      flag set to expire `safeWindowTicks` ticks from now.
+  //   c) Last Stand: a unit with the flag that just became last alive on its
+  //      team sets lastStandGhostSkipUntilTick so updateGhosts skips it.
+  applyCardPostDamage(working, state.cardEffects, tick);
+
   // Buff durations: drop any whose window has elapsed (spec §7.4).
   const nextBuffs = pruneBuffs(state.buffs, tick);
 
@@ -322,9 +362,75 @@ export function stepTick(state: GameState): GameState {
   const tracking = updateTracking(postMove, post.perUnit);
   const prevVisibleByTeam = visibleEnemiesByTeam(state, state.visibility);
   const currVisibleByTeam = visibleEnemiesByTeam(postMove, visibility);
-  const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam);
+  const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam, tick);
 
   return { ...postMove, visibility, tracking, ghosts };
+}
+
+// Pass 8 — apply per-tick card effects after damage resolution. Mutates the
+// supplied unit array in place (kept here so the main stepTick body stays
+// readable; this is glue, not algorithm).
+function applyCardPostDamage(
+  units: Unit[],
+  cardEffects: readonly import('./types.ts').ActiveCardEffect[],
+  tick: number,
+): void {
+  // a) Guardian Aura — recompute coverage from live aura sources, then sync.
+  // Build a per-unit "covered" bool from the union of all live aura sources.
+  const sourcesByTeam: Record<string, Unit[]> = {};
+  const radii: Record<string, number> = {};
+  for (const fx of cardEffects) {
+    if (fx.kind !== 'guardian_aura') continue;
+    const src = units.find((u) => u.id === fx.sourceId && u.state === 'alive');
+    if (!src) continue;
+    sourcesByTeam[fx.team] = sourcesByTeam[fx.team] ?? [];
+    sourcesByTeam[fx.team].push(src);
+    radii[fx.sourceId] = fx.radius;
+  }
+  for (const u of units) {
+    if (u.state !== 'alive') continue;
+    const sources = sourcesByTeam[u.team] ?? [];
+    const covered = sources.some((s) => hexDistance(u.pos, s.pos) <= (radii[s.id] ?? CARD_EFFECTS.guardianAura.radius));
+    const wantMax = 3 + (covered ? CARD_EFFECTS.guardianAura.maxHpBonus : 0);
+    if (u.maxHp !== wantMax) {
+      const delta = wantMax - u.maxHp;
+      u.maxHp = wantMax;
+      // Only raise current HP when newly covered; reductions clamp.
+      if (delta > 0) u.hp = Math.min(u.maxHp, u.hp + delta);
+      else u.hp = Math.min(u.hp, u.maxHp);
+    }
+  }
+
+  // b) Hold the Line — allies on the anchor hex get the safe-window flag.
+  for (const fx of cardEffects) {
+    if (fx.kind !== 'hold_the_line') continue;
+    for (const u of units) {
+      if (u.team !== fx.team || u.state !== 'alive') continue;
+      if (u.pos.col !== fx.anchorHex.col || u.pos.row !== fx.anchorHex.row) continue;
+      u.cardFlags = {
+        ...u.cardFlags,
+        safeWindowUntilTick: tick + CARD_EFFECTS.holdTheLine.safeWindowTicks,
+      };
+    }
+  }
+
+  // c) Last Stand — units with the flag that are now last alive on their team
+  // set lastStandGhostSkipUntilTick to suppress fresh ghost markers.
+  const aliveCount: Record<string, number> = {};
+  for (const u of units) {
+    if (u.state !== 'alive') continue;
+    aliveCount[u.team] = (aliveCount[u.team] ?? 0) + 1;
+  }
+  for (const u of units) {
+    if (u.state !== 'alive') continue;
+    if (!u.cardFlags.lastStandActive) continue;
+    if (aliveCount[u.team] !== 1) continue;
+    if ((u.cardFlags.lastStandGhostSkipUntilTick ?? -1) > tick) continue;
+    u.cardFlags = {
+      ...u.cardFlags,
+      lastStandGhostSkipUntilTick: tick + CARD_EFFECTS.lastStand.ghostSkipTicks,
+    };
+  }
 }
 
 // True when one team is wiped, or every alive unit is idle (holding) — i.e. all
@@ -456,12 +562,15 @@ function enemiesVisibleTo(
 
 // Keep the cached route if it still ends at `target` and the unit is on it;
 // otherwise recompute from the current hex. Preserving progress lets the sniper
-// accumulate its 0.5/tick across ticks.
+// accumulate its 0.5/tick across ticks. Pass 8: when `perimeter` is true, the
+// route is computed via the perimeter A* (Slow Flank); falls back to plain
+// findPath if the perimeter variant returns null.
 function ensurePathToward(
   move: MoveState | undefined,
   pos: HexCoord,
   target: HexCoord,
   state: GameState,
+  perimeter = false,
 ): MoveState {
   if (move && move.path.length > 0) {
     const last = move.path[move.path.length - 1];
@@ -469,7 +578,9 @@ function ensurePathToward(
     const onPath = cur && sameHex(cur, pos);
     if (onPath && sameHex(last, target)) return move;
   }
-  const path = findPath(state.map, pos, target) ?? [pos];
+  const path = perimeter
+    ? (findPerimeterPath(state.map, pos, target, CARD_EFFECTS.slowFlank.perimeterPenalty) ?? findPath(state.map, pos, target) ?? [pos])
+    : (findPath(state.map, pos, target) ?? [pos]);
   return { path, progress: 0 };
 }
 

@@ -73,7 +73,18 @@ export class PlaybackLoop {
     const restoredUnits = state.units.map((u) => {
       const init = initialUnitsById[u.id];
       if (!init) return u;
-      return { ...u, pos: init.pos, facing: init.facing, hp: init.hp, state: init.state };
+      // Pass 8: also restore cardFlags + maxHp (both mutate during a tick via
+      // Guardian Aura / safe-window / crossfire counters / last-stand ghost-
+      // skip), so Replay restarts from the post-commitCards state of the round.
+      return {
+        ...u,
+        pos: init.pos,
+        facing: init.facing,
+        hp: init.hp,
+        maxHp: init.maxHp,
+        state: init.state,
+        cardFlags: { ...init.cardFlags },
+      };
     });
     const resetMoves: Record<string, MoveState> = {};
     const resetTracking: Record<string, TrackEntry | null> = {};

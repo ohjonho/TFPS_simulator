@@ -3,7 +3,7 @@
 // minus the waypoint/hold model (movement is now A*-toward-target).
 
 import type { Facing, GameState, HexCoord, MoveState, Unit } from './types.ts';
-import { MOVE, SPEED } from './config.ts';
+import { CARD_EFFECTS, MOVE, SPEED } from './config.ts';
 import { directionBetween, findPath } from './pathfind.ts';
 
 export type AdvanceResult = {
@@ -17,7 +17,9 @@ export type AdvanceResult = {
 export function effectiveSpeed(unit: Unit): number {
   const base = SPEED[unit.weapon];
   const runGun = unit.behavioralTrait === 'Run-n-Gun' ? MOVE.runAndGunBonus : 0;
-  return base + runGun;
+  // Pass 8 — Reckless Push card stacks with Run-n-Gun's bonus.
+  const recklessPush = unit.cardFlags.recklessPush ? CARD_EFFECTS.recklessPush.speedBonus : 0;
+  return base + runGun + recklessPush;
 }
 
 export function advanceUnit(unit: Unit, move: MoveState): AdvanceResult {

@@ -18,12 +18,14 @@ import { DEBUG_KEY } from './game/config.ts';
 import {
   advanceToNextRound,
   applyStrategies,
+  commitCards,
+  processCardsAtRoundEnd,
   halftimeSwap,
   isHalftime,
   recordStrategyWin,
   startRound,
 } from './game/match.ts';
-import { pickAiStrategy } from './game/aiOpponent.ts';
+import { pickAiCard, pickAiStrategy } from './game/aiOpponent.ts';
 import { defenderTeam, eliminationWinner, endRound as endRoundFn } from './game/match.ts';
 import { ROUND_TICK_LIMIT } from './game/config.ts';
 import { strategiesFor } from './game/strategies.ts';
@@ -123,7 +125,10 @@ function beginRound(): void {
   const aiSide = state.teamSide[aiTeam];
   const pickRng = createRng((state.seed ^ (state.round * 0x9e3779b1)) >>> 0);
   const aiId = pickAiStrategy(state, aiTeam, aiSide, pickRng);
-  const next = applyStrategies(state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng);
+  let next = applyStrategies(state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng);
+  // Pass 8 — AI picks its card here (player's card is already committed via UI).
+  const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
+  next = commitCards(next, state.playerTeam, state.playedCard[state.playerTeam], aiTeam, aiCard, pickRng);
   initialUnitsById = snapshotUnits(next.units);
   setState(next);
   loop.start();
@@ -136,6 +141,8 @@ function handleRoundEnd(): void {
     const stratId = winner === state.playerTeam ? state.playerStrategy : state.aiStrategy;
     state = recordStrategyWin(state, winner, stratId);
   }
+  // Pass 8 — discard played cards + draw back up to hand cap (deterministic).
+  state = processCardsAtRoundEnd(state, state.seed, state.round);
 
   const scoreLine = `Score: ${state.scores[state.playerTeam]} – ${state.scores[state.playerTeam === 'defenders' ? 'attackers' : 'defenders']}`;
   const body =
@@ -283,6 +290,10 @@ if (import.meta.env.DEV) {
       const pickRng = createRng((state.seed ^ (state.round * 0x9e3779b1)) >>> 0);
       const aiId = pickAiStrategy(state, aiTeam, aiSide, pickRng);
       let s = applyStrategies(state, state.playerTeam, playerStrategyId, aiTeam, aiId, pickRng);
+      // Pass 8 — also apply cards (player's pre-committed + AI's pick) so
+      // simulateRound exercises the full Begin-Round pipeline.
+      const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
+      s = commitCards(s, state.playerTeam, state.playedCard[state.playerTeam], aiTeam, aiCard, pickRng);
       const startTick = s.tick;
       let winner: Team | null = null;
       for (let i = 0; i < maxTicks; i++) {
@@ -369,7 +380,7 @@ if (import.meta.env.DEV) {
       };
       let hits = 0; let headshots = 0; let band = '';
       for (let i = 0; i < n; i++) {
-        const r = resolveShot(shooter, target, state.map, input, state.buffs[shooterId] ?? [], rng);
+        const r = resolveShot(shooter, target, state.map, input, state.buffs[shooterId] ?? [], state.cardEffects, state.tick, rng);
         band = r.band;
         if (r.hit) hits++;
         if (r.headshot) headshots++;
