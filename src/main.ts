@@ -13,7 +13,7 @@ import { computePerUnitDebug, computeVisibility } from './game/vision.ts';
 import { resolveShot } from './game/combat.ts';
 import type { ShotContextInput } from './game/combat.ts';
 import { createRng } from './game/rng.ts';
-import { runBatch, runSkirmish } from './game/batch.ts';
+import { cardSanityCheck, determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
 import { ROLE_AGGRESSION } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
 import { DEBUG_KEY } from './game/config.ts';
@@ -363,6 +363,33 @@ if (import.meta.env.DEV) {
       })),
     runSkirmish: (seed: number, opts?: unknown) => runSkirmish(seed, opts as Parameters<typeof runSkirmish>[1]),
     runBatch: (n = 50, opts?: unknown) => runBatch(n, opts as Parameters<typeof runBatch>[1]),
+    // Pass 9 m5 — validation harness (strategy matrix + card sanity +
+    // determinism). All deterministic; ~30s total at default seeds=20.
+    runStrategyRound: (seed: number, opts: Parameters<typeof runStrategyRound>[1]) =>
+      runStrategyRound(seed, opts),
+    runStrategyMatrix: (seeds = 20, map?: 'Foundry' | 'Atoll') => runStrategyMatrix(seeds, map),
+    cardSanityCheck: (seeds = 20, map?: 'Foundry' | 'Atoll') => cardSanityCheck(seeds, map),
+    determinismCheck: (seeds = 10, map?: 'Foundry' | 'Atoll') => determinismCheck(seeds, map),
+    runValidation: (seeds = 20) => {
+      const matrix = runStrategyMatrix(seeds);
+      const cards = cardSanityCheck(seeds);
+      const det = determinismCheck(Math.min(seeds, 10));
+      // eslint-disable-next-line no-console
+      console.log('═══ Strategy matrix (defender win %) ═══');
+      // eslint-disable-next-line no-console
+      console.table(matrix);
+      // eslint-disable-next-line no-console
+      console.log('═══ Card sanity (Δpp defender win rate, Hold vs Execute) ═══');
+      // eslint-disable-next-line no-console
+      console.table(cards);
+      // eslint-disable-next-line no-console
+      console.log(`═══ Determinism: ${det.matched}/${det.total} matched ═══`);
+      if (det.mismatchedSeeds.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn('Mismatched seeds:', det.mismatchedSeeds);
+      }
+      return { matrix, cards, det };
+    },
     // --- Pass 7 match-flow hooks ---
     pickStrategy: (id: string) => setState({ ...state, playerStrategy: id }),
     beginRound: () => beginRound(),
