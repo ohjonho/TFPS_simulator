@@ -55,14 +55,9 @@ export function pickAiCard(
 
   const played: PlayedCard = { defId: pick.defId, contributor: pick.contributor };
 
-  // Auto-target per §15.6.
-  if (def.targeting === 'enemy' && def.id === 'mark_target') {
-    // Highest-HP enemy; lowest-id tiebreak.
-    const enemies = state.units.filter((u) => u.team !== team && u.state === 'alive');
-    enemies.sort((a, b) => (b.hp !== a.hp ? b.hp - a.hp : a.id < b.id ? -1 : 1));
-    if (enemies.length === 0) return null;
-    played.target = enemies[0].id;
-  } else if (def.targeting === 'hex') {
+  // Auto-target per §15.6. Pass 9 m3 — Mark Target uses a runtime trigger
+  // now, so no pre-pick target.
+  if (def.targeting === 'hex') {
     // Setup Play → primary attack region; Hold the Line → anchor region.
     const strat = strategyById(strategyId, side, state.map);
     if (!strat) return null;

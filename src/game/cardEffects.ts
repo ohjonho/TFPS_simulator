@@ -188,18 +188,15 @@ const HANDLERS: Record<string, Handler> = {
     ],
   }),
 
-  // 13. Mark Target (Cursed buff): register; combat.ts reads on each shot.
-  mark_target: (state, played, team) => {
-    const targetId = played.target as string | undefined;
-    if (!targetId) return state;
-    return {
-      ...state,
-      cardEffects: [
-        ...state.cardEffects,
-        { kind: 'mark_target', team, targetId },
-      ],
-    };
-  },
+  // 13. Mark Target (Cursed buff). Pass 9 m3 — runtime trigger model: set a
+  // pending flag on the contributor. tick.ts watches for their first tracked
+  // enemy and converts the flag into an active mark_target effect on that
+  // enemy. No pre-pick target; no effect registered yet.
+  mark_target: (state, played) =>
+    updateUnit(state, played.contributor, (u) => ({
+      ...u,
+      cardFlags: { ...u.cardFlags, markTargetPending: true },
+    })),
 };
 
 // --- public entry point ----------------------------------------------------

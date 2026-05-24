@@ -277,7 +277,9 @@ export const CARD_EFFECTS = {
   // Tactical Scan: reveal all enemies for N ticks at round start.
   tacticalScan: { ticks: 5 },
   // Mark Target: all allied attacks vs the marked enemy +20 HR / +10 HS.
-  markTarget: { hitPp: 20, hsPp: 10 },
+  // Pass 9 m3 — first-spotted trigger model; reveal lasts `revealTicks` even
+  // past LoS once the mark is set.
+  markTarget: { hitPp: 20, hsPp: 10, revealTicks: 5 },
 } as const;
 
 // AI plays a card this fraction of rounds (spec §15.6).

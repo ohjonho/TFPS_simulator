@@ -137,9 +137,11 @@ const HERO_CARDS: CardDef[] = [
     name: 'Mark Target',
     source: 'Cursed',
     type: 'buff',
-    targeting: 'enemy',
+    // Pass 9 m3 — no pre-pick target. Triggers on this unit's first spotted
+    // enemy of the round.
+    targeting: 'none',
     description:
-      'Choose 1 enemy; all allied attacks against that unit get +20 HR / +10 HS for the round.',
+      "First enemy this unit spots is marked for the round; team sees it for 5 ticks even past LoS; all allied attacks vs it get +20 HR / +10 HS.",
   },
 ];
 

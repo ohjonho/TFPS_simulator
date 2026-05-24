@@ -76,15 +76,8 @@ function autoTargetCard(defId: string, contributorId: string): PlayedCard | null
   const played: PlayedCard = { defId, contributor: contributorId };
   if (def.targeting === 'none') return played;
 
-  if (defId === 'mark_target') {
-    // Default: opposing-team enemy with the highest HP (lowest-id tiebreak).
-    const opp = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
-    const enemies = state.units.filter((u) => u.team === opp && u.state === 'alive');
-    enemies.sort((a, b) => (b.hp !== a.hp ? b.hp - a.hp : a.id < b.id ? -1 : 1));
-    if (enemies.length === 0) return null;
-    played.target = enemies[0].id;
-    return played;
-  }
+  // Pass 9 m3 — Mark Target no longer needs a target: the contributor's
+  // first-spotted enemy is the mark. Fall through to the untargeted return.
   if (defId === 'setup_play' || defId === 'hold_the_line') {
     // Default hex = the contributor's current position (will be overridden by
     // strategy in applyStrategies, but commitCards' handler then sets it back).

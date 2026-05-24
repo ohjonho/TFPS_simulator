@@ -410,7 +410,60 @@ export function stepTick(state: GameState): GameState {
   const currVisibleByTeam = visibleEnemiesByTeam(postMove, visibility);
   const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam, tick);
 
-  return { ...postMove, visibility, tracking, ghosts };
+  // Pass 9 m3 — Mark Target trigger: for each unit with markTargetPending,
+  // if their per-unit visibility includes a live enemy this tick, register a
+  // mark_target effect on that enemy and clear the pending flag. First enemy
+  // wins (stable: lowest enemy id on tied distance — `pickFiringTarget`
+  // semantics). Reads post-move visibility so it fires the tick the contributor
+  // first sees an enemy.
+  const triggeredEffects = triggerPendingMarks(working, post.perUnit, postMove.cardEffects, tick);
+
+  return {
+    ...postMove,
+    visibility,
+    tracking,
+    ghosts,
+    cardEffects: triggeredEffects,
+  };
+}
+
+// Pass 9 m3 — convert pending Mark Target flags into active mark_target
+// effects when the contributor first spots an enemy this round. Pure: returns
+// a new cardEffects array; mutates each triggered contributor's cardFlags in
+// place (the same `working` array stepTick is about to commit).
+function triggerPendingMarks(
+  units: Unit[],
+  perUnitVis: Record<string, Set<string>>,
+  cardEffects: readonly import('./types.ts').ActiveCardEffect[],
+  tick: number,
+): import('./types.ts').ActiveCardEffect[] {
+  let next: import('./types.ts').ActiveCardEffect[] = [...cardEffects];
+  for (const u of units) {
+    if (u.state !== 'alive') continue;
+    if (!u.cardFlags.markTargetPending) continue;
+    const vis = perUnitVis[u.id];
+    if (!vis) continue;
+    // Find first visible enemy: stable order = enemy.id ascending.
+    const enemies = units
+      .filter((e) => e.team !== u.team && e.state === 'alive' && vis.has(`${e.pos.col},${e.pos.row}`))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    if (enemies.length === 0) continue;
+    const target = enemies[0];
+    u.cardFlags = { ...u.cardFlags, markTargetPending: false };
+    // Only one mark per team active at a time. Replace if the team already has
+    // one (later contributors would otherwise spam effects).
+    next = next.filter((e) => !(e.kind === 'mark_target' && e.team === u.team));
+    next = [
+      ...next,
+      {
+        kind: 'mark_target',
+        team: u.team,
+        targetId: target.id,
+        revealUntilTick: tick + CARD_EFFECTS.markTarget.revealTicks,
+      },
+    ];
+  }
+  return next;
 }
 
 // Pass 8 — apply per-tick card effects after damage resolution. Mutates the

@@ -184,6 +184,16 @@ export function computeVisibility(state: GameState): VisibilityComputation {
       visibility[fx.team].add(hexKey(u.pos));
     }
   }
+  // Pass 9 m3 — Mark Target reveal: while revealUntilTick > state.tick, add
+  // the marked enemy's hex to the marking team's visibility set (per-enemy
+  // analogue of Tactical Scan).
+  for (const fx of state.cardEffects) {
+    if (fx.kind !== 'mark_target') continue;
+    if ((fx.revealUntilTick ?? -1) <= state.tick) continue;
+    const target = unitsById[fx.targetId];
+    if (!target || target.state !== 'alive') continue;
+    visibility[fx.team].add(hexKey(target.pos));
+  }
   return { visibility, perUnit };
 }
 

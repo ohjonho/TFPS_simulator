@@ -127,7 +127,11 @@ export type PlayedCard = {
 // Round-scoped non-buff effects card handlers register. Read by combat/vision/
 // tick each step; cleared on round start.
 export type ActiveCardEffect =
-  | { kind: 'mark_target'; team: Team; targetId: string }
+  // Pass 9 m3 — mark_target gained `revealUntilTick`: while > tick, vision adds
+  // the marked enemy's hex to the marking team's visibility set even without
+  // LoS. The mark itself (HR/HS bonus) lasts the whole round until startRound
+  // clears state.cardEffects.
+  | { kind: 'mark_target'; team: Team; targetId: string; revealUntilTick?: number }
   | { kind: 'guardian_aura'; team: Team; sourceId: string; radius: number }
   | { kind: 'tactical_scan'; team: Team; expiresAtTick: number }
   | { kind: 'hold_the_line'; team: Team; anchorHex: HexCoord; anchorId: string }
@@ -180,6 +184,11 @@ export type CardFlags = {
   spearhead?: boolean;
   // Spearhead allies wait this many ticks before they start moving.
   delayedMoveUntilTick?: number;
+  // Pass 9 m3 — Mark Target rework. Set on the contributor at round start;
+  // the tick loop watches for their first tracked enemy and converts the
+  // pending flag into an active mark_target effect on that enemy, then
+  // clears this flag for the rest of the round.
+  markTargetPending?: boolean;
   setupPlayBonus?: boolean;
   holdTheLineAnchor?: HexCoord;
   // Set when an ally reaches a Hold-the-Line anchor; shots vs this unit forced
