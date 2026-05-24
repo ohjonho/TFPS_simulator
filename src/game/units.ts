@@ -40,5 +40,6 @@ export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
     hero: 'Angelic',
     modifiers: { aggression: 50, weaponHandling: 50, offPosition: false, retreatThresholdMod: 0 },
     cardFlags: {},
+    directives: [],
   }));
 }

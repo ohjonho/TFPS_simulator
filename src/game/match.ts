@@ -72,6 +72,8 @@ export function startRound(state: GameState): GameState {
       },
       // Pass 8: all card flags are per-round — clear at round start.
       cardFlags: {},
+      // Pass 9: directives are per-round; populated by applyStrategies/commitCards.
+      directives: [],
     };
     nextUnits.push(fresh);
     nextMoves[u.id] = blankMove(fresh.pos);

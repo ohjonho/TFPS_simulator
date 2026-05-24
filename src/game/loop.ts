@@ -84,6 +84,9 @@ export class PlaybackLoop {
         maxHp: init.maxHp,
         state: init.state,
         cardFlags: { ...init.cardFlags },
+        // Pass 9: restore round-start directives so Replay re-uses the same
+        // behaviors (they don't change during a tick today, but be explicit).
+        directives: [...init.directives],
       };
     });
     const resetMoves: Record<string, MoveState> = {};

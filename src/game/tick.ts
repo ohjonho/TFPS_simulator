@@ -28,6 +28,7 @@ import {
   shouldEngage,
   shouldRetreat,
 } from './unit-ai.ts';
+import { evaluateDirectives } from './directives.ts';
 import { resolveShot } from './combat.ts';
 import type { ShotContextInput } from './combat.ts';
 import { createRng } from './rng.ts';
@@ -85,16 +86,31 @@ export function stepTick(state: GameState): GameState {
     const retreat = shouldRetreat(u).retreat;
     const engage = shouldEngage(u, visibleEnemies);
 
+    // Pass 9 — evaluate per-unit directives. Survival (retreat) still trumps;
+    // otherwise a directive can override engagement (suppressEngage), supply a
+    // movement target, or set facing. Legacy default-behavior tree fires only
+    // when the directive returns no useful decision.
+    const directiveDecision = retreat ? null : evaluateDirectives(u, state, prevAi, visibleEnemies);
+    const directiveSuppressesEngage = directiveDecision?.suppressEngage === true;
+
     let mode: AiState['mode'];
     let firingTarget: string | null = null;
     let effectiveTarget: HexCoord | null = null;
+    // Pass 9: directive-supplied facing override for hold modes (applied below
+    // when face-on-hold runs).
+    let directiveFacing: HexCoord | null = directiveDecision?.facing ?? null;
 
     if (retreat) {
       mode = 'retreating';
       effectiveTarget = nearestWallRetreatHex(u, state.map);
-    } else if (engage.engage) {
+    } else if (engage.engage && !directiveSuppressesEngage) {
       mode = 'engaged';
       firingTarget = engage.targetId;
+    } else if (directiveDecision?.target) {
+      // Pass 9 — directive supplied a target. 'holding' when target === pos,
+      // else 'moving'. Bypasses the legacy region/push/rotation tree below.
+      effectiveTarget = directiveDecision.target;
+      mode = sameHex(directiveDecision.target, u.pos) ? 'holding' : 'moving';
     } else if (ticksSinceEnemySeen >= AI.resumeAfterTicks) {
       const region = state.targets[u.id];
       if (region && !sameHex(u.pos, region)) {
@@ -214,8 +230,11 @@ export function stepTick(state: GameState): GameState {
     // immediate threat — facing the spawn direction would point the wrong
     // way if the enemy is flanking).
     if (mode === 'holding') {
-      const track = state.tracking[u.id];
-      const threat = track ? track.lastKnownHex : enemySpawnForSide(u, state);
+      // Pass 9 — directive-supplied facing (e.g. hold_angle.facingHex) wins
+      // over the default threat-bearing logic.
+      const threat = directiveFacing
+        ?? state.tracking[u.id]?.lastKnownHex
+        ?? enemySpawnForSide(u, state);
       if (threat) u.facing = nearestFacing(u.pos, threat);
     }
 

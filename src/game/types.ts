@@ -78,6 +78,11 @@ export type Unit = {
   // Pass 8 — card-driven flags set at round start, cleared at round end.
   // All optional; unset = no card effect on this unit.
   cardFlags: CardFlags;
+  // Pass 9 — per-unit directives composing this unit's tactical behavior for
+  // the round. Set at round start by applyStrategies (strategy directives) +
+  // commitCards (card directives), cleared by startRound. Empty array = legacy
+  // default behavior tree (region move + cover-seek + rotation).
+  directives: Directive[];
 };
 
 // --- Pass 8: cards ---------------------------------------------------------
@@ -128,6 +133,37 @@ export type ActiveCardEffect =
   | { kind: 'hold_the_line'; team: Team; anchorHex: HexCoord; anchorId: string }
   | { kind: 'setup_play'; team: Team; allyId: string; expiresAtTick: number }
   | { kind: 'spearhead'; team: Team; vanguardId: string };
+
+// --- Pass 9: per-unit directives ------------------------------------------
+
+// A composable behavior the unit follows this round. Strategies + cards both
+// inject these. Pure data; evaluators live in `directives.ts`.
+//
+// `priority` resolves conflicts when multiple directives apply this tick;
+// higher priority wins. Convention: survival directives 90+, role-specific
+// 50-89, ambient/fallback 0-49.
+export type Directive =
+  | { kind: 'hold_angle'; priority: number; facingHex: HexCoord }
+  | { kind: 'safe_sniper'; priority: number; angleHex: HexCoord; repositionAfterShots: number; repositionRadius: number }
+  | { kind: 'rotate_on_team_contact'; priority: number; rotateToHex: HexCoord; watchAllies: string[]; delayTicks: number }
+  | { kind: 'trade_for'; priority: number; allyId: string; windowTicks: number }
+  | { kind: 'peek_and_retreat'; priority: number; peekHex: HexCoord; coverHex: HexCoord; cadenceTicks: number }
+  | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] };
+
+// What a directive evaluator returns when it applies this tick. tick.ts
+// merges these with the legacy default-behavior tree (directive wins on each
+// field it provides; tree fills the rest).
+export type DirectiveDecision = {
+  // Override the unit's movement target this tick.
+  target?: HexCoord;
+  // Override the unit's facing (for hold modes); ignored if movement applies.
+  facing?: HexCoord;
+  // Don't engage even if enemies are visible (sniper waits for the right
+  // moment; peek_and_retreat fires only when at peek hex).
+  suppressEngage?: boolean;
+  // For diagnostics: which directive produced this decision.
+  source?: Directive['kind'];
+};
 
 // Per-unit card flags. Mostly booleans set by handlers and read by combat/AI;
 // some carry numeric counters (e.g. delayedMoveUntilTick for Spearhead allies).
