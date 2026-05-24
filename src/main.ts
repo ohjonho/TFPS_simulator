@@ -203,6 +203,24 @@ function beginRound(): void {
   // Pass 8 — AI picks its card here (player's card is the UI-held playerCard).
   const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
   next = commitCards(next, state.playerTeam, playerCard, aiTeam, aiCard, pickRng);
+  // Pass 9 m1 — round-start summary in the kill feed so the player can see
+  // what the AI picked without devtools.
+  next = {
+    ...next,
+    events: [
+      ...next.events,
+      {
+        tick: next.tick,
+        type: 'strategyPick',
+        round: next.round,
+        playerTeam: next.playerTeam,
+        playerStrategy: next.playerStrategy,
+        aiStrategy: next.aiStrategy,
+        playerCardDefId: playerCard?.defId ?? null,
+        aiCardDefId: aiCard?.defId ?? null,
+      },
+    ],
+  };
   initialUnitsById = snapshotUnits(next.units);
   setState(next);
   // Clear UI selection so the next planning phase starts fresh.

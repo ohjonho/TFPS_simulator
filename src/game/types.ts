@@ -251,6 +251,11 @@ export type AiState = {
   shotsThisEngagement: number;
   // Tick of this unit's last shot (Trader: ally fired recently).
   lastFiredTick: number;
+  // Pass 9 m2 — sticky-engage counter: ticks the unit has held `engaged` mode
+  // despite no visible enemy this tick. Lets a unit briefly persist through
+  // LoS interruptions (enemy steps behind a wall) instead of flip-flopping
+  // between engaged/moving. Resets to 0 when an enemy is visible again.
+  engageStickyTicks: number;
 };
 
 // Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.
@@ -285,6 +290,18 @@ export type GameEvent =
       type: 'safeWindowBlock';
       shooter: string;
       target: string;
+    }
+  | {
+      // Pass 9 m1 — round-start summary entry. Surfaces both teams' picks in
+      // the kill feed so the player can tell what the AI did each round.
+      tick: number;
+      type: 'strategyPick';
+      round: number;
+      playerTeam: Team;
+      playerStrategy: string | null;
+      aiStrategy: string | null;
+      playerCardDefId: string | null;
+      aiCardDefId: string | null;
     };
 
 export type GameState = {

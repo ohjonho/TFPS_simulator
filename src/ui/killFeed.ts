@@ -30,9 +30,22 @@ export function killFeedLines(state: GameState, max = 14): string[] {
       lines.push(formatCardPlay(e));
     } else if (e.type === 'safeWindowBlock') {
       lines.push(`T:${e.tick} — ${e.shooter} → ${e.target} [WARDEN BLOCK]`);
+    } else if (e.type === 'strategyPick') {
+      lines.push(formatStrategyPick(e));
     }
   }
   return lines.slice(-max);
+}
+
+function formatStrategyPick(e: Extract<GameEvent, { type: 'strategyPick' }>): string {
+  const oppTeam = e.playerTeam === 'defenders' ? 'attackers' : 'defenders';
+  const youLabel = e.playerTeam === 'defenders' ? 'D' : 'A';
+  const oppLabel = oppTeam === 'defenders' ? 'D' : 'A';
+  const youCard = e.playerCardDefId ? cardById(e.playerCardDefId)?.name ?? e.playerCardDefId : null;
+  const oppCard = e.aiCardDefId ? cardById(e.aiCardDefId)?.name ?? e.aiCardDefId : null;
+  const youPart = `${youLabel}: ${e.playerStrategy ?? '—'}${youCard ? ` + «${youCard}»` : ''}`;
+  const oppPart = `${oppLabel}: ${e.aiStrategy ?? '—'}${oppCard ? ` + «${oppCard}»` : ''}`;
+  return `── R${e.round} — ${youPart} | ${oppPart}`;
 }
 
 function formatCardPlay(e: Extract<GameEvent, { type: 'cardPlay' }>): string {

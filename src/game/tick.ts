@@ -39,6 +39,7 @@ import {
   FIRE_RATE,
   MIN_ROUND_TICKS_FOR_HOLD_END,
   ROTATE_AFTER_HOLD_TICKS,
+  STAY_ENGAGED_TICKS,
   TRAITS,
 } from './config.ts';
 import { hexDistance } from './hex.ts';
@@ -100,12 +101,30 @@ export function stepTick(state: GameState): GameState {
     // when face-on-hold runs).
     let directiveFacing: HexCoord | null = directiveDecision?.facing ?? null;
 
+    // Pass 9 m2 — sticky-engage: if last tick was engaged but no enemy visible
+    // this tick, persist `engaged` for up to STAY_ENGAGED_TICKS so the unit
+    // doesn't flip-flop when an enemy steps behind a wall for one tick. The
+    // firing loop already no-ops when firingTarget is missing/dead, so this is
+    // a pure mode-stickiness change — no extra shots fire.
+    const stickyEngage =
+      !retreat &&
+      !engage.engage &&
+      !directiveSuppressesEngage &&
+      prevAi.mode === 'engaged' &&
+      prevAi.engageStickyTicks < STAY_ENGAGED_TICKS;
+
     if (retreat) {
       mode = 'retreating';
       effectiveTarget = nearestWallRetreatHex(u, state.map);
     } else if (engage.engage && !directiveSuppressesEngage) {
       mode = 'engaged';
       firingTarget = engage.targetId;
+    } else if (stickyEngage) {
+      // Keep the previous engagement alive briefly. Keep the prior firingTarget
+      // if it's still alive (combat will skip the shot if not), so a unit that
+      // re-acquires next tick continues a clean engagement.
+      mode = 'engaged';
+      firingTarget = prevAi.firingTarget;
     } else if (directiveDecision?.target) {
       // Pass 9 — directive supplied a target. 'holding' when target === pos,
       // else 'moving'. Bypasses the legacy region/push/rotation tree below.
@@ -240,6 +259,13 @@ export function stepTick(state: GameState): GameState {
 
     const stationaryTicks = sameHex(prevPos[u.id], u.pos) ? prevAi.stationaryTicks + 1 : 0;
     const engagementTicks = mode === 'engaged' ? prevAi.engagementTicks + 1 : 0;
+    // Pass 9 m2 — sticky-engage counter: increments when engaged-without-sight
+    // (carrying or starting the sticky window); resets to 0 the moment a real
+    // engagement (engage.engage) reacquires, or when leaving `engaged` entirely.
+    const engageStickyTicks =
+      mode === 'engaged'
+        ? (engage.engage ? 0 : prevAi.engageStickyTicks + 1)
+        : 0;
     newAi[u.id] = {
       mode,
       firingTarget,
@@ -250,6 +276,7 @@ export function stepTick(state: GameState): GameState {
       // Reset shot count when not engaged; fire loop increments it.
       shotsThisEngagement: mode === 'engaged' ? prevAi.shotsThisEngagement : 0,
       lastFiredTick: prevAi.lastFiredTick,
+      engageStickyTicks,
     };
   }
 
@@ -497,6 +524,7 @@ function freshAi(): AiState {
     engagementTicks: 0,
     shotsThisEngagement: 0,
     lastFiredTick: -999,
+    engageStickyTicks: 0,
   };
 }
 

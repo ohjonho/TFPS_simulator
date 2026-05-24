@@ -116,5 +116,6 @@ export function initialAi(): AiState {
     engagementTicks: 0,
     shotsThisEngagement: 0,
     lastFiredTick: -999,
+    engageStickyTicks: 0,
   };
 }

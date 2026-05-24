@@ -242,6 +242,12 @@ export const MIN_ROUND_TICKS_FOR_HOLD_END = 20;
 // uniform [0, AI_STRATEGY_EXPLORATION) is added on top of `1 + wins`.
 export const AI_STRATEGY_EXPLORATION = 2;
 
+// Pass 9 m2 — sticky-engage window. Once a unit transitions to `engaged`, it
+// stays in that mode for up to this many ticks of no visible enemy before
+// reverting to the default behavior tree. Prevents the 1-tick flip-flop when
+// an engaged enemy briefly steps behind a wall.
+export const STAY_ENGAGED_TICKS = 2;
+
 // --- Pass 8: cards (spec §15) --------------------------------------------
 // Every per-card tunable. Card handlers read these — no magic numbers in the
 // handler bodies. Hit-pp values are additive to the effective-stat sum in
