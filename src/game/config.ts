@@ -144,10 +144,18 @@ export const RANGE = { shortMax: 4, mediumMax: 10 } as const;
 
 // Base hit % by weapon × range band (spec §5.3). Snipers split moving vs
 // stationary; the table is keyed by an effective "row" the combat code selects.
+// Pass A6 recalibration — reduce ceiling clipping. The 95% HIT_CLAMP cap was
+// silently absorbing all the high-aim / trait bonuses for two specific cells
+// (sniper-stationary-long and shotgun-short), making attribute and trait
+// investment invisible at exactly the engagements that should reward them.
+// Lowered both 90 → 80 so high-aim attackers grow into headroom rather than
+// defenders sitting permanently at the cap. Net effect: long-range sniper
+// holds are still dominant (80% base) but not unkillable; attribute variance
+// asymmetrically benefits attackers a bit more.
 export const HIT_TABLE: Record<string, Record<RangeBand, number>> = {
-  shotgun: { short: 90, medium: 30, long: 5 },
+  shotgun: { short: 80, medium: 30, long: 5 },
   rifle: { short: 70, medium: 75, long: 55 },
-  sniperStationary: { short: 30, medium: 60, long: 90 },
+  sniperStationary: { short: 30, medium: 60, long: 80 },
   sniperMoving: { short: 15, medium: 30, long: 45 },
 };
 
