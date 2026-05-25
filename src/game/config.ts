@@ -205,7 +205,15 @@ export const MODIFIERS = {
 // formulas come online in A2-A4; performance-stats config in A5.
 export const ATTRIBUTES = {
   generation: {
-    distribution: 'normal' as 'normal' | 'uniform',
+    // 'flat': every attribute = 50 (deterministic, removes attribute RNG as
+    //   a confound; the v0 debugging default).
+    // 'normal': truncated-normal sample, the design-doc default — used for
+    //   variety once the rest of the sim is balanced.
+    // 'uniform': uniform in [min, max].
+    // v1 plan: per-unit base attributes will live on the roster (35-45 range
+    //   for rookies with a standout, training raises individuals into the
+    //   60s-80s over time). Generation here will then only fill missing slots.
+    distribution: 'flat' as 'flat' | 'normal' | 'uniform',
     mean: 50,
     stdDev: 12,
     min: 10,

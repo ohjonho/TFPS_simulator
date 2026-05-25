@@ -48,9 +48,9 @@ function sampleUniform(rng: Rng, min: number, max: number): number {
 
 function sampleAttribute(rng: Rng): number {
   const g = ATTRIBUTES.generation;
-  return g.distribution === 'normal'
-    ? sampleNormal(rng, g.mean, g.stdDev, g.min, g.max)
-    : sampleUniform(rng, g.min, g.max);
+  if (g.distribution === 'flat') return g.mean;  // deterministic baseline
+  if (g.distribution === 'normal') return sampleNormal(rng, g.mean, g.stdDev, g.min, g.max);
+  return sampleUniform(rng, g.min, g.max);
 }
 
 // Pure: returns a fresh Attributes record. Deterministic given the RNG.

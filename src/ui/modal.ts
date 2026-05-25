@@ -16,12 +16,15 @@ export function showModal(title: string, body: string, actions: ModalAction[]): 
   const panel = document.createElement('div');
   panel.style.cssText =
     'background:#1c2230;color:#eee;padding:20px 24px;border-radius:8px;' +
-    'min-width:320px;max-width:480px;border:1px solid #2a2f3a;';
+    'min-width:320px;max-width:820px;max-height:90vh;overflow-y:auto;' +
+    'border:1px solid #2a2f3a;';
   const h = document.createElement('h2');
   h.textContent = title;
   h.style.cssText = 'margin:0 0 8px;font-size:18px;color:#facc15;';
-  const p = document.createElement('p');
-  p.textContent = body;
+  // Pass A5 — round-end + match-end bodies are rich HTML (stat tables,
+  // SVG sparklines). Use innerHTML; callers are internal so no XSS risk.
+  const p = document.createElement('div');
+  p.innerHTML = body;
   p.style.cssText = 'margin:0 0 18px;font-size:13px;line-height:1.5;';
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
