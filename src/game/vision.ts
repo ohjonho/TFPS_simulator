@@ -24,7 +24,7 @@ import type {
 } from './types.ts';
 import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
 import { neighbors } from './pathfind.ts';
-import { VISION } from './config.ts';
+import { ATTRIBUTES, VISION } from './config.ts';
 
 // --- Keys / angle helpers ---------------------------------------------------
 
@@ -74,6 +74,13 @@ function coneHalfRad(unit: Unit, state: GameState): number {
   if (unit.skillTrait === 'Eagle Eye') {
     halfDeg += VISION.eagleEyeBonusHalfDeg;
   }
+  // Pass A4 — Awareness widens/narrows the half-cone, capped to ±coneCap deg.
+  // Neutral at 50; at the generation tails (10 / 90) the cap kicks in well
+  // before the raw value gets extreme.
+  const awCfg = ATTRIBUTES.formulas.awareness;
+  const rawAw = (unit.attributes.awareness - 50) * awCfg.coneMultiplier;
+  const awBonus = Math.max(-awCfg.coneCap, Math.min(awCfg.coneCap, rawAw));
+  halfDeg += awBonus;
   return (halfDeg * Math.PI) / 180;
 }
 
@@ -297,6 +304,10 @@ export function visibleEnemiesByTeam(
 // preMoveUnits supply each newly-lost enemy's last-seen (pre-movement) hex.
 // prevVisibleByTeam is end-of-T-1; currVisibleByTeam is end-of-T.
 // Pass 9 m4: Last Stand's ghost-skip branch is gone with Last Stand itself.
+// Pass A4: ghost duration on creation is adjusted ±1 by the spotting team's
+// best awareness (the team's collective vigilance is bounded by its most
+// aware alive member). Ghosts are team-shared, so a per-team max is the
+// cleanest mapping of the per-unit attribute to the shared state.
 export function updateGhosts(
   preMoveUnits: readonly Unit[],
   prevGhosts: Record<Team, Record<string, GhostEntry>>,
@@ -309,9 +320,32 @@ export function updateGhosts(
   const preById: Record<string, Unit> = {};
   for (const u of preMoveUnits) preById[u.id] = u;
 
+  // Pass A4 — per-team max awareness among alive members. Empty teams fall
+  // back to the baseline 50 so the threshold logic produces the default ticks.
+  const awCfg = ATTRIBUTES.formulas.awareness;
+  const teamMaxAwareness: Record<Team, number> = { defenders: 50, attackers: 50 };
+  for (const team of teams) {
+    let max = -Infinity;
+    for (const u of preMoveUnits) {
+      if (u.team === team && u.state === 'alive') {
+        if (u.attributes.awareness > max) max = u.attributes.awareness;
+      }
+    }
+    if (max !== -Infinity) teamMaxAwareness[team] = max;
+  }
+
   for (const team of teams) {
     const prev = prevGhosts[team];
     const next: Record<string, GhostEntry> = {};
+
+    // Pass A4 — effective ghost duration for newly-created ghosts this tick.
+    // +1 above the high threshold, -1 below the low threshold; minimum 1 tick
+    // so a ghost is never created already-expired.
+    const aw = teamMaxAwareness[team];
+    let teamGhostTicks: number = VISION.ghostTicks;
+    if (aw >= awCfg.ghostHighThreshold) teamGhostTicks += 1;
+    else if (aw <= awCfg.ghostLowThreshold) teamGhostTicks -= 1;
+    teamGhostTicks = Math.max(1, teamGhostTicks);
 
     // Carry existing ghosts forward, decrementing.
     for (const enemyId of Object.keys(prev)) {
@@ -323,7 +357,7 @@ export function updateGhosts(
       if (currVisibleByTeam[team].has(enemyId)) continue;
       const enemy = preById[enemyId];
       if (!enemy) continue;
-      next[enemyId] = { hex: enemy.pos, ticksRemaining: VISION.ghostTicks };
+      next[enemyId] = { hex: enemy.pos, ticksRemaining: teamGhostTicks };
     }
     // Currently visible: clear any ghost (re-sighted).
     for (const enemyId of currVisibleByTeam[team]) delete next[enemyId];

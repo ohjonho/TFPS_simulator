@@ -6,6 +6,7 @@
 
 import type { Facing, HexCoord, MapDefinition } from './types.ts';
 import { hexDistance } from './hex.ts';
+import { MOVE } from './config.ts';
 
 // Offset neighbor deltas [dcol, drow] for odd-r layout, in canonical order
 // E, NE, NW, W, SW, SE (index = Facing). Pointy-top has no due-N/S neighbor;
@@ -33,6 +34,23 @@ export function passableAt(map: MapDefinition, hex: HexCoord): boolean {
 
 export function neighbors(hex: HexCoord): HexCoord[] {
   return neighborDeltas(hex.row).map(([dc, dr]) => ({ col: hex.col + dc, row: hex.row + dr }));
+}
+
+// Pass B — cover-aware step cost. A hex is "cover-adjacent" if any of its six
+// neighbors is a wall or cover cell. The A* g-cost adds a small penalty for
+// hexes that are NOT cover-adjacent — making units naturally route through
+// cover-lined paths when they exist, without disallowing any route.
+export function isCoverAdjacent(map: MapDefinition, hex: HexCoord): boolean {
+  for (const nb of neighbors(hex)) {
+    if (!inBounds(map, nb)) continue;
+    const t = map.grid[nb.row][nb.col];
+    if (t === 'wall' || t === 'cover') return true;
+  }
+  return false;
+}
+
+function coverStepCost(map: MapDefinition, hex: HexCoord): number {
+  return 1 + (isCoverAdjacent(map, hex) ? 0 : MOVE.coverPathPreference);
 }
 
 // Facing index (0..5) from `from` to an adjacent `to`, or null if not adjacent.
@@ -92,7 +110,8 @@ export function findPath(
       if (!passableAt(map, nb)) continue;
       const nbKey = key(nb);
       if (avoid && nbKey !== goalKey && avoid.has(nbKey)) continue;
-      const tentativeG = curG + 1;
+      // Pass B — cover-aware step cost (1 + small penalty when no cover/wall adjacent).
+      const tentativeG = curG + coverStepCost(map, nb);
       if (tentativeG < (gScore.get(nbKey) ?? Infinity)) {
         cameFrom.set(nbKey, current);
         gScore.set(nbKey, tentativeG);
@@ -147,7 +166,8 @@ export function findPerimeterPath(
       if (!passableAt(map, nb)) continue;
       const nbKey = key(nb);
       if (avoid && nbKey !== goalKey && avoid.has(nbKey)) continue;
-      const tentativeG = curG + stepCost(nb);
+      // Pass B — compose perimeter cost with cover-aware cost.
+      const tentativeG = curG + stepCost(nb) + (isCoverAdjacent(map, nb) ? 0 : MOVE.coverPathPreference);
       if (tentativeG < (gScore.get(nbKey) ?? Infinity)) {
         cameFrom.set(nbKey, current);
         gScore.set(nbKey, tentativeG);

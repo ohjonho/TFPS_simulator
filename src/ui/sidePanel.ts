@@ -17,6 +17,10 @@ export type SidePanelCallbacks = {
   // Currently-selected card def id for the player (null = no card). Read so
   // the UI can highlight the active card; lives in main.ts UI state, not state.
   selectedCardId: string | null;
+  // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
+  // events here so the floating attributes panel can pop in planning phase
+  // (canvas hover already covers resolution + planning units on the map).
+  onHoverUnit: (unitId: string | null) => void;
 };
 
 export function renderSidePanel(
@@ -46,6 +50,16 @@ export function renderSidePanel(
     const skipBtn = host.querySelector<HTMLButtonElement>('button[data-card-skip]');
     if (skipBtn) skipBtn.addEventListener('click', () => cb.onPickCard(null));
   }
+
+  // Pass A1: roster-row hover → drive the floating attributes panel. Works in
+  // both phases (the planning roster lives in this panel; in resolution the
+  // selector finds nothing and the listeners are simply absent).
+  host.querySelectorAll<HTMLElement>('li[data-roster-unit]').forEach((li) => {
+    const id = li.getAttribute('data-roster-unit');
+    if (!id) return;
+    li.addEventListener('mouseenter', () => cb.onHoverUnit(id));
+    li.addEventListener('mouseleave', () => cb.onHoverUnit(null));
+  });
 }
 
 // --- Planning phase: rosters + strategy menu ------------------------------
@@ -68,7 +82,7 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   const rows = teamUnits.map((u) => {
     const off = u.modifiers.offPosition ? ' <span class="warn">⚠off-pos</span>' : '';
     const dead = u.state === 'dead' ? ' DEAD' : '';
-    return `<li><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
+    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
   }).join('');
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
@@ -138,10 +152,13 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>Hero</dt><dd>${unit.hero}</dd>
       <dt>Skill trait</dt><dd>${unit.skillTrait ?? '—'}</dd>
       <dt>Behavioral</dt><dd>${unit.behavioralTrait ?? '—'}</dd>
-      <dt>Aggr / Hand</dt><dd>${unit.modifiers.aggression} / ${unit.modifiers.weaponHandling}</dd>
+      <dt>Aggr</dt><dd>${unit.modifiers.aggression}</dd>
       <dt>Hex</dt><dd>(${col}, ${row})</dd>
     </dl>
   `;
+  // Pass A1: attributes panel renders in its own floating overlay (top-right
+  // of canvas area), driven by the same hover state used here. See
+  // src/ui/attributesPanel.ts.
 }
 
 function killFeedHtml(state: GameState): string {

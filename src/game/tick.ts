@@ -9,7 +9,10 @@ import type {
   GameEvent,
   GameState,
   HexCoord,
+  HexKey,
   MoveState,
+  PlantState,
+  Team,
   Unit,
 } from './types.ts';
 import { advanceUnit } from './movement.ts';
@@ -36,8 +39,11 @@ import {
   AGGRESSION_PUSH_THRESHOLD,
   AI,
   CARD_EFFECTS,
+  DEFUSE_TICKS,
+  DETONATION_TICKS,
   FIRE_RATE,
   MIN_ROUND_TICKS_FOR_HOLD_END,
+  PLANT_TICKS,
   ROTATE_AFTER_HOLD_TICKS,
   STAY_ENGAGED_TICKS,
   TRAITS,
@@ -181,6 +187,27 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
+    // Pass B — defender retake on plant. Once the spike is down, every
+    // alive defender not actively engaged re-targets to the planted site
+    // so someone actually arrives to defuse (matrix run after initial
+    // Pass B showed zero defuses across 450 rounds — defenders just stayed
+    // in position). Engaged defenders keep shooting (the enemy may be the
+    // one blocking the plant zone). Retreat (HP 1) still wins.
+    if (state.plant.planted && !retreat && mode !== 'engaged') {
+      const defTeam: Team = state.teamSide.defenders === 'defender' ? 'defenders' : 'attackers';
+      if (u.team === defTeam) {
+        const site = state.plant.planted.site;
+        const plantHexes = site === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
+        if (plantHexes.length > 0) {
+          const retakeTarget = plantHexes[Math.floor(plantHexes.length / 2)];
+          if (!sameHex(u.pos, retakeTarget)) {
+            mode = 'moving';
+            effectiveTarget = retakeTarget;
+          }
+        }
+      }
+    }
+
     // Pass 7.6 cover-seek: if we'd still hold, see if a neighbor hex offers
     // better defensive geometry (wall- or cover-adjacent). Shuffle there if
     // so, and commit the cover hex as the unit's region target so subsequent
@@ -235,6 +262,20 @@ export function stepTick(state: GameState): GameState {
         }
         u.pos = result.pos;
         u.facing = result.facing;
+        // Pass B — threat-aware facing override. A moving unit shouldn't
+        // stare at the wall it's pathing around; the cone should point at
+        // what matters tactically. Priority: directive's hold-angle facing
+        // (e.g. safe_sniper looks down a lane) → tracked enemy bearing →
+        // overall destination (so cone leads the path) → movement direction
+        // (current fallback). Keeps cones useful while units navigate.
+        const tracked = state.tracking[u.id]?.lastKnownHex;
+        if (directiveFacing) {
+          u.facing = nearestFacing(u.pos, directiveFacing);
+        } else if (tracked) {
+          u.facing = nearestFacing(u.pos, tracked);
+        } else if (effectiveTarget && !sameHex(u.pos, effectiveTarget)) {
+          u.facing = nearestFacing(u.pos, effectiveTarget);
+        }
         nextMoves[u.id] = result.move;
       }
       // Still blocked? The unit stays this tick; recompute again next tick.
@@ -303,6 +344,14 @@ export function stepTick(state: GameState): GameState {
     }
     // Engaged units don't move, so the shooter is stationary this tick.
     const stationary = sameHex(prevPos[u.id], u.pos);
+    // Pass B — peeker's advantage: was the target's hex in the shooter's
+    // PREVIOUS-tick visibility set? If not, the shooter is reacting to a
+    // newly-appeared target and the first shot takes a small HR penalty.
+    // Symmetric on first sight, but defenders pay it more often in practice
+    // (attackers walking into cones >> attackers ambushing defenders).
+    const prevShooterVis = state.prevPerUnitVisible[u.id];
+    const targetHexKey: HexKey = `${target.pos.col},${target.pos.row}`;
+    const firstSightShot = !prevShooterVis || !prevShooterVis.has(targetHexKey);
     const ctxInput: ShotContextInput = {
       stationary,
       stationaryTicks: ai.stationaryTicks,
@@ -312,6 +361,7 @@ export function stepTick(state: GameState): GameState {
       lastAlive: aliveTeamCount(working, u.team) === 1,
       adjacentToWall: isWallAdjacent(u.pos, state),
       ticksIntoRound: tick,
+      firstSightShot,
     };
     const shot = resolveShot(u, target, state.map, ctxInput, state.buffs[u.id] ?? [], state.cardEffects, tick, rng);
     if (shot.hit) {
@@ -447,13 +497,133 @@ export function stepTick(state: GameState): GameState {
   // first sees an enemy.
   const triggeredEffects = triggerPendingMarks(working, post.perUnit, postMove.cardEffects, tick);
 
+  // Pass B — spike-plant update on the post-move state. May set roundResult
+  // (detonation → attackers win, defuse → defenders win) and push plant
+  // lifecycle events into the kill feed.
+  const plantUpdate = updatePlantState(
+    { ...postMove, units: working },
+    tick,
+  );
+
+  // Pass B — snapshot post-move per-unit visibility for next tick's
+  // first-sight (peeker's advantage) check. ReadonlySet copies are cheap at
+  // 9 units × small cone sizes.
+  const nextPrevVisible: Record<string, ReadonlySet<HexKey>> = {};
+  for (const id of Object.keys(post.perUnit)) {
+    nextPrevVisible[id] = new Set(post.perUnit[id]);
+  }
+
   return {
     ...postMove,
     visibility,
     tracking,
     ghosts,
     cardEffects: triggeredEffects,
+    plant: plantUpdate.plant,
+    events: [...postMove.events, ...plantUpdate.events],
+    roundResult: plantUpdate.roundResult ?? postMove.roundResult,
+    prevPerUnitVisible: nextPrevVisible,
   };
+}
+
+// Pass B — spike-plant update. Pure(ish): returns the next PlantState plus
+// any plant/defuse/detonate events and an optional roundResult winner. The
+// caller merges these into the returned state. Uses post-move positions so
+// "did this attacker arrive on the plant hex this tick?" works correctly.
+type PlantUpdate = {
+  plant: PlantState;
+  events: GameEvent[];
+  roundResult: { winner: Team } | null;
+};
+function updatePlantState(state: GameState, tick: number): PlantUpdate {
+  const events: GameEvent[] = [];
+  let roundResult: { winner: Team } | null = null;
+  const map = state.map;
+
+  // Per-site plant-hex sets keyed by "col,row" for O(1) lookup.
+  const plantHexes: Record<'A' | 'B', Set<string>> = {
+    A: new Set(map.sites.A.plantHexes.map((h) => `${h.col},${h.row}`)),
+    B: new Set(map.sites.B.plantHexes.map((h) => `${h.col},${h.row}`)),
+  };
+  const posKey = (u: Unit) => `${u.pos.col},${u.pos.row}`;
+
+  // Resolve teams from current side assignment.
+  const atkTeam: Team = state.teamSide.defenders === 'attacker' ? 'defenders' : 'attackers';
+  const defTeam: Team = atkTeam === 'defenders' ? 'attackers' : 'defenders';
+  const aliveAtk = state.units.filter((u) => u.team === atkTeam && u.state === 'alive');
+  const aliveDef = state.units.filter((u) => u.team === defTeam && u.state === 'alive');
+
+  let nextPlant: PlantState = state.plant;
+
+  if (state.plant.planted === null) {
+    // No spike down. Look for the first eligible planter — alive attacker on
+    // a plant hex of a site with no alive defender on the same site's plant
+    // hexes. Site A is checked before B for deterministic tie-break.
+    let chosen: { planter: Unit; site: 'A' | 'B' } | null = null;
+    for (const site of ['A', 'B'] as const) {
+      const defOnSite = aliveDef.some((d) => plantHexes[site].has(posKey(d)));
+      if (defOnSite) continue;
+      const planter = aliveAtk.find((a) => plantHexes[site].has(posKey(a)));
+      if (planter) { chosen = { planter, site }; break; }
+    }
+    if (chosen) {
+      const cur = state.plant.planting;
+      const continuing = cur !== null && cur.unitId === chosen.planter.id && cur.site === chosen.site;
+      if (continuing && tick - cur.startedAtTick >= PLANT_TICKS) {
+        nextPlant = {
+          planted: { site: chosen.site, plantedAtTick: tick },
+          planting: null,
+          defusing: null,
+        };
+        events.push({ tick, type: 'plant', unit: chosen.planter.id, site: chosen.site });
+      } else if (continuing) {
+        // Already counted; keep ticking — next tick will hit the threshold.
+        nextPlant = state.plant;
+      } else {
+        nextPlant = {
+          ...state.plant,
+          planting: { unitId: chosen.planter.id, site: chosen.site, startedAtTick: tick },
+        };
+      }
+    } else {
+      // No eligible planter this tick — reset any in-progress attempt.
+      nextPlant = { ...state.plant, planting: null };
+    }
+  } else {
+    // Spike is down. Check detonation FIRST so it always fires on the
+    // detonation tick (even if a defuse would also have completed).
+    const site = state.plant.planted.site;
+    if (tick - state.plant.planted.plantedAtTick >= DETONATION_TICKS) {
+      events.push({ tick, type: 'detonate', site });
+      roundResult = { winner: atkTeam };
+      nextPlant = state.plant; // keep planted record for kill-feed reference
+    } else {
+      // Defuse: alive defender on the site's plant hexes, no alive attacker
+      // on the same plant hexes (attackers block defuse).
+      const atkOnSite = aliveAtk.some((a) => plantHexes[site].has(posKey(a)));
+      const defuser = atkOnSite ? null : aliveDef.find((d) => plantHexes[site].has(posKey(d)));
+      if (defuser) {
+        const cur = state.plant.defusing;
+        const continuing = cur !== null && cur.unitId === defuser.id;
+        if (continuing && tick - cur.startedAtTick >= DEFUSE_TICKS) {
+          events.push({ tick, type: 'defuse', unit: defuser.id });
+          roundResult = { winner: defTeam };
+          nextPlant = { planted: null, planting: null, defusing: null };
+        } else if (continuing) {
+          nextPlant = state.plant;
+        } else {
+          nextPlant = {
+            ...state.plant,
+            defusing: { unitId: defuser.id, startedAtTick: tick },
+          };
+        }
+      } else {
+        nextPlant = { ...state.plant, defusing: null };
+      }
+    }
+  }
+
+  return { plant: nextPlant, events, roundResult };
 }
 
 // Pass 9 m3 — convert pending Mark Target flags into active mark_target

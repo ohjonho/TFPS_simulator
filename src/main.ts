@@ -36,6 +36,7 @@ import { render } from './render/renderer.ts';
 import type { DebugOverlay, RenderHover, Selection } from './render/renderer.ts';
 import { buildShell } from './ui/layout.ts';
 import { renderSidePanel } from './ui/sidePanel.ts';
+import { renderAttributesPanel } from './ui/attributesPanel.ts';
 import { renderBottomControls } from './ui/bottomControls.ts';
 import { renderTopBar } from './ui/topBar.ts';
 import { attachHover } from './ui/hover.ts';
@@ -116,6 +117,15 @@ function rerenderChrome() {
   const hovered = hover.unitId
     ? state.units.find((u) => u.id === hover.unitId) ?? null
     : null;
+  // Pass A1 — floating attributes panel: visible in both phases, driven by
+  // canvas hover OR planning-roster hover. Selection (click) pins it: a
+  // selected unit stays in the panel even when the cursor moves away, until
+  // the user clicks empty space or another unit.
+  const selected = selection.unitId
+    ? state.units.find((u) => u.id === selection.unitId) ?? null
+    : null;
+  const attrSubject = selected ?? hovered;
+  renderAttributesPanel(shell.attributesPanel, attrSubject, selected !== null);
   renderSidePanel(shell.sidePanel, hovered, state, {
     onPickStrategy: (id: string) => {
       setState({ ...state, playerStrategy: id });
@@ -137,6 +147,13 @@ function rerenderChrome() {
       rerenderAll();
     },
     selectedCardId: playerCard?.defId ?? null,
+    // Pass A1 — roster-item hover drives the attributes panel during planning.
+    // Updates the shared hover state then re-renders chrome only (no canvas
+    // change). Canvas hover continues to work as before.
+    onHoverUnit: (unitId: string | null) => {
+      hover.unitId = unitId;
+      rerenderChrome();
+    },
   });
   renderBottomControls(shell.bottomBar, state, {
     onPlayToggle: () => {
@@ -233,12 +250,26 @@ function handleRoundEnd(): void {
   state = processCardsAtRoundEnd(state, state.seed, state.round);
 
   const scoreLine = `Score: ${state.scores[state.playerTeam]} – ${state.scores[state.playerTeam === 'defenders' ? 'attackers' : 'defenders']}`;
+  // Pass B — distinguish plant outcomes from elimination/timeout. Walk the
+  // most recent events of the round backward to find the deciding action.
+  const recent = state.events.slice(-12).reverse();
+  let outcome = 'eliminate';
+  for (const e of recent) {
+    if (e.type === 'detonate') { outcome = 'detonate'; break; }
+    if (e.type === 'defuse') { outcome = 'defuse'; break; }
+    if (e.type === 'plant') break; // stop scanning past the most recent plant
+  }
+  const decided =
+    outcome === 'detonate' ? '— spike detonated' :
+    outcome === 'defuse'   ? '— spike defused' :
+    '';
+  const winLine = (label: string) => `${label} round ${state.round} ${decided}. ${scoreLine}`;
   const body =
     winner === 'draw'
       ? `Round ${state.round} ended in a draw. ${scoreLine}`
       : winner === state.playerTeam
-        ? `You win round ${state.round}. ${scoreLine}`
-        : `Opponent wins round ${state.round}. ${scoreLine}`;
+        ? winLine('You win')
+        : winLine('Opponent wins');
 
   showModal(`Round ${state.round}`, body, [
     {
@@ -356,11 +387,43 @@ if (import.meta.env.DEV) {
         ),
       }),
     getAttributes: () =>
-      state.units.map((u) => ({
-        id: u.id, team: u.team, weapon: u.weapon, role: u.role, preferredRole: u.preferredRole,
-        hero: u.hero, skill: u.skillTrait, behavioral: u.behavioralTrait,
-        aggression: u.modifiers.aggression, handling: u.modifiers.weaponHandling, offPos: u.modifiers.offPosition,
-      })),
+      state.units.map((u) => {
+        // Pass A3 — `handling` now reads the per-weapon attribute matching
+        // the unit's current loadout (was a flat modifier pre-A3).
+        const handling =
+          u.weapon === 'rifle'   ? u.attributes.rifleHandling :
+          u.weapon === 'shotgun' ? u.attributes.shotgunHandling :
+                                   u.attributes.sniperHandling;
+        return {
+          id: u.id, team: u.team, weapon: u.weapon, role: u.role, preferredRole: u.preferredRole,
+          hero: u.hero, skill: u.skillTrait, behavioral: u.behavioralTrait,
+          aggression: u.modifiers.aggression, handling, offPos: u.modifiers.offPosition,
+        };
+      }),
+    // --- Pass A1: 14-attribute ratings (0-100) ---
+    // getRatings() returns every unit's full Attributes record; getRatings(id)
+    // returns one. Use for sim verification + headless A/B tests.
+    getRatings: (id?: string) => {
+      if (id === undefined) {
+        return Object.fromEntries(state.units.map((u) => [u.id, u.attributes]));
+      }
+      return state.units.find((u) => u.id === id)?.attributes ?? null;
+    },
+    // setRating(id, 'aim', 90) or setRating(id, 'mapIQ.foundry', 80). Pinning
+    // ratings at runtime lets us verify A2-A4 hooks once they come online.
+    setRating: (id: string, key: string, value: number) => {
+      setState({
+        ...state,
+        units: state.units.map((u) => {
+          if (u.id !== id) return u;
+          const a = u.attributes;
+          if (key === 'mapIQ.foundry') return { ...u, attributes: { ...a, mapIQ: { ...a.mapIQ, foundry: value } } };
+          if (key === 'mapIQ.atoll')   return { ...u, attributes: { ...a, mapIQ: { ...a.mapIQ, atoll: value } } };
+          if (key in a && key !== 'mapIQ') return { ...u, attributes: { ...a, [key]: value } };
+          return u;
+        }),
+      });
+    },
     runSkirmish: (seed: number, opts?: unknown) => runSkirmish(seed, opts as Parameters<typeof runSkirmish>[1]),
     runBatch: (n = 50, opts?: unknown) => runBatch(n, opts as Parameters<typeof runBatch>[1]),
     // Pass 9 m5 — validation harness (strategy matrix + card sanity +
@@ -514,6 +577,7 @@ if (import.meta.env.DEV) {
         lastAlive: ctx.lastAlive ?? false,
         adjacentToWall: ctx.adjacentToWall ?? false,
         ticksIntoRound: ctx.ticksIntoRound ?? 99,
+        firstSightShot: ctx.firstSightShot ?? false,
       };
       let hits = 0; let headshots = 0; let band = '';
       for (let i = 0; i < n; i++) {

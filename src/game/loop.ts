@@ -120,6 +120,10 @@ export class PlaybackLoop {
       ai: resetAi,
       events: [],
       buffs: resetBuffs,
+      // Pass B — clear plant + prev-visibility on Replay so replays start
+      // from a known clean state.
+      plant: { planted: null, planting: null, defusing: null },
+      prevPerUnitVisible: {},
     };
     const { visibility } = computeVisibility(seed);
     this.cb.setState({ ...seed, visibility });
@@ -143,9 +147,22 @@ export class PlaybackLoop {
       return;
     }
     const after = stepTick(state);
+    // Pass B: spike plant outcomes are decided inside stepTick (detonation
+    // → attackers; defuse → defenders). If stepTick set roundResult, it
+    // takes precedence over elimination/timeout.
+    if (after.roundResult) {
+      this.clearTimer();
+      const ended = endRound(after, after.roundResult.winner);
+      this.cb.setState(ended);
+      this.cb.onTick();
+      this.cb.onRoundEnd?.();
+      return;
+    }
     // Pass 7: a team eliminated → end of round.
+    // Pass B: when the spike is down, eliminating attackers does NOT end the
+    // round — the plant still detonates. Same rule for mutual annihilation.
     const winner = eliminationWinner(after);
-    if (winner) {
+    if (winner && after.plant.planted === null) {
       this.clearTimer();
       const ended = endRound(after, winner);
       this.cb.setState(ended);
@@ -154,7 +171,8 @@ export class PlaybackLoop {
       return;
     }
     // Pass 7.5: round time limit — defender side wins on timeout.
-    if (after.tick >= ROUND_TICK_LIMIT) {
+    // Pass B: timeout ignored when the spike is down (let detonation play out).
+    if (after.tick >= ROUND_TICK_LIMIT && after.plant.planted === null) {
       this.clearTimer();
       const ended = endRound(after, defenderTeam(after));
       this.cb.setState(ended);

@@ -98,6 +98,8 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
     cards,
     playedCard,
     cardEffects: [],
+    plant: { planted: null, planting: null, defusing: null },
+    prevPerUnitVisible: {},
   };
 
   const { visibility } = computeVisibility(seed);

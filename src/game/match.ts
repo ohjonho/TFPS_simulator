@@ -19,9 +19,9 @@ import type {
 import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { applyAnchorOffset, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
+import { applyAnchorOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
-import type { Directive, Role as RoleType } from './types.ts';
+import type { Directive } from './types.ts';
 import { applyCards } from './cardEffects.ts';
 import { discardPlayed, drawCards } from './cards.ts';
 import {
@@ -109,6 +109,10 @@ export function startRound(state: GameState): GameState {
     // Pass 8: card picks reset per round; deck/hand/discard persist (spec).
     playedCard: { defenders: null, attackers: null },
     cardEffects: [],
+    // Pass B: plant state is per-round; prev-visibility wiped so first-sight
+    // penalty applies on tick 0 (everyone "first sees" what they see).
+    plant: { planted: null, planting: null, defusing: null },
+    prevPerUnitVisible: {},
     // events accumulate across rounds (kill feed survives) — do NOT clear here.
   };
   const { visibility } = computeVisibility(seed);
@@ -134,16 +138,24 @@ export function applyStrategies(
   const playerVariant = playerStrat.variants[rng.int(playerStrat.variants.length)];
   const aiVariant = aiStrat.variants[rng.int(aiStrat.variants.length)];
 
-  // Pass 9 — build per-team role→unitId tables so directive specs that
-  // reference allies by role (trade_for, rotate_on_team_contact) resolve to
-  // concrete ids. First matching role wins (stable).
-  const rolesByTeam: Record<string, Record<RoleType, string | undefined>> = {
-    defenders: {} as Record<RoleType, string | undefined>,
-    attackers: {} as Record<RoleType, string | undefined>,
-  };
-  for (const u of state.units) {
-    const m = rolesByTeam[u.team];
-    if (m[u.role] === undefined) m[u.role] = u.id;
+  // Pass A strategy review — slot-based assignment. For each team, walk the
+  // chosen variant's slots and greedily pick which actual unit on the team
+  // fills each slot, preferring loadout matches. Build slot id → unit id +
+  // unit id → slot lookup tables so directives can resolve ally references
+  // and slot plans can be applied per-unit below.
+  const playerTeamUnits = state.units.filter((u) => u.team === playerTeam);
+  const aiTeamUnits = state.units.filter((u) => u.team === aiTeam);
+  const playerSlotsToUnit = assignSlots(playerVariant, playerTeamUnits);
+  const aiSlotsToUnit = assignSlots(aiVariant, aiTeamUnits);
+  // Reverse map: unit id → slot index in its team's variant (-1 if unassigned).
+  const unitToSlotIdx: Record<string, number> = {};
+  for (let i = 0; i < playerVariant.length; i++) {
+    const uid = playerSlotsToUnit[playerVariant[i].id];
+    if (uid) unitToSlotIdx[uid] = i;
+  }
+  for (let i = 0; i < aiVariant.length; i++) {
+    const uid = aiSlotsToUnit[aiVariant[i].id];
+    if (uid) unitToSlotIdx[uid] = i;
   }
 
   const nextUnits: Unit[] = [];
@@ -152,8 +164,10 @@ export function applyStrategies(
     const isPlayer = u.team === playerTeam;
     const strat = isPlayer ? playerStrat : aiStrat;
     const variant = isPlayer ? playerVariant : aiVariant;
-    const plan = variant[u.role];
-    const regionName = plan?.region ?? strat.fallbackRegion;
+    const slotsToUnitIds = isPlayer ? playerSlotsToUnit : aiSlotsToUnit;
+    const slotIdx = unitToSlotIdx[u.id];
+    const slot = slotIdx !== undefined ? variant[slotIdx] : undefined;
+    const regionName = slot?.region ?? strat.fallbackRegion;
     const goal = regionCentroid(state.map, regionName);
     // Pass 8 — weapon-aware position adjustment. Snipers held back, shotguns
     // pushed forward. Skipped when no centroid (degenerate map) or when a
@@ -161,26 +175,34 @@ export function applyStrategies(
     // commitCards downstream.
     const side = state.teamSide[u.team];
     let adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
-    // Pass 9 — apply the per-role anchor offset on top of weapon adjustment.
-    // Lets Hold (defender) target the back of mid (anchorOffset=6) instead
-    // of mid's geometric centroid, etc.
-    if (adjusted && plan?.anchorOffset) {
-      adjusted = applyAnchorOffset(adjusted, plan.anchorOffset, side, state.map);
+    // Pass 9 — apply the per-slot anchor offset on top of weapon adjustment.
+    if (adjusted && slot?.anchorOffset) {
+      adjusted = applyAnchorOffset(adjusted, slot.anchorOffset, side, state.map);
     }
     nextTargets[u.id] = adjusted;
 
-    // Pass 9 — resolve this role's DirectiveSpecs into concrete Directives.
-    // Specs that can't be resolved (e.g. ally role not on team) are dropped.
+    // Pass 9 — resolve this slot's DirectiveSpecs into concrete Directives.
+    // Specs that can't be resolved (e.g. ally slot not filled this round) are
+    // dropped.
     const ctx: ResolutionContext = {
       map: state.map,
       side,
-      rolesToUnitIds: rolesByTeam[u.team],
+      slotsToUnitIds,
     };
     const directives: Directive[] = [];
-    for (const spec of plan?.directives ?? []) {
+    for (const spec of slot?.directives ?? []) {
       const resolved = resolveDirectiveSpec(spec, ctx);
       if (resolved) directives.push(resolved);
     }
+
+    // Pass A strategy review — `usePerimeterPath` on the slot tells the tick
+    // loop to A*-route this unit along the map edges instead of the shortest
+    // centerline path. Reuses the same `cardFlags.slowFlank` flag the Slow
+    // Flank card sets (identical routing behavior; the flag's name is
+    // card-historical but the mechanism is generic).
+    const cardFlags = slot?.usePerimeterPath
+      ? { ...u.cardFlags, slowFlank: true }
+      : u.cardFlags;
 
     nextUnits.push({
       ...u,
@@ -190,6 +212,7 @@ export function applyStrategies(
         retreatThresholdMod: strat.retreatThresholdMod,
       },
       directives,
+      cardFlags,
     });
   }
   return {

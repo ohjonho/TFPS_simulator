@@ -6,6 +6,9 @@ export type Shell = {
   canvasArea: HTMLElement;
   sidePanel: HTMLElement;
   bottomBar: HTMLElement;
+  // Pass A1 — floating attributes overlay, positioned absolutely inside the
+  // canvas area (top-right). Hover-driven; visible in both phases.
+  attributesPanel: HTMLElement;
 };
 
 export function buildShell(root: HTMLElement): Shell {
@@ -23,10 +26,17 @@ export function buildShell(root: HTMLElement): Shell {
   const bottomBar = document.createElement('footer');
   bottomBar.id = 'bottom-bar';
 
+  // Floating overlay: positioned absolutely top-right within canvas-area
+  // (which is set to position:relative in CSS so this anchors correctly).
+  const attributesPanel = document.createElement('div');
+  attributesPanel.id = 'attributes-panel';
+  attributesPanel.classList.add('empty');
+  canvasArea.appendChild(attributesPanel);
+
   root.appendChild(topBar);
   root.appendChild(canvasArea);
   root.appendChild(sidePanel);
   root.appendChild(bottomBar);
 
-  return { topBar, canvasArea, sidePanel, bottomBar };
+  return { topBar, canvasArea, sidePanel, bottomBar, attributesPanel };
 }

@@ -149,11 +149,30 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   state = commitCards(state, playerTeam, defCard, aiTeam, atkCard, pickRng);
 
   const cap = opts.cap ?? ROUND_TICK_LIMIT;
+  // Hard ceiling protects against runaway loops if both teams stalemate at
+  // some unforeseen state. Generous: cap + full detonation window + slack.
+  const hardCap = cap + 30;
   let winner: Team | null = null;
-  while (!winner && state.tick < cap) {
+  while (!winner && state.tick < hardCap) {
     state = stepTick(state);
-    winner = eliminationWinner(state);
+    // Pass B: spike-plant outcomes (detonation / defuse) set roundResult
+    // inside stepTick. They take precedence over elimination/timeout.
+    if (state.roundResult) {
+      winner = state.roundResult.winner === 'draw' ? null : state.roundResult.winner;
+      if (winner) break;
+    }
+    // Elimination only ends the round when the spike is NOT down.
+    if (state.plant.planted === null) {
+      winner = eliminationWinner(state);
+      if (winner) break;
+      // Timeout (only meaningful when no plant down — mirrors loop.fire()):
+      // defender wins on timeout. With plant down we keep ticking until
+      // detonation/defuse fires above.
+      if (state.tick >= cap) break;
+    }
   }
+  // Fallback: if we exited without a winner, defender wins (timeout, plant
+  // still up edge case, or stalemate hitting hardCap).
   const w: Team = winner ?? defenderTeam(state);
   return {
     winner: w,

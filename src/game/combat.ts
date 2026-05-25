@@ -6,9 +6,11 @@ import type { ActiveCardEffect, Buff, MapDefinition, RangeBand, Unit, Weapon } f
 import type { Rng } from './rng.ts';
 import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
 import {
+  ATTRIBUTES,
   CARD_EFFECTS,
   COVER_HIT_PENALTY_PP,
   DAMAGE,
+  FIRST_SIGHT_HIT_PENALTY_PP,
   HEADSHOT,
   HIT_CLAMP,
   HIT_TABLE,
@@ -35,6 +37,11 @@ export type ShotContext = {
   flankedByShooter: boolean;    // shooter is >60° off target's facing
   warderAnchorStationary: boolean; // Warden Hold-the-Line stationary at anchor
   spearheadFirstEngagement: boolean;
+  // --- Pass B: peeker's advantage ---
+  // True when the target's hex is in the shooter's per-unit visibility set
+  // THIS tick but was NOT in the previous tick's set ("just appeared"). The
+  // first shot in this case takes FIRST_SIGHT_HIT_PENALTY_PP off the HR.
+  firstSightShot: boolean;
 };
 
 // Caller-supplied context for resolveShot (everything not derivable from
@@ -48,6 +55,7 @@ export type ShotContextInput = {
   lastAlive: boolean;
   adjacentToWall: boolean;
   ticksIntoRound: number;
+  firstSightShot: boolean;       // Pass B — peeker's advantage
 };
 
 export type ShotResult = {
@@ -120,7 +128,13 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
     case 'Clutch':
       // Pass 9 m4 — Last Stand removed (replaced by Trade Window); Clutch
       // trait reverts to its base lastAlive bonus.
-      if (ctx.lastAlive) pp += TRAITS.clutch.hitPp;
+      // Pass A4 — Clutch attribute scales the magnitude on top of the trait
+      // flat: high-Clutch trait holders are extra-dangerous when alone, low
+      // ones underperform their own trait.
+      if (ctx.lastAlive) {
+        pp += TRAITS.clutch.hitPp
+            + (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withTraitMultiplier;
+      }
       break;
     default: break;
   }
@@ -139,7 +153,11 @@ function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
       break;
     case 'Clutch':
       // Pass 9 m4 — Last Stand removed; Clutch trait reverts to base.
-      if (ctx.lastAlive) pp += TRAITS.clutch.hsPp;
+      // Pass A4 — attribute scales the trait HS bonus, same shape as HR.
+      if (ctx.lastAlive) {
+        pp += TRAITS.clutch.hsPp
+            + (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withTraitMultiplier;
+      }
       break;
     default: break;
   }
@@ -221,14 +239,24 @@ function modifierHitPp(unit: Unit, ctx: ShotContext): number {
   if (ctx.ticksIntoRound <= MODIFIERS.aggression.earlyTicks) {
     pp += (unit.modifiers.aggression - 50) * MODIFIERS.aggression.hrScale;
   }
-  pp += (unit.modifiers.weaponHandling - 50) * MODIFIERS.weaponHandlingHrScale;
+  // (Pass A3 — weapon-handling moved to attributeHitPp as a per-weapon
+  // sub-rating; this function now covers only the true flat modifiers.)
   if (unit.modifiers.offPosition) pp += MODIFIERS.offPositionHitPp;
-  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') pp += MODIFIERS.clutchDefault.hitPp;
+  // Pass A4 — last-alive default bonus is now attribute-driven (the flat
+  // `MODIFIERS.clutchDefault.hitPp` is gone). A low-Clutch unit who's last
+  // alive takes a *penalty*; a high-Clutch one gets a small bonus. Trait
+  // holders pick up their own attribute-scaled bonus in traitHitPp.
+  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
+    pp += (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withoutTraitMultiplier;
+  }
   return pp;
 }
 
 function modifierHeadshotPp(unit: Unit, ctx: ShotContext): number {
-  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') return MODIFIERS.clutchDefault.hsPp;
+  // Pass A4 — same shape on the HS side; flat clutchDefault.hsPp removed.
+  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
+    return (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withoutTraitMultiplier;
+  }
   return 0;
 }
 
@@ -236,10 +264,45 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+// Per-weapon handling sub-rating selector (Pass A3). The current loadout picks
+// which of the three attributes contributes — a unit with high rifleHandling
+// but low sniperHandling performs very differently depending on what they
+// have equipped, which is the point of splitting the old flat modifier.
+function weaponHandlingRating(unit: Unit): number {
+  switch (unit.weapon) {
+    case 'rifle':   return unit.attributes.rifleHandling;
+    case 'shotgun': return unit.attributes.shotgunHandling;
+    case 'sniper':  return unit.attributes.sniperHandling;
+  }
+}
+
+// Pass A2 — per-unit attribute contribution to the hit roll. Continuous-rating
+// counterpart to the categorical trait/role bonuses; sits in the same
+// effective-stat seam. v0 wires in Aim (A2) and per-weapon handling (A3);
+// future attributes (Headshot, Reflexes, etc.) plug in alongside as A2+
+// progresses.
+function attributeHitPp(unit: Unit): number {
+  // Aim: (rating - 50) × multiplier pp. Neutral at 50, ±8pp at the
+  // generation tails (10, 90) with the default 0.2 multiplier.
+  const aim = (unit.attributes.aim - 50) * ATTRIBUTES.formulas.aim.multiplier;
+  // Per-weapon handling (Pass A3): same (rating - 50) × multiplier shape, but
+  // reads the sub-rating matching the unit's current weapon. ±4pp at the
+  // tails with the default 0.1 multiplier.
+  const handling = (weaponHandlingRating(unit) - 50)
+                 * ATTRIBUTES.formulas.weaponHandling.multiplier;
+  return aim + handling;
+}
+
 export function effectiveHitPct(shooter: Unit, ctx: ShotContext, buffs: readonly Buff[]): number {
   let pct = baseHitPct(shooter.weapon, ctx.band, ctx.stationary);
-  pct += traitHitPp(shooter, ctx) + modifierHitPp(shooter, ctx) + cardHitPp(shooter, ctx) + sumBuff(buffs, 'hitPp');
+  pct += traitHitPp(shooter, ctx)
+       + modifierHitPp(shooter, ctx)
+       + cardHitPp(shooter, ctx)
+       + attributeHitPp(shooter)
+       + sumBuff(buffs, 'hitPp');
   if (ctx.crossesCover) pct -= COVER_HIT_PENALTY_PP;
+  // Pass B — peeker's advantage: first-sight first shot reacts late.
+  if (ctx.firstSightShot) pct -= FIRST_SIGHT_HIT_PENALTY_PP;
   return clamp(pct, HIT_CLAMP.minPct, HIT_CLAMP.maxPct);
 }
 

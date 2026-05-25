@@ -3,7 +3,7 @@
 // optional Timeout button (match-point only) + fog POV toggle.
 
 import type { GameState, Team } from '../game/types.ts';
-import { MATCH_WIN_SCORE } from '../game/config.ts';
+import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
@@ -51,9 +51,29 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   phase.textContent =
     state.phase === 'planning' ? 'Planning' : `Resolution — tick ${state.tick}`;
 
+  // Pass B — spike status indicator. Only visible during resolution + when
+  // either a plant is in progress, the spike is down, or a defuse is in
+  // progress. Stays out of the way otherwise.
+  const plantLabel = document.createElement('span');
+  plantLabel.className = 'plant-label';
+  const p = state.plant;
+  if (state.phase === 'resolution') {
+    if (p.planted) {
+      const elapsed = state.tick - p.planted.plantedAtTick;
+      const remaining = Math.max(0, DETONATION_TICKS - elapsed);
+      plantLabel.classList.add('plant-down');
+      plantLabel.textContent = p.defusing
+        ? `SPIKE @ ${p.planted.site} — DEFUSING (${state.tick - p.defusing.startedAtTick}/${DEFUSE_TICKS})`
+        : `SPIKE @ ${p.planted.site} — ${remaining}t to detonate`;
+    } else if (p.planting) {
+      plantLabel.classList.add('planting');
+      plantLabel.textContent = `Planting @ ${p.planting.site} (${state.tick - p.planting.startedAtTick}/${PLANT_TICKS})`;
+    }
+  }
+
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
-  host.append(mapName, score, round, half, phase, spacer);
+  host.append(mapName, score, round, half, phase, plantLabel, spacer);
 
   // Fog perspective toggle.
   const fogGroup = document.createElement('div');

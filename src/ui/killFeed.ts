@@ -32,6 +32,12 @@ export function killFeedLines(state: GameState, max = 14): string[] {
       lines.push(`T:${e.tick} — ${e.shooter} → ${e.target} [WARDEN BLOCK]`);
     } else if (e.type === 'strategyPick') {
       lines.push(formatStrategyPick(e));
+    } else if (e.type === 'plant') {
+      lines.push(`T:${e.tick} — ★ ${e.unit} planted the spike @ ${e.site}`);
+    } else if (e.type === 'defuse') {
+      lines.push(`T:${e.tick} — ✓ ${e.unit} DEFUSED the spike`);
+    } else if (e.type === 'detonate') {
+      lines.push(`T:${e.tick} — 💥 SPIKE DETONATED @ ${e.site}`);
     }
   }
   return lines.slice(-max);

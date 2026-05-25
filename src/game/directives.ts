@@ -15,7 +15,6 @@ import type {
   GameState,
   HexCoord,
   MapDefinition,
-  Role,
   Side,
   Unit,
 } from './types.ts';
@@ -235,20 +234,25 @@ export type HexRef =
   | { region: string }
   | { spawn: 'enemy' | 'own' };
 
+// Ally references in trade_for / rotate_on_team_contact are slot IDs (Pass A
+// strategy review). Each strategy defines an ordered list of named slots
+// ('site_anchor', 'mid_info', etc.); applyStrategies assigns each slot to a
+// concrete unit on the team via assignSlots (weapon-aware). The resolver maps
+// slot ID → unit ID via ctx.slotsToUnitIds.
 export type DirectiveSpec =
   | { kind: 'hold_angle'; priority?: number; facing: HexRef }
   | { kind: 'safe_sniper'; priority?: number; angle: HexRef; repositionAfterShots?: number; repositionRadius?: number }
-  | { kind: 'rotate_on_team_contact'; priority?: number; rotateTo: HexRef; watchRoles: Role[]; delayTicks?: number }
-  | { kind: 'trade_for'; priority?: number; allyRole: Role; windowTicks?: number }
+  | { kind: 'rotate_on_team_contact'; priority?: number; rotateTo: HexRef; watch: string[]; delayTicks?: number }
+  | { kind: 'trade_for'; priority?: number; ally: string; windowTicks?: number }
   | { kind: 'peek_and_retreat'; priority?: number; peek: HexRef; cover?: HexRef; cadenceTicks?: number }
   | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] };
 
 export type ResolutionContext = {
   map: MapDefinition;
   side: Side;
-  // Teammate roles → unit id, so directives that reference allies by role can
-  // be resolved at apply time. Multiple units per role pick the first id.
-  rolesToUnitIds: Record<Role, string | undefined>;
+  // Slot ID → assigned unit id. Built by applyStrategies after assignSlots
+  // picks the loadout-best unit for each strategy slot.
+  slotsToUnitIds: Record<string, string | undefined>;
 };
 
 export function resolveHexRef(ref: HexRef, ctx: ResolutionContext): HexCoord | null {
@@ -289,8 +293,8 @@ export function resolveDirectiveSpec(
       const rotateTo = resolveHexRef(spec.rotateTo, ctx);
       if (!rotateTo) return null;
       const watchAllies: string[] = [];
-      for (const role of spec.watchRoles) {
-        const id = ctx.rolesToUnitIds[role];
+      for (const slot of spec.watch) {
+        const id = ctx.slotsToUnitIds[slot];
         if (id) watchAllies.push(id);
       }
       if (watchAllies.length === 0) return null;
@@ -303,7 +307,7 @@ export function resolveDirectiveSpec(
       };
     }
     case 'trade_for': {
-      const allyId = ctx.rolesToUnitIds[spec.allyRole];
+      const allyId = ctx.slotsToUnitIds[spec.ally];
       if (!allyId) return null;
       return {
         kind: 'trade_for',

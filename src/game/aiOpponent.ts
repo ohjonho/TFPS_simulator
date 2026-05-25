@@ -59,13 +59,13 @@ export function pickAiCard(
   // now, so no pre-pick target.
   if (def.targeting === 'hex') {
     // Setup Play → primary attack region; Hold the Line → anchor region.
+    // Pass A — strategies are slot-based now; take variant[0]'s first slot
+    // as the "primary" position for both cards. (Slot 0 is typically the
+    // entry/anchor in our authored strategies.)
     const strat = strategyById(strategyId, side, state.map);
     if (!strat) return null;
     const variant = strat.variants[0];
-    // Setup Play uses Vanguard's region as the "primary attack"; Hold the Line
-    // uses Warden's region as the "anchor."
-    const sourceRole = def.id === 'setup_play' ? 'Vanguard' : 'Warden';
-    const regionName = variant[sourceRole]?.region ?? strat.fallbackRegion;
+    const regionName = variant[0]?.region ?? strat.fallbackRegion;
     const hex = regionCentroid(state.map, regionName);
     if (!hex) return null;
     played.target = hex;

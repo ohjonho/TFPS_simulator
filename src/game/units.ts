@@ -1,8 +1,21 @@
 // Creates the player and AI teams from spawn positions + loadout assignments.
 // Pass 1: traits are null, HP is full, facing points toward enemy side.
 
-import type { Facing, HexCoord, Team, Unit, Weapon } from './types.ts';
+import type { Attributes, Facing, HexCoord, Team, Unit, Weapon } from './types.ts';
 import { LOADOUTS, UNIT_DEFAULTS } from './config.ts';
+
+// Neutral baseline used at construction; overwritten by assignAttributes at
+// match start. All 50s = zero effect once attributes are wired into combat
+// (Pass A2+), so a unit that somehow skips assignment behaves identically to
+// the pre-attribute baseline.
+const NEUTRAL_ATTRIBUTES: Attributes = {
+  aim: 50, headshot: 50, reflexes: 50, sprayControl: 50,
+  rifleHandling: 50, shotgunHandling: 50, sniperHandling: 50,
+  awareness: 50, positioning: 50,
+  mapIQ: { foundry: 50, atoll: 50 },
+  clutch: 50, composure: 50, confidence: 50,
+  teamwork: 50, discipline: 50, communication: 50,
+};
 
 // Pointy-top facing index (canonical neighbor order): 0=E, 1=NE, 2=NW, 3=W,
 // 4=SW, 5=SE. There's no due-N/S neighbor, so spawn-frame cones point toward
@@ -38,7 +51,8 @@ export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',
-    modifiers: { aggression: 50, weaponHandling: 50, offPosition: false, retreatThresholdMod: 0 },
+    modifiers: { aggression: 50, offPosition: false, retreatThresholdMod: 0 },
+    attributes: { ...NEUTRAL_ATTRIBUTES, mapIQ: { ...NEUTRAL_ATTRIBUTES.mapIQ } },
     cardFlags: {},
     directives: [],
   }));

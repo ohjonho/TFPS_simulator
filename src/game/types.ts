@@ -28,7 +28,9 @@ export type UnitState = 'alive' | 'dead';
 // Pass 7 adds the per-round strategy-driven retreat-threshold delta.
 export type Modifiers = {
   aggression: number;             // 0–100; affects push tendency + early-round HR
-  weaponHandling: number;         // 0–100; HR modifier
+  // (Pass A3 — `weaponHandling` removed; HR modifier now comes from the three
+  // per-weapon attribute sub-ratings: rifleHandling / shotgunHandling /
+  // sniperHandling, selected against the shooter's current loadout.)
   offPosition: boolean;           // off-preferred-role penalty
   retreatThresholdMod: number;    // added to AI.retreatHpThreshold (e.g. Rush = −1)
 };
@@ -56,6 +58,37 @@ export type BehavioralTrait =
 export type Role = 'Vanguard' | 'Tactician' | 'Warden' | 'Specialist';
 export type Hero = 'Angelic' | 'Techy' | 'Cursed';
 
+// --- Pass A1: per-unit attributes (0-100 ratings, 50 = baseline) ----------
+// Full 14-attribute schema from docs/attributes-design.md §6.4. In Pass A1
+// all 14 are generated and stored, but only the v0 subset (aim, the three
+// weapon-handling sub-ratings, awareness, clutch) will be read by combat/
+// vision in later sub-passes (A2-A4). The remaining 8 are inert until v1.
+export type Attributes = {
+  // Mechanical
+  aim: number;              // v0 (A2)
+  headshot: number;         // v1
+  reflexes: number;         // v1
+  sprayControl: number;     // v1+
+  rifleHandling: number;    // v0 (A3)
+  shotgunHandling: number;  // v0 (A3)
+  sniperHandling: number;   // v0 (A3)
+  // Game Sense
+  awareness: number;        // v0 (A4)
+  positioning: number;      // v1
+  mapIQ: {                  // v1
+    foundry: number;
+    atoll: number;
+  };
+  // Mental
+  clutch: number;           // v0 (A4)
+  composure: number;        // v1
+  confidence: number;       // v1
+  // Team
+  teamwork: number;         // v1
+  discipline: number;       // v1
+  communication: number;    // v1
+};
+
 export type Unit = {
   id: string;
   team: Team;
@@ -75,6 +108,10 @@ export type Unit = {
   hero: Hero;
   // Dynamic modifiers.
   modifiers: Modifiers;
+  // Pass A1 — per-unit attribute ratings (0-100, 50 = baseline). Assigned at
+  // match start by assignAttributes(); persists across rounds via the loop
+  // snapshot. Combat/vision integration is staged in later sub-passes.
+  attributes: Attributes;
   // Pass 8 — card-driven flags set at round start, cleared at round end.
   // All optional; unset = no card effect on this unit.
   cardFlags: CardFlags;
@@ -314,7 +351,20 @@ export type GameEvent =
       aiStrategy: string | null;
       playerCardDefId: string | null;
       aiCardDefId: string | null;
-    };
+    }
+  // Pass B — spike plant lifecycle events.
+  | { tick: number; type: 'plant'; unit: string; site: 'A' | 'B' }
+  | { tick: number; type: 'defuse'; unit: string }
+  | { tick: number; type: 'detonate'; site: 'A' | 'B' };
+
+// Pass B — spike-plant state on GameState. `planted` is set when a spike is
+// down (post-plant, pre-detonation). `planting` / `defusing` track the
+// in-progress action (cleared each tick that doesn't continue).
+export type PlantState = {
+  planted: { site: 'A' | 'B'; plantedAtTick: number } | null;
+  planting: { unitId: string; site: 'A' | 'B'; startedAtTick: number } | null;
+  defusing: { unitId: string; startedAtTick: number } | null;
+};
 
 export type GameState = {
   phase: Phase;
@@ -362,4 +412,12 @@ export type GameState = {
   playedCard: Record<Team, PlayedCard | null>;
   // Round-scoped non-buff card effects; cleared on startRound.
   cardEffects: ActiveCardEffect[];
+  // --- Pass B ---
+  plant: PlantState;
+  // Per-unit visibility snapshot from the PREVIOUS tick. Used by the
+  // peeker's-advantage HR penalty: when a shooter fires at a target whose
+  // hex is visible this tick but was NOT in prevPerUnitVisible[shooter.id],
+  // the first shot takes a small HR hit (modeling the held angle's lag).
+  // Persists between rounds is fine; reset at round start for cleanliness.
+  prevPerUnitVisible: Record<string, ReadonlySet<HexKey>>;
 };

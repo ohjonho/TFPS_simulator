@@ -83,6 +83,12 @@ export const SPEED: Record<Weapon, number> = {
 // but inert in Pass 2 (all behavioral traits are null until then).
 export const MOVE = {
   runAndGunBonus: 0.5,
+  // Pass B — cover-aware pathing. A* g-cost adds this much per step when the
+  // step lands on a hex with NO cover-adjacent neighbor. Small enough that
+  // strictly-shorter paths still win; large enough that equally-short routes
+  // prefer cover-adjacent hexes. Iteration: tried 0.5, made Rush worse
+  // (detours added exposure ticks faster than cover saved); reverted to 0.3.
+  coverPathPreference: 0.3,
 } as const;
 
 // Fixed seed for the PRNG so a round resolves identically across replays.
@@ -185,15 +191,51 @@ export const ROLE_AGGRESSION = {
 } as const;
 
 // Dynamic modifier scales (spec §13.1).
+// (Pass A3 — `weaponHandlingHrScale` removed; per-weapon handling is now an
+// attribute sub-rating with its scale in `ATTRIBUTES.formulas.weaponHandling`.)
+// (Pass A4 — `clutchDefault` removed; the no-trait last-alive bonus is now
+// attribute-driven via `ATTRIBUTES.formulas.clutch.withoutTraitMultiplier`.)
 export const MODIFIERS = {
   aggression: { hrScale: 0.2, earlyTicks: 3 },
-  weaponHandlingHrScale: 0.1,
   offPositionHitPp: -10,
-  clutchDefault: { hitPp: 10, hsPp: 5 },
 } as const;
 
-// Weapon-handling random range at match start (0–100 scale).
-export const WEAPON_HANDLING_RANGE = { min: 30, max: 70 } as const;
+// --- Pass A1: per-unit attributes (docs/attributes-design.md §6.7) -------
+// All numbers tunable. Pass A1 only consumes `generation`; combat/vision
+// formulas come online in A2-A4; performance-stats config in A5.
+export const ATTRIBUTES = {
+  generation: {
+    distribution: 'normal' as 'normal' | 'uniform',
+    mean: 50,
+    stdDev: 12,
+    min: 10,
+    max: 90,
+  },
+  formulas: {
+    aim: { multiplier: 0.2 },                                   // pp per (rating-50); A2
+    weaponHandling: { multiplier: 0.1 },                        // pp per (rating-50); A3
+    awareness: {
+      coneMultiplier: 0.4,                                      // deg per (rating-50); A4
+      coneCap: 20,                                              // ±deg cap
+      ghostHighThreshold: 70,                                   // +1 ghost tick above
+      ghostLowThreshold: 30,                                    // -1 ghost tick below
+    },
+    clutch: {
+      withTraitMultiplier: 0.15,                                // stacks on Clutch trait; A4
+      withoutTraitMultiplier: 0.15,                             // default last-alive bonus; A4
+    },
+  },
+  performanceStats: {
+    acs: {
+      killValue: 200,
+      assistValue: 50,
+      multikill3K: 400,                                         // 3v3-scaled (3K = ace)
+      damageMultiplier: 1,
+    },
+    assistWindowTicks: 5,
+    tradeWindowTicks: 5,
+  },
+} as const;
 
 // At or above this aggression an idle, order-less unit advances toward the
 // enemy spawn; below it the unit holds. Lightweight role-movement tendency
@@ -241,6 +283,26 @@ export const MIN_ROUND_TICKS_FOR_HOLD_END = 20;
 // win doesn't lock the AI into one option for the whole match. Per pick, a
 // uniform [0, AI_STRATEGY_EXPLORATION) is added on top of `1 + wins`.
 export const AI_STRATEGY_EXPLORATION = 2;
+
+// --- Pass B: spike-plant mechanic + peeker's advantage -------------------
+// Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
+// for PLANT_TICKS contiguous ticks with no alive defender on the same site's
+// plant hexes. Once the spike is down, DETONATION_TICKS later the attacker
+// team wins. Defenders can defuse by standing on the planted site's plant
+// hexes for DEFUSE_TICKS contiguous ticks with no attacker present.
+export const PLANT_TICKS = 2;
+// Pass B iteration: 15 → 20 ticks. Gives defenders more rotation time to
+// actually reach the planted site and defuse (zero defuses across 450 rounds
+// at 15-tick suggested defenders couldn't get there in time).
+export const DETONATION_TICKS = 20;
+export const DEFUSE_TICKS = 4;
+
+// Pass B — peeker's advantage. When a shooter fires at a target whose hex
+// was in their team's per-unit visibility set this tick but NOT the previous
+// tick ("first sight"), the first shot takes this HR penalty. Models the
+// held angle's reaction lag. Symmetric on first sight; in practice defenders
+// pay it more often (attackers enter their cones more than vice versa).
+export const FIRST_SIGHT_HIT_PENALTY_PP = 10;
 
 // Pass 9 m2 — sticky-engage window. Once a unit transitions to `engaged`, it
 // stays in that mode for up to this many ticks of no visible enemy before
