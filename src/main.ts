@@ -42,6 +42,9 @@ import { renderTopBar } from './ui/topBar.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
 import { showModal } from './ui/modal.ts';
+import { renderRoundEndStats } from './ui/roundEndPanel.ts';
+import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
+import { computeMatchStats, computeRoundStats } from './game/stats.ts';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
@@ -221,6 +224,7 @@ function beginRound(): void {
       ...next.events,
       {
         tick: next.tick,
+        roundIndex: next.round,
         type: 'strategyPick',
         round: next.round,
         playerTeam: next.playerTeam,
@@ -264,12 +268,16 @@ function handleRoundEnd(): void {
     outcome === 'defuse'   ? '— spike defused' :
     '';
   const winLine = (label: string) => `${label} round ${state.round} ${decided}. ${scoreLine}`;
-  const body =
+  const summary =
     winner === 'draw'
       ? `Round ${state.round} ended in a draw. ${scoreLine}`
       : winner === state.playerTeam
         ? winLine('You win')
         : winLine('Opponent wins');
+
+  // Pass A5 — append the per-round stats table to the modal body so the
+  // player sees K/D/A/ACS/KAST per unit alongside the round outcome.
+  const body = `<p class="re-headline">${summary}</p>${renderRoundEndStats(state, state.round)}`;
 
   showModal(`Round ${state.round}`, body, [
     {
@@ -304,10 +312,13 @@ function showHalftimeModal(): void {
 function showMatchEndModal(): void {
   const w = state.matchWinner;
   const title = w === 'draw' ? "Draw — 3–3" : `${w === state.playerTeam ? 'You win!' : 'Opponent wins'}`;
-  const body =
+  const headline =
     w === 'draw'
       ? 'Sudden-death tiebreaker is deferred to Pass 9. Match ends in a draw.'
       : `Final score: ${state.scores.defenders} (defenders) – ${state.scores.attackers} (attackers).`;
+  // Pass A5 — full scoreboard (sorted by ACS, MVP marker, per-round ACS
+  // sparkline) replaces the summary-only body.
+  const body = `<p class="me-headline">${headline}</p>${renderMatchEndScoreboard(state)}`;
   const currentMap = state.map.name;
   showModal(title, body, [{
     label: 'New Match',
@@ -424,6 +435,10 @@ if (import.meta.env.DEV) {
         }),
       });
     },
+    // Pass A5 — performance stats inspection hooks.
+    getRoundStats: (round?: number) =>
+      computeRoundStats(state.events, round ?? state.round, state.units),
+    getMatchStats: () => computeMatchStats(state.events, state.units),
     runSkirmish: (seed: number, opts?: unknown) => runSkirmish(seed, opts as Parameters<typeof runSkirmish>[1]),
     runBatch: (n = 50, opts?: unknown) => runBatch(n, opts as Parameters<typeof runBatch>[1]),
     // Pass 9 m5 — validation harness (strategy matrix + card sanity +

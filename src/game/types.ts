@@ -312,9 +312,13 @@ export type RangeBand = 'short' | 'medium' | 'long';
 
 // Combat event log (spec §18.4 kill feed source). A discriminated union: each
 // resolved shot is one `shot` event; lethal damage adds a `death`.
+// Pass A5 — every event carries `roundIndex` so stats can filter to a single
+// round without timestamp-walking the strategyPick markers. Pushed by tick.ts
+// and match.ts using state.round at push time.
 export type GameEvent =
   | {
       tick: number;
+      roundIndex: number;
       type: 'shot';
       shooter: string;
       target: string;
@@ -325,9 +329,10 @@ export type GameEvent =
       damage: number;
       cover: boolean;
     }
-  | { tick: number; type: 'death'; target: string }
+  | { tick: number; roundIndex: number; type: 'death'; target: string }
   | {
       tick: number;
+      roundIndex: number;
       type: 'cardPlay';
       team: Team;
       defId: string;
@@ -336,6 +341,7 @@ export type GameEvent =
     }
   | {
       tick: number;
+      roundIndex: number;
       type: 'safeWindowBlock';
       shooter: string;
       target: string;
@@ -344,6 +350,7 @@ export type GameEvent =
       // Pass 9 m1 — round-start summary entry. Surfaces both teams' picks in
       // the kill feed so the player can tell what the AI did each round.
       tick: number;
+      roundIndex: number;
       type: 'strategyPick';
       round: number;
       playerTeam: Team;
@@ -353,9 +360,18 @@ export type GameEvent =
       aiCardDefId: string | null;
     }
   // Pass B — spike plant lifecycle events.
-  | { tick: number; type: 'plant'; unit: string; site: 'A' | 'B' }
-  | { tick: number; type: 'defuse'; unit: string }
-  | { tick: number; type: 'detonate'; site: 'A' | 'B' };
+  | { tick: number; roundIndex: number; type: 'plant'; unit: string; site: 'A' | 'B' }
+  | { tick: number; roundIndex: number; type: 'defuse'; unit: string }
+  | { tick: number; roundIndex: number; type: 'detonate'; site: 'A' | 'B' }
+  // Pass A5 — round-end anchor for stats. Survival flags (KAST-S) are derived
+  // by checking whether each unit has a 'death' event in this round.
+  | {
+      tick: number;
+      roundIndex: number;
+      type: 'roundResult';
+      winner: Team | 'draw';
+      ticks: number;
+    };
 
 // Pass B — spike-plant state on GameState. `planted` is set when a spike is
 // down (post-plant, pre-detonation). `planting` / `defusing` track the

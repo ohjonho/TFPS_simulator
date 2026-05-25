@@ -118,6 +118,10 @@ export type StrategyRoundOpts = {
   attackerCardDefId?: string | null;
   mapName?: MapDefinition['name'];
   cap?: number;
+  // Pass A5 follow-up: per-unit attribute overrides used to isolate strategy
+  // impact from attribute randomization (e.g. all-50 ratings across all
+  // units). Layered on top of seed-based generation in assignAttributes.
+  overrides?: Record<string, AttributeOverride>;
 };
 
 export type StrategyRoundResult = {
@@ -134,7 +138,9 @@ export type StrategyRoundResult = {
 export function runStrategyRound(seed: number, opts: StrategyRoundOpts): StrategyRoundResult {
   let state = buildInitialState(opts.mapName);
   // Same per-match attribute re-seed as runSkirmish so seeds → reproducible.
-  assignAttributes(state.units, createRng(seed ^ 0x5f3759df));
+  // Pass A5 follow-up: caller can pin attributes via opts.overrides (e.g.
+  // all-50 ratings) to isolate strategy/mechanic impact from attribute RNG.
+  assignAttributes(state.units, createRng(seed ^ 0x5f3759df), opts.overrides ?? {});
 
   const playerTeam: Team = 'defenders';
   const aiTeam: Team = 'attackers';

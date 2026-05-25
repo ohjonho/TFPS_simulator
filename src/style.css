@@ -173,6 +173,120 @@ body {
   margin-left: 6px;
 }
 
+/* --- Pass A5: round-end + match-end stats tables --- */
+.round-end, .match-end {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+}
+
+.re-headline, .me-headline {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.re-summary {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.re-score, .me-summary {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.re-team, .me-team {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.re-team h4, .me-team h4 {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.re-table, .me-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  background: rgba(28, 31, 38, 0.6);
+}
+
+.re-table th, .me-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.re-table td, .me-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #1a1d24;
+}
+
+.re-table tr:last-child td, .me-table tr:last-child td {
+  border-bottom: none;
+}
+
+.re-table .num, .me-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.re-id, .me-id { width: 56px; }
+.dead-tag {
+  font-size: 9px;
+  background: #4a1e1e;
+  color: #fca5a5;
+  padding: 0 4px;
+  border-radius: 2px;
+  margin-left: 4px;
+}
+
+.mvp-tag {
+  font-size: 9px;
+  background: var(--accent);
+  color: #1a1606;
+  padding: 0 4px;
+  border-radius: 2px;
+  margin-left: 4px;
+  font-weight: 700;
+}
+
+/* KAST badges */
+.kast {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 0;
+  margin-right: 2px;
+  border-radius: 2px;
+}
+.kast.on  { background: #2a5a3a; color: #aef0c0; }
+.kast.off { background: #1c1f26; color: #444a55; }
+.kast-cell { white-space: nowrap; }
+
+/* ACS sparkline */
+.spark {
+  color: var(--accent);
+  vertical-align: middle;
+}
+.spark-cell { padding-right: 4px; }
+
 #side-panel {
   grid-area: side;
   padding: 16px;

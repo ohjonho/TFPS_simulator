@@ -221,6 +221,7 @@ export function applyCards(state: GameState, rng: Rng): GameState {
         ...s.events,
         {
           tick: s.tick,
+          roundIndex: s.round,
           type: 'cardPlay',
           team,
           defId: played.defId,

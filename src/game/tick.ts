@@ -372,6 +372,7 @@ export function stepTick(state: GameState): GameState {
     ai.lastFiredTick = tick;
     events.push({
       tick,
+      roundIndex: state.round,
       type: 'shot',
       shooter: u.id,
       target: target.id,
@@ -417,7 +418,7 @@ export function stepTick(state: GameState): GameState {
     if (u.hp <= 0) {
       u.hp = 0;
       u.state = 'dead';
-      events.push({ tick, type: 'death', target: u.id });
+      events.push({ tick, roundIndex: state.round, type: 'death', target: u.id });
       const killerId = damagedBy[u.id];
       deathsThisTick.push({ dead: u, killer: killerId ? workingById[killerId] ?? null : null });
     }
@@ -575,7 +576,7 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
           planting: null,
           defusing: null,
         };
-        events.push({ tick, type: 'plant', unit: chosen.planter.id, site: chosen.site });
+        events.push({ tick, roundIndex: state.round, type: 'plant', unit: chosen.planter.id, site: chosen.site });
       } else if (continuing) {
         // Already counted; keep ticking — next tick will hit the threshold.
         nextPlant = state.plant;
@@ -594,7 +595,7 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
     // detonation tick (even if a defuse would also have completed).
     const site = state.plant.planted.site;
     if (tick - state.plant.planted.plantedAtTick >= DETONATION_TICKS) {
-      events.push({ tick, type: 'detonate', site });
+      events.push({ tick, roundIndex: state.round, type: 'detonate', site });
       roundResult = { winner: atkTeam };
       nextPlant = state.plant; // keep planted record for kill-feed reference
     } else {
@@ -606,7 +607,7 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
         const cur = state.plant.defusing;
         const continuing = cur !== null && cur.unitId === defuser.id;
         if (continuing && tick - cur.startedAtTick >= DEFUSE_TICKS) {
-          events.push({ tick, type: 'defuse', unit: defuser.id });
+          events.push({ tick, roundIndex: state.round, type: 'defuse', unit: defuser.id });
           roundResult = { winner: defTeam };
           nextPlant = { planted: null, planting: null, defusing: null };
         } else if (continuing) {

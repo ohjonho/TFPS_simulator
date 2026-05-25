@@ -300,11 +300,23 @@ export function endRound(state: GameState, winner: Team | 'draw'): GameState {
   const scores = { ...state.scores };
   if (winner !== 'draw') scores[winner]++;
 
+  // Pass A5 — push a 'roundResult' event so stats.ts has a stable anchor
+  // for KAST-S (survival) computation: a unit survived round N iff no
+  // 'death' event with their target appears at roundIndex N.
+  const roundResultEvent = {
+    tick: state.tick,
+    roundIndex: state.round,
+    type: 'roundResult' as const,
+    winner,
+    ticks: state.tick,
+  };
+
   const next: GameState = {
     ...state,
     scores,
     roundResult: { winner },
     playback: { ...state.playback, playing: false },
+    events: [...state.events, roundResultEvent],
   };
 
   if (winner !== 'draw' && scores[winner] >= MATCH_WIN_SCORE) {
