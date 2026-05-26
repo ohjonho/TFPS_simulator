@@ -25,14 +25,21 @@ body {
 #app {
   display: grid;
   /* Pass E m4 — 3-column layout: card panel left, canvas center, side panel
-     right. Kill feed becomes an absolute overlay inside canvas-area. */
-  grid-template-columns: 260px 1fr 280px;
+     right. Kill feed becomes an absolute overlay inside canvas-area.
+     Pass E3 — left panel widened to 300px since it now carries the strategy
+     menu in addition to cards. Right panel slimmed slightly. */
+  grid-template-columns: 300px 1fr 260px;
   grid-template-rows: 48px 1fr 64px;
   grid-template-areas:
     'top    top    top'
     'card   canvas side'
     'bottom bottom bottom';
   min-height: 100vh;
+  /* Pass E3 — minimum width so the layout doesn't crater on narrower screens
+     during playtest. Below this the user gets a horizontal scrollbar rather
+     than overlapping panels. Tuned to fit a standard 1024-wide laptop with
+     the canvas getting a useable center column. */
+  min-width: 1100px;
 }
 
 /* Pass E m4 — left card panel (mirror of #side-panel chrome). */
@@ -53,21 +60,23 @@ body {
   color: var(--accent);
 }
 
-/* Pass E m4 — kill-feed overlay anchored bottom-left in canvas area. */
+/* Pass E3 — kill-feed overlay anchored TOP-left in canvas area (was
+   bottom-left in Pass E m4). Moves the feed up near the top bar's plant
+   indicator + strategy line so all "what's happening" reads in one place. */
 .kill-feed-overlay {
   position: absolute;
   left: 10px;
-  bottom: 10px;
+  top: 10px;
   max-width: 360px;
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
   pointer-events: none;
   background: rgba(0, 0, 0, 0.55);
   border-radius: 4px;
   padding: 6px 10px;
   font-size: 11px;
-  line-height: 1.4;
-  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.86);
   font-family: ui-monospace, Consolas, monospace;
   z-index: 5;
 }
@@ -115,14 +124,38 @@ body {
   font-size: 11px;
 }
 
+/* Pass E3 — drag-tip hint shown at the bottom of the planning roster panel. */
+.hint-drag {
+  margin-top: 10px;
+  font-style: italic;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Pass E3 — visual cue while a player unit is being dragged. */
+#canvas-area canvas.dragging-unit {
+  cursor: grabbing;
+}
+
 #top-bar {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 16px;
+  /* Pass E3 — tighter gaps + smaller side padding so the whole chrome
+     (Map, Mode, Score, Round, Half, Phase, Plant, Fog, Enemies, Regions,
+     Begin Round) fits without overflowing the min-width=1180 viewport. */
+  gap: 8px;
+  padding: 0 10px;
   background: var(--panel);
   border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+#top-bar button {
+  /* Slightly tighter than the default button so the topbar stays compact. */
+  padding: 4px 9px;
+  font-size: 12px;
 }
 
 #top-bar .phase-label {

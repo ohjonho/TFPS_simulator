@@ -1,19 +1,15 @@
 // Right-side panel:
-//   planning   → roster summary for both teams + strategy menu
+//   planning   → roster summary for both teams (+ seed input in randomize mode)
 //   resolution → hovered-unit info
-// Card hand + cards-this-round live in src/ui/cardPanel.ts (Pass E m4).
-// Kill feed lives in src/ui/killFeedOverlay.ts (Pass E m4).
+//
+// Pass E3 — the strategy menu moved to the left panel (cardPanel.ts) so this
+// side is purely "who's playing + who am I looking at." Card hand + kill
+// feed also moved out (cardPanel + killFeedOverlay).
 
-import type { GameState, Side, Unit } from '../game/types.ts';
+import type { GameState, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
-import { strategiesFor, strategyById } from '../game/strategies.ts';
 
 export type SidePanelCallbacks = {
-  onPickStrategy: (id: string) => void;
-  // Pass C — A/B variant pick for multi-variant strategies (Stack on
-  // defender; Execute / Rush on attacker). idx maps to strategy.variants[idx]
-  // (0 = A, 1 = B in current authoring).
-  onPickVariant: (idx: number) => void;
   // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
   // events here so the floating attributes panel can pop in planning phase
   // (canvas hover already covers resolution + planning units on the map).
@@ -35,35 +31,18 @@ export function renderSidePanel(
       : unitInfoOrHint(hoveredUnit, state);
 
   if (state.phase === 'planning') {
-    host.querySelectorAll<HTMLButtonElement>('button[data-strategy]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-strategy');
-        if (id) cb.onPickStrategy(id);
-      });
-    });
-    // Pass C — A/B sub-row buttons (only present under the currently-selected
-    // multi-variant strategy).
-    host.querySelectorAll<HTMLButtonElement>('button[data-variant]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const v = btn.getAttribute('data-variant');
-        if (v !== null) cb.onPickVariant(parseInt(v, 10));
-      });
-    });
     // Pass E m5 — Randomize seed input + Regenerate. Only rendered in
     // randomize mode (see planningHtml).
     const regenBtn = host.querySelector<HTMLButtonElement>('button[data-regenerate]');
     const seedInput = host.querySelector<HTMLInputElement>('input[data-seed]');
     if (regenBtn && seedInput) {
-      regenBtn.addEventListener('click', () => {
+      const submit = () => {
         const v = parseInt(seedInput.value, 10);
         if (Number.isFinite(v) && v >= 0) cb.onRegenerate(v);
-      });
-      // Enter key in the seed input also regenerates.
+      };
+      regenBtn.addEventListener('click', submit);
       seedInput.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') {
-          const v = parseInt(seedInput.value, 10);
-          if (Number.isFinite(v) && v >= 0) cb.onRegenerate(v);
-        }
+        if (ev.key === 'Enter') submit();
       });
     }
   }
@@ -79,18 +58,28 @@ export function renderSidePanel(
   });
 }
 
-// --- Planning phase: rosters + strategy menu ------------------------------
+// --- Planning phase: rosters ----------------------------------------------
 
 function planningHtml(state: GameState): string {
-  const playerSide = state.teamSide[state.playerTeam];
   const opp = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   return `
     <h2>Planning — Round ${state.round}</h2>
     ${seedRowHtml(state)}
     ${rosterHtml(state, state.playerTeam, 'You')}
     ${rosterHtml(state, opp, 'Opponent')}
-    ${strategyMenuHtml(state, playerSide)}
+    <p class="hint hint-drag">Tip: drag your units to reposition within the spawn zone.</p>
   `;
+}
+
+function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: string): string {
+  const teamUnits = state.units.filter((u) => u.team === team);
+  const side = state.teamSide[team] === 'defender' ? 'DEF' : 'ATK';
+  const rows = teamUnits.map((u) => {
+    const off = u.modifiers.offPosition ? ' <span class="warn">⚠off-pos</span>' : '';
+    const dead = u.state === 'dead' ? ' DEAD' : '';
+    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
+  }).join('');
+  return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
 
 // Pass E m5 — discreet seed display + input + Regenerate, only visible in
@@ -109,52 +98,6 @@ function seedRowHtml(state: GameState): string {
   `;
 }
 
-function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: string): string {
-  const teamUnits = state.units.filter((u) => u.team === team);
-  const side = state.teamSide[team] === 'defender' ? 'DEF' : 'ATK';
-  const rows = teamUnits.map((u) => {
-    const off = u.modifiers.offPosition ? ' <span class="warn">⚠off-pos</span>' : '';
-    const dead = u.state === 'dead' ? ' DEAD' : '';
-    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
-  }).join('');
-  return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
-}
-
-// Pass C — variant labels are just the letter ("A", "B", …). Region nicknames
-// were noisy; the label is contextual to the parent strategy already.
-const VARIANT_LETTERS = ['A', 'B', 'C', 'D'];
-function variantLabel(_strat: ReturnType<typeof strategyById>, idx: number): string {
-  return VARIANT_LETTERS[idx] ?? `V${idx + 1}`;
-}
-
-function strategyMenuHtml(state: GameState, side: Side): string {
-  const options = strategiesFor(side, state.map);
-  const sel = state.playerStrategy;
-  const variantChoice = state.playerVariantChoice;
-  const items = options.map((s) => {
-    const isSelected = sel === s.id;
-    const cls = isSelected ? 'strategy selected' : 'strategy';
-    let variantRow = '';
-    if (isSelected && s.variants.length > 1) {
-      // Pass C — sub-row for A/B variant pick. Only rendered for the
-      // currently-selected multi-variant strategy.
-      const buttons = s.variants.map((_v, idx) => {
-        const vcls = variantChoice === idx ? 'variant selected' : 'variant';
-        return `<button class="${vcls}" data-variant="${idx}">${variantLabel(s, idx)}</button>`;
-      }).join('');
-      const hint = variantChoice === null
-        ? `<div class="variant-hint">Pick a site:</div>`
-        : '';
-      variantRow = `<div class="variant-row">${hint}${buttons}</div>`;
-    }
-    return `<button class="${cls}" data-strategy="${s.id}">
-      <div class="s-name">${s.name}</div>
-      <div class="s-desc">${s.description}</div>
-    </button>${variantRow}`;
-  }).join('');
-  return `<h3>Strategy (${side}) — required</h3><div class="strategy-menu">${items}</div>`;
-}
-
 // --- Resolution phase: hovered-unit info ----------------------------------
 
 function unitInfoOrHint(unit: Unit | null, state: GameState): string {
@@ -164,11 +107,8 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
   const mode = unit.state === 'dead' ? 'dead' : ai?.mode ?? '—';
   const tgt = ai?.firingTarget ? ` → ${ai.firingTarget}` : '';
   const roleLabel = unit.modifiers.offPosition ? `${unit.role} (off-pos)` : unit.role;
-  // Pass E2 — show team identity AND current side. Pre-fix the panel just
-  // read `unit.team` which never changes (defenders stay "defenders" even
-  // after they swap to the attacker side post-halftime). Now reads e.g.
-  // "defenders (ATK)" so the player can tell at a glance which side a unit
-  // is on this half.
+  // Pass E2 — show team identity AND current side so a "defenders" unit on
+  // the attacker side reads "defenders (ATK)" instead of just "defenders".
   const sideTag = state.teamSide[unit.team] === 'defender' ? 'DEF' : 'ATK';
   return `
     <h2>Unit Info</h2>
@@ -186,10 +126,4 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>Hex</dt><dd>(${col}, ${row})</dd>
     </dl>
   `;
-  // Pass A1: attributes panel renders in its own floating overlay (top-right
-  // of canvas area), driven by the same hover state used here. See
-  // src/ui/attributesPanel.ts.
 }
-
-// (Cards-this-round summary + kill feed moved to src/ui/cardPanel.ts and
-// src/ui/killFeedOverlay.ts respectively in Pass E m4.)

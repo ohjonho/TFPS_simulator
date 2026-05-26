@@ -122,8 +122,10 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
 
   // "Show enemies" dev toggle (default on while building). Off → planning phase
   // also gets fog of war for the player team.
+  // Pass E3 — shortened label to "Enemies" to free up top-bar width on
+  // narrower screens; tooltip retains the full description.
   const seBtn = document.createElement('button');
-  seBtn.textContent = cb.showEnemiesPlanning ? 'Show enemies: on' : 'Show enemies: off';
+  seBtn.textContent = cb.showEnemiesPlanning ? 'Enemies ●' : 'Enemies ○';
   seBtn.title = 'Toggle whether enemy units are visible during planning (dev aid).';
   if (cb.showEnemiesPlanning) seBtn.classList.add('selected');
   seBtn.addEventListener('click', cb.onToggleShowEnemies);
@@ -133,7 +135,7 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   // centroid so the player can map "A site"/"mid"/"b_main" to actual hexes.
   // Mirrors the `R` keybinding.
   const rBtn = document.createElement('button');
-  rBtn.textContent = cb.showRegionLabels ? 'Regions: on' : 'Regions: off';
+  rBtn.textContent = cb.showRegionLabels ? 'Regions ●' : 'Regions ○';
   rBtn.title = 'Toggle region-name overlay (press R).';
   if (cb.showRegionLabels) rBtn.classList.add('selected');
   rBtn.addEventListener('click', cb.onToggleRegionLabels);

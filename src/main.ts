@@ -43,6 +43,8 @@ import { renderCardPanel } from './ui/cardPanel.ts';
 import { renderKillFeedOverlay } from './ui/killFeedOverlay.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
+import { attachUnitDrag, isValidDropHex } from './ui/unitDrag.ts';
+import { passableAt } from './game/pathfind.ts';
 import { attachCardTargeting, showAdaptRoleModal } from './ui/cardTargeting.ts';
 import type { TargetingMode } from './ui/cardTargeting.ts';
 import { showModal } from './ui/modal.ts';
@@ -234,18 +236,6 @@ function rerenderChrome() {
   const attrSubject = selected ?? hovered;
   renderAttributesPanel(shell.attributesPanel, attrSubject, selected !== null);
   renderSidePanel(shell.sidePanel, hovered, state, {
-    onPickStrategy: (id: string) => {
-      // Pass C — picking a new strategy clears any prior A/B variant choice
-      // so the player has to make the site bet fresh.
-      setState({ ...state, playerStrategy: id, playerVariantChoice: null });
-      recomputePreview();
-      rerenderCanvas();
-    },
-    onPickVariant: (idx: number) => {
-      setState({ ...state, playerVariantChoice: idx });
-      recomputePreview();
-      rerenderCanvas();
-    },
     // Pass A1 — roster-item hover drives the attributes panel during planning.
     // Updates the shared hover state then re-renders chrome only (no canvas
     // change). Canvas hover continues to work as before.
@@ -262,11 +252,24 @@ function rerenderChrome() {
       rerenderAll();
     },
   });
-  // Pass E m4 — card hand + cards-this-round live in the new left panel.
+  // Pass E m4 / E3 — left "planning actions" panel: strategy menu + card
+  // hand during planning; cards-this-round during resolution.
   renderCardPanel(shell.cardPanel, state, {
     onPickCard: pickCard,
     selectedCardId: playerCard?.defId ?? null,
     cardTargetingPending: targetingMode !== null,
+    onPickStrategy: (id: string) => {
+      // Pass C — picking a new strategy clears any prior A/B variant choice
+      // so the player has to make the site bet fresh.
+      setState({ ...state, playerStrategy: id, playerVariantChoice: null });
+      recomputePreview();
+      rerenderCanvas();
+    },
+    onPickVariant: (idx: number) => {
+      setState({ ...state, playerVariantChoice: idx });
+      recomputePreview();
+      rerenderCanvas();
+    },
   });
   // Pass E m4 — kill feed as a small overlay anchored bottom-left in canvas.
   renderKillFeedOverlay(shell.killFeedOverlay, state);
@@ -493,6 +496,56 @@ attachHover(handle.canvas, () => state.units, (unitId) => {
 attachClickToCommand(handle.canvas, {
   getUnits: () => state.units,
   onSelect: (unitId) => { selection.unitId = unitId; rerenderAll(); },
+});
+
+// Pass E3 — drag player units within their starting zone during planning.
+// Drag is gated on planning phase + the unit being on the player team; the
+// drop is validated against the team's current-side spawn region.
+attachUnitDrag(handle.canvas, {
+  canDrag: () => state.phase === 'planning',
+  unitAt: (hex) => {
+    for (const u of state.units) {
+      if (u.team !== state.playerTeam) continue;
+      if (u.state !== 'alive') continue;
+      if (u.pos.col === hex.col && u.pos.row === hex.row) return u;
+    }
+    return null;
+  },
+  onCommit: (unitId, target) => {
+    const u = state.units.find((x) => x.id === unitId);
+    if (!u) return false;
+    const spawnKey = state.teamSide[state.playerTeam] === 'defender' ? 'def_spawn' : 'atk_spawn';
+    const spawnRegion = state.map.regions[spawnKey] ?? [];
+    if (!isValidDropHex(u, target, spawnRegion, state.units, (h) => passableAt(state.map, h))) {
+      // Invalid drop — re-render anyway to clear any hover highlight.
+      rerenderCanvas();
+      return false;
+    }
+    if (u.pos.col === target.col && u.pos.row === target.row) {
+      rerenderCanvas();
+      return true; // no-op
+    }
+    const newUnits = state.units.map((x) =>
+      x.id === unitId ? { ...x, pos: { ...target } } : x,
+    );
+    setState({ ...state, units: newUnits });
+    initialUnitsById = snapshotUnits(newUnits);
+    recomputePreview();
+    rerenderAll();
+    return true;
+  },
+  onHover: (hex) => {
+    // While dragging, treat the cursor hex as the hover target for the
+    // existing hover-highlight rendering. (Doesn't pin a unit; just keeps
+    // the canvas in sync visually.)
+    if (hex) {
+      const u = state.units.find((x) => x.pos.col === hex.col && x.pos.row === hex.row);
+      hover.unitId = u?.id ?? null;
+    } else {
+      hover.unitId = null;
+    }
+    rerenderCanvas();
+  },
 });
 
 // Pass D — canvas click-to-target for hex-targeted cards (Setup Play, Hold
