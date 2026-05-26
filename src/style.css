@@ -138,6 +138,82 @@ body {
   cursor: grabbing;
 }
 
+/* Pass E3.2 — "?" help button in the top bar. Made deliberately round +
+   slightly larger so a new player sees it immediately. */
+.btn-help {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: var(--accent) !important;
+  color: #1a1606 !important;
+  border: none !important;
+  font-weight: 700;
+  font-size: 14px !important;
+  line-height: 26px;
+}
+
+.btn-help:hover {
+  background: #fde047 !important;
+}
+
+/* Pass E3.2 — help / glossary modal styling. The modal body is two
+   stacked sections (tutorial + glossary); each section uses tight
+   line-height and a sub-heading so the player can skim. */
+.help-modal section {
+  margin: 0 0 14px;
+}
+
+.help-modal section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.help-modal h2.help-section-title {
+  margin: 18px 0 12px;
+  font-size: 14px;
+  color: var(--accent);
+  border-top: 1px solid var(--panel-border);
+  padding-top: 14px;
+}
+
+.help-modal ul,
+.help-modal ol {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.help-modal ul.glossary {
+  list-style: none;
+  padding-left: 0;
+}
+
+.help-modal ul.glossary li {
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.help-modal ul.glossary li:last-child {
+  border-bottom: none;
+}
+
+.help-modal kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #232838;
+  border: 1px solid #3a3f4a;
+  border-radius: 3px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
 #top-bar {
   grid-area: top;
   display: flex;

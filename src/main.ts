@@ -48,6 +48,7 @@ import { passableAt } from './game/pathfind.ts';
 import { attachCardTargeting, showAdaptRoleModal } from './ui/cardTargeting.ts';
 import type { TargetingMode } from './ui/cardTargeting.ts';
 import { showModal } from './ui/modal.ts';
+import { maybeShowFirstLoadHelp, showHelpModal } from './ui/helpModal.ts';
 import { renderRoundEndStats } from './ui/roundEndPanel.ts';
 import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
 import { computeMatchStats, computeRoundStats } from './game/stats.ts';
@@ -312,6 +313,7 @@ function rerenderChrome() {
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
+    onOpenHelp: showHelpModal,
   });
 }
 
@@ -585,6 +587,11 @@ window.addEventListener('keydown', (ev) => {
 });
 
 rerenderAll();
+
+// Pass E3.2 — auto-open the help modal on first load per browser; the
+// "Got it" button writes a flag to localStorage so it doesn't reopen on
+// every reload. Players can reopen any time via the topbar "?" button.
+maybeShowFirstLoadHelp();
 
 // Dev-only inspection hook (stripped from production builds via DEV guard).
 if (import.meta.env.DEV) {

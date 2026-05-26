@@ -26,10 +26,22 @@ export type TopBarCallbacks = {
   // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
   // match (preserving seed by default, see main.ts).
   onSetMode: (mode: MatchMode) => void;
+  // Pass E3.2 — "?" button opens the help / glossary modal.
+  onOpenHelp: () => void;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
   host.innerHTML = '';
+
+  // Pass E3.2 — "?" help button anchored at the far left so a new player
+  // can find the tutorial + glossary immediately. Auto-opens once per
+  // browser on first load; opens any time on click.
+  const helpBtn = document.createElement('button');
+  helpBtn.textContent = '?';
+  helpBtn.title = 'How to play + glossary';
+  helpBtn.className = 'btn-help';
+  helpBtn.addEventListener('click', cb.onOpenHelp);
+  host.appendChild(helpBtn);
 
   // Map toggle (Foundry / Atoll). Switching starts a new match on that map.
   const mapName = document.createElement('div');
