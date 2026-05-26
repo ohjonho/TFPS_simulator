@@ -164,11 +164,17 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
   const mode = unit.state === 'dead' ? 'dead' : ai?.mode ?? '—';
   const tgt = ai?.firingTarget ? ` → ${ai.firingTarget}` : '';
   const roleLabel = unit.modifiers.offPosition ? `${unit.role} (off-pos)` : unit.role;
+  // Pass E2 — show team identity AND current side. Pre-fix the panel just
+  // read `unit.team` which never changes (defenders stay "defenders" even
+  // after they swap to the attacker side post-halftime). Now reads e.g.
+  // "defenders (ATK)" so the player can tell at a glance which side a unit
+  // is on this half.
+  const sideTag = state.teamSide[unit.team] === 'defender' ? 'DEF' : 'ATK';
   return `
     <h2>Unit Info</h2>
     <dl class="unit-stats">
       <dt>ID</dt><dd>${unit.id}</dd>
-      <dt>Team</dt><dd>${unit.team}</dd>
+      <dt>Team</dt><dd>${unit.team} <span class="muted">(${sideTag})</span></dd>
       <dt>Loadout</dt><dd>${unit.weapon}</dd>
       <dt>HP</dt><dd>${unit.hp} / ${UNIT_DEFAULTS.maxHp}</dd>
       <dt>AI mode</dt><dd>${mode}${tgt}</dd>

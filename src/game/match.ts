@@ -58,9 +58,17 @@ export function startRound(state: GameState): GameState {
     const spawns = spawnsFor(state, u.team);
     const idx = teamIndex[u.team]++;
     const pos = spawns[Math.min(idx, spawns.length - 1)];
+    // Pass E2 — reset facing per the unit's CURRENT side so the spawn-frame
+    // cone points at the enemy half after halftime. Defenders (top half)
+    // look down via facing 5 (SE); attackers (bottom half) look up via
+    // facing 1 (NE). Matches the constants in src/game/units.ts. Without
+    // this reset, the post-halftime defender team kept its pre-swap facing
+    // (looking south) even though it had moved to the south spawn.
+    const facing: 0 | 1 | 2 | 3 | 4 | 5 = state.teamSide[u.team] === 'defender' ? 5 : 1;
     const fresh: Unit = {
       ...u,
       pos: { ...pos },
+      facing,
       hp: UNIT_DEFAULTS.maxHp,
       maxHp: UNIT_DEFAULTS.maxHp,  // Pass 8: Guardian Aura may bump per-round.
       state: 'alive',

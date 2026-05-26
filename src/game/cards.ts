@@ -79,12 +79,20 @@ export function playCard(
   return { deck: { ...deckState, hand }, played };
 }
 
-// Push a played card onto the discard pile (called at endRound).
+// Push a played card onto the discard pile AND remove the matching card
+// from the hand (called at endRound). Pre-fix: the function only added to
+// discard and the hand stayed at cap, so drawCards(1) was a silent no-op —
+// the hand never cycled. Match by `defId` + `contributor` so identical
+// duplicates are still distinguishable in deck-trace tests.
 export function discardPlayed(
   deckState: TeamDeck,
   played: CardInstance,
 ): TeamDeck {
-  return { ...deckState, discard: [...deckState.discard, played] };
+  const idx = deckState.hand.findIndex(
+    (c) => c.defId === played.defId && c.contributor === played.contributor,
+  );
+  const hand = idx >= 0 ? deckState.hand.slice(0, idx).concat(deckState.hand.slice(idx + 1)) : deckState.hand.slice();
+  return { ...deckState, hand, discard: [...deckState.discard, played] };
 }
 
 // Find the hand index of a card by def id (first match). Used by AI and __sim

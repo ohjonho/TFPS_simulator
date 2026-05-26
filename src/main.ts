@@ -680,6 +680,10 @@ if (import.meta.env.DEV) {
       const ticksUsed = s.tick - startTick;
       s = endRoundFn(s, w);
       s = recordStrategyWin(s, w, w === state.playerTeam ? playerStrategyId : aiId);
+      // Pass E2 — match the live round-end pipeline (discard played cards
+      // + draw back up). Pre-fix simulateRound skipped this, so headless
+      // matches kept the same hand round after round.
+      s = processCardsAtRoundEnd(s, s.seed, s.round);
       const halftimeTaken = isHalftime(s);
       const matchOver = s.matchOver;
       const scoresAfter = { ...s.scores };
