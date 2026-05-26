@@ -3,32 +3,65 @@
 // Renders after units so visuals layer over the squares. Animation uses
 // state.tick so the rendered frame is deterministic vs the sim.
 //
-// All cards on the board are drawn regardless of team; the AI's picks have
-// already been revealed at tick 0 in the kill feed + "Cards this round"
-// panel, so leaking anchor/aura geometry is consistent with that info.
+// Pass E m3 — enemy-team effects are gated on player visibility: the player
+// only sees an enemy aura / anchor / mark / Lurker outline once the relevant
+// source/target/anchor is in their visibility set. Own-team effects always
+// render. Closes a fog-of-war leak (pre-m3 you could see the enemy's
+// Guardian Aura ring even behind a wall).
 
-import type { ActiveCardEffect, GameState, HexCoord, Unit } from '../game/types.ts';
+import type { ActiveCardEffect, GameState, HexCoord, Team, Unit } from '../game/types.ts';
 import { hexDistance, hexToPixel, offsetToPixel } from '../game/hex.ts';
+import { hexKey } from '../game/vision.ts';
 import { CARD_VISUAL, COLORS, HEX } from '../game/config.ts';
 
 export function drawCardEffects(ctx: CanvasRenderingContext2D, state: GameState): void {
   if (state.phase !== 'resolution') return;
   const unitsById = new Map(state.units.map((u) => [u.id, u]));
+  const playerTeam = state.playerTeam;
+  const playerVisible = state.visibility[playerTeam];
+
+  // Helpers (Pass E m3): is the player allowed to see this enemy effect now?
+  // Own-team effects always render; enemy-team gated on whether the relevant
+  // unit / hex is in the player team's visibility set.
+  const isOwn = (e: { team: Team }): boolean => e.team === playerTeam;
+  const unitVisible = (id: string): boolean => {
+    const u = unitsById.get(id);
+    if (!u || u.state !== 'alive') return false;
+    return playerVisible.has(hexKey(u.pos));
+  };
+  const hexVisible = (h: HexCoord): boolean => playerVisible.has(hexKey(h));
 
   // Order: large background effects first (auras, scan tints, anchors), then
   // glyphs / outlines, then high-priority overlays (marks). Layering keeps
   // marks readable on top of other effects.
   for (const e of state.cardEffects) {
-    if (e.kind === 'tactical_scan') drawTacticalScan(ctx, state, e);
-    else if (e.kind === 'guardian_aura') drawGuardianAura(ctx, state, e, unitsById);
-    else if (e.kind === 'hold_the_line') drawHoldTheLine(ctx, state, e, unitsById);
-    else if (e.kind === 'setup_play') drawSetupPlay(ctx, e, unitsById);
-    else if (e.kind === 'spearhead') drawSpearheadArrow(ctx, state, e, unitsById);
+    if (e.kind === 'tactical_scan') {
+      // Tactical Scan is the casting team's UI; the opposing team has no
+      // "you got scanned" cue. Player-side only.
+      if (!isOwn(e)) continue;
+      drawTacticalScan(ctx, state, e);
+    } else if (e.kind === 'guardian_aura') {
+      if (!isOwn(e) && !unitVisible(e.sourceId)) continue;
+      drawGuardianAura(ctx, state, e, unitsById);
+    } else if (e.kind === 'hold_the_line') {
+      if (!isOwn(e) && !hexVisible(e.anchorHex)) continue;
+      drawHoldTheLine(ctx, state, e, unitsById);
+    } else if (e.kind === 'setup_play') {
+      // Anchor pivot is read off the bonus-ally's cardFlags; gate on the
+      // ally being visible.
+      if (!isOwn(e) && !unitVisible(e.allyId)) continue;
+      drawSetupPlay(ctx, e, unitsById);
+    } else if (e.kind === 'spearhead') {
+      if (!isOwn(e) && !unitVisible(e.vanguardId)) continue;
+      drawSpearheadArrow(ctx, state, e, unitsById);
+    }
   }
 
-  // Per-unit cardFlag visuals (Anchor / Reckless / Slow Flank).
+  // Per-unit cardFlag visuals (Anchor / Reckless / Slow Flank). Enemy-team
+  // overlays gated on whether the unit itself is visible to the player.
   for (const u of state.units) {
     if (u.state !== 'alive') continue;
+    if (u.team !== playerTeam && !playerVisible.has(hexKey(u.pos))) continue;
     if (u.cardFlags.anchorPosition) drawAnchorPositionGlyph(ctx, u);
     if (u.cardFlags.recklessPush) drawRecklessOutline(ctx, u);
     if (u.cardFlags.slowFlank || u.cardFlags.invisibleUntilFire) drawSlowFlankOutline(ctx, u);
@@ -39,6 +72,9 @@ export function drawCardEffects(ctx: CanvasRenderingContext2D, state: GameState)
     if (e.kind !== 'mark_target') continue;
     // Trade Window's mark expires; expired effects shouldn't render.
     if (e.expiresAtTick !== undefined && e.expiresAtTick <= state.tick) continue;
+    // Marks on an unseen enemy stay hidden until the target hex is visible.
+    // Own-team marks always render (the player knows what they picked).
+    if (!isOwn(e) && !unitVisible(e.targetId)) continue;
     drawMarkCrosshair(ctx, state, e, unitsById);
   }
 }
