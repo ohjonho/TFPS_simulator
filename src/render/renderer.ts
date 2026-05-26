@@ -1,6 +1,7 @@
 // Renders one full frame:
-//   background → hex grid → routes → fog (resolution) → units (enemy-visibility
-//   filtered) → debug vision overlay (when V toggle on).
+//   background → hex grid → region labels (toggle) → routes → fog (resolution)
+//   → engagements (resolution) → units (enemy-visibility filtered) → card
+//   effects (resolution) → debug vision overlay (when V toggle on).
 
 import type { GameState, HexCoord, Team } from '../game/types.ts';
 import { drawHexGrid } from './drawHexGrid.ts';
@@ -9,6 +10,8 @@ import { drawUnits } from './drawUnits.ts';
 import { drawFog } from './drawFog.ts';
 import { drawEngagements } from './drawEngagements.ts';
 import { drawDebugVision } from './drawDebugVision.ts';
+import { drawCardEffects } from './drawCardEffects.ts';
+import { drawRegionLabels } from './drawRegionLabels.ts';
 import { hexKey } from '../game/vision.ts';
 import { COLORS } from '../game/config.ts';
 
@@ -34,10 +37,14 @@ export function render(
   cssHeight: number,
   showEnemiesPlanning = true,
   previewRoutes: Record<string, HexCoord[]> | null = null,
+  showRegionLabels = false,
 ): void {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
   drawHexGrid(ctx, state.map);
+  // Pass D — region labels drawn after grid (so background) but before
+  // anything player-actionable so they don't fight routes/units for attention.
+  if (showRegionLabels) drawRegionLabels(ctx, state.map);
   if (state.phase === 'resolution') {
     drawRoutes(ctx, state);
   } else if (previewRoutes) {
@@ -56,6 +63,10 @@ export function render(
     ? hiddenEnemyIdsFor(state, state.playerTeam)
     : new Set<string>();
   drawUnits(ctx, state.units, hover.unitId, selection.unitId, hiddenEnemies);
+
+  // Pass D — card-effect visuals layer on top of units so the player sees
+  // active marks / auras / anchors mid-round.
+  drawCardEffects(ctx, state);
 
   if (debug.on) drawDebugVision(ctx, state);
 }

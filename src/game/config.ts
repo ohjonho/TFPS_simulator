@@ -404,3 +404,78 @@ export const VISION_COLORS = {
   ghostDefender: 'rgba(59, 130, 246, 0.35)',
   ghostAttacker: 'rgba(239, 68, 68, 0.35)',
 } as const;
+
+// --- Pass D: card-effect visuals (drawCardEffects.ts) --------------------
+// Per-card colors + pulse cadence; all tunable here so render code carries no
+// magic numbers. Pulse periods are in TICKS (deterministic from state.tick),
+// not wall-clock — preserves seed → render equivalence.
+export const CARD_VISUAL = {
+  // Guardian Aura ring (dashed, team-colored, faint).
+  guardianAura: {
+    dash: [6, 4] as readonly number[],
+    lineWidth: 1.5,
+    alpha: 0.30,
+    badgeAlpha: 0.70,            // "+1 HP" badge over auraed allies
+  },
+  // Mark Target / Trade Window crosshair (pulses via state.tick).
+  markTarget: {
+    color: 'rgba(250, 204, 21, 0.9)',  // amber — neutral vs both team colors
+    pulseTicks: 4,                     // full pulse cycle in ticks
+    radiusFactor: 0.95,                // × HEX.size at peak
+    lineWidth: 2.0,
+  },
+  // Hold the Line anchor flag (small inverted triangle at the anchor hex).
+  holdTheLine: {
+    color: 'rgba(96, 165, 250, 0.85)', // defender-team-leaning blue
+    safeWindowPulseColor: 'rgba(34, 197, 94, 0.55)',
+    lineWidth: 2.0,
+  },
+  // Setup Play pivot + faint 5-hex range ring around the anchor.
+  setupPlay: {
+    pivotColor: 'rgba(168, 85, 247, 0.85)',  // purple (distinct from team colors)
+    ringColor: 'rgba(168, 85, 247, 0.20)',
+    ringDash: [4, 6] as readonly number[],
+    ringLineWidth: 1.5,
+  },
+  // Spearhead Vanguard arrow above the unit square (fades after 3 engaged ticks).
+  spearhead: {
+    color: 'rgba(248, 113, 113, 0.95)', // attacker-leaning red
+    fadeAfterEngagementTicks: 3,
+  },
+  // Tactical Scan tint on enemy hexes (faint yellow overlay).
+  tacticalScan: {
+    color: 'rgba(250, 204, 21, 0.18)',
+  },
+  // Anchor Position glyph on the Sentinel hex (small anchor symbol).
+  anchorPosition: {
+    color: 'rgba(125, 211, 252, 0.85)',
+    lineWidth: 1.5,
+  },
+  // Reckless Push speed-trail outline (3 fading segments behind the unit).
+  recklessPush: {
+    color: 'rgba(248, 113, 113, 0.45)',
+    lineWidth: 1.5,
+  },
+  // Slow Flank dotted outline on the Lurker (player team only — enemies
+  // never see them per the invisibility rule).
+  slowFlank: {
+    color: 'rgba(167, 139, 250, 0.65)',
+    dash: [2, 3] as readonly number[],
+    lineWidth: 1.5,
+  },
+} as const;
+
+// Region-label overlay (toggleable with R key). Drawn faded so it doesn't
+// fight the grid; rendered above the grid but below routes/units.
+export const REGION_LABEL = {
+  font: '11px ui-sans-serif, system-ui, sans-serif',
+  color: 'rgba(255, 255, 255, 0.55)',
+  outlineColor: 'rgba(0, 0, 0, 0.85)',
+  outlineWidth: 3,
+  // Region names not worth showing on the overlay (spawn boxes already obvious
+  // from unit color; small plant boxes covered by site label).
+  skip: ['def_spawn', 'atk_spawn'] as readonly string[],
+} as const;
+
+// 'r' / 'R' toggles the region-name overlay (Pass D).
+export const REGION_LABEL_KEY = 'r';

@@ -3,7 +3,7 @@
 // halftime/next round → match end).
 
 import './style.css';
-import type { GameState, HexCoord, PlayedCard, PlaybackSpeed, Team, Unit } from './game/types.ts';
+import type { GameState, HexCoord, PlayedCard, PlaybackSpeed, Role, Team, Unit } from './game/types.ts';
 import { previewPlayerPlan } from './game/planningPreview.ts';
 import { cardById } from './game/cardData.ts';
 import { buildInitialState } from './game/state.ts';
@@ -16,7 +16,7 @@ import { createRng } from './game/rng.ts';
 import { cardSanityCheck, determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
 import { ROLE_AGGRESSION } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
-import { DEBUG_KEY } from './game/config.ts';
+import { DEBUG_KEY, REGION_LABEL_KEY } from './game/config.ts';
 import {
   advanceToNextRound,
   applyStrategies,
@@ -41,6 +41,8 @@ import { renderBottomControls } from './ui/bottomControls.ts';
 import { renderTopBar } from './ui/topBar.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
+import { attachCardTargeting, showAdaptRoleModal } from './ui/cardTargeting.ts';
+import type { TargetingMode } from './ui/cardTargeting.ts';
 import { showModal } from './ui/modal.ts';
 import { renderRoundEndStats } from './ui/roundEndPanel.ts';
 import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
@@ -70,37 +72,51 @@ let showEnemiesPlanning = true;
 // state (not GameState) and reset to null on Begin Round / round end.
 let playerCard: PlayedCard | null = null;
 let previewRoutes: Record<string, HexCoord[]> | null = null;
+// Pass D — region-name overlay toggle. UI state, not GameState. Mirrors the
+// "Regions" topbar button + the R keybinding.
+let showRegionLabels = false;
+// Pass D — active card-targeting session. Non-null while the player has
+// picked a hex/role-targeted card and hasn't committed a target yet. Begin
+// Round is disabled until this clears.
+let targetingMode: TargetingMode = null;
 
-// Pass 8 — auto-target a card on selection. Untargeted cards return immediately;
-// targeted cards pick a sensible default so the player can play any card from
-// the hand with one click. A future milestone adds canvas click-to-target.
-function autoTargetCard(defId: string, contributorId: string): PlayedCard | null {
-  const def = cardById(defId);
-  if (!def) return null;
-  const played: PlayedCard = { defId, contributor: contributorId };
-  if (def.targeting === 'none') return played;
-
-  // Pass 9 m3 — Mark Target no longer needs a target: the contributor's
-  // first-spotted enemy is the mark. Fall through to the untargeted return.
-  if (defId === 'setup_play' || defId === 'hold_the_line') {
-    // Default hex = the contributor's current position (will be overridden by
-    // strategy in applyStrategies, but commitCards' handler then sets it back).
-    const u = state.units.find((unit) => unit.id === contributorId);
-    if (!u) return null;
-    played.target = u.pos;
-    if (defId === 'setup_play') {
-      // Bonus ally = first teammate that isn't the contributor.
-      const ally = state.units.find((unit) => unit.team === state.playerTeam && unit.id !== contributorId);
-      if (ally) played.secondaryTarget = ally.id;
+// Pass D — fallback auto-target used when the player picks a hex/role-targeted
+// card but commits Begin Round without explicitly setting a target (e.g. via
+// __sim.beginRound or by Esc-cancelling targeting mode). Keeps the legacy
+// "playable with one click" path open. For 'none'-targeting cards this is
+// the only path; the explicit targeting UI applies to hex / role cards only.
+function fallbackTargetForCard(played: PlayedCard): PlayedCard {
+  const def = cardById(played.defId);
+  if (!def || def.targeting === 'none') return played;
+  if (played.target !== undefined) return played;
+  const u = state.units.find((unit) => unit.id === played.contributor);
+  if (!u) return played;
+  if (def.targeting === 'hex') {
+    // Default hex = contributor's current position; applyStrategies +
+    // commitCards normalize it (Setup Play/Hold the Line handlers store it as
+    // the anchor on the relevant unit's cardFlags).
+    const out: PlayedCard = { ...played, target: u.pos };
+    if (played.defId === 'setup_play' && played.secondaryTarget === undefined) {
+      const ally = state.units.find((unit) => unit.team === state.playerTeam && unit.id !== u.id);
+      if (ally) out.secondaryTarget = ally.id;
     }
-    return played;
+    return out;
   }
-  if (defId === 'adapt') {
-    // Default = Spearhead (Vanguard role) — universally useful effect.
-    played.target = 'Vanguard';
-    return played;
+  if (def.targeting === 'role') {
+    // Adapt default: Spearhead (Vanguard) — universally useful effect.
+    return { ...played, target: 'Vanguard' as Role };
   }
   return played;
+}
+
+// Pass D — instruction label shown for the targeting banner / topbar tooltip.
+function targetingLabelFor(defId: string): string {
+  const def = cardById(defId);
+  if (!def) return 'Pick a target';
+  if (defId === 'setup_play') return 'Click a destination hex for the Tactician';
+  if (defId === 'hold_the_line') return 'Click an anchor hex for the Warden';
+  if (defId === 'adapt') return 'Pick a role to mimic';
+  return `Pick a target for ${def.name}`;
 }
 
 function recomputePreview(): void {
@@ -113,7 +129,40 @@ function recomputePreview(): void {
 // --- Render pipeline -------------------------------------------------------
 
 function rerenderCanvas() {
-  render(handle.ctx, state, hover, selection, debug, handle.cssWidth, handle.cssHeight, showEnemiesPlanning, previewRoutes);
+  render(
+    handle.ctx, state, hover, selection, debug,
+    handle.cssWidth, handle.cssHeight,
+    showEnemiesPlanning, previewRoutes, showRegionLabels,
+  );
+  updateTargetingBanner();
+  updateCanvasCursor();
+}
+
+// Pass D — small overlay banner above the canvas during card-targeting mode.
+// Persistent until the player commits a target or hits Esc.
+function updateTargetingBanner(): void {
+  const existing = document.getElementById('targeting-banner');
+  if (!targetingMode) {
+    if (existing) existing.remove();
+    return;
+  }
+  const text = targetingMode.label;
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  const el = document.createElement('div');
+  el.id = 'targeting-banner';
+  el.textContent = text;
+  shell.canvasArea.appendChild(el);
+}
+
+function updateCanvasCursor(): void {
+  if (targetingMode && targetingMode.kind === 'hex') {
+    handle.canvas.classList.add('targeting-hex');
+  } else {
+    handle.canvas.classList.remove('targeting-hex');
+  }
 }
 
 function rerenderChrome() {
@@ -142,21 +191,54 @@ function rerenderChrome() {
       recomputePreview();
       rerenderCanvas();
     },
-    // Pass 8 — pick (or clear) a card from the player's hand. For targeted
-    // cards we auto-pick a sensible default in v0 (a future milestone adds
-    // canvas click-targeting). The handler then triggers a preview recompute.
+    // Pass 8 + D — pick (or clear) a card from the player's hand. For
+    // 'none'-targeting cards: commit immediately. For 'hex' cards (Setup Play,
+    // Hold the Line): enter canvas click-targeting mode. For 'role' cards
+    // (Adapt): open the role-pick modal. Begin Round stays disabled until
+    // any targeting mode resolves.
     onPickCard: (defId: string | null) => {
+      // Clearing the pick — also exits any targeting mode.
       if (defId === null) {
         playerCard = null;
+        targetingMode = null;
+        recomputePreview();
+        rerenderAll();
+        return;
+      }
+      const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
+      if (!inHand) return;
+      const def = cardById(defId);
+      if (!def) return;
+
+      if (def.targeting === 'none') {
+        playerCard = { defId, contributor: inHand.contributor };
+        targetingMode = null;
+      } else if (def.targeting === 'hex') {
+        playerCard = { defId, contributor: inHand.contributor };
+        targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
+      } else if (def.targeting === 'role') {
+        // For role-pick, the modal is the targeting UI; mark the card picked
+        // but pending and open the modal.
+        playerCard = { defId, contributor: inHand.contributor };
+        targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
+        showAdaptRoleModal((role: Role) => {
+          if (!playerCard || playerCard.defId !== defId) return;
+          playerCard = { ...playerCard, target: role };
+          targetingMode = null;
+          recomputePreview();
+          rerenderAll();
+        });
       } else {
-        const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
-        if (!inHand) return;
-        playerCard = autoTargetCard(defId, inHand.contributor);
+        // Fallback (enemy/ally targeting — not exercised by the current 13
+        // cards): commit without target.
+        playerCard = { defId, contributor: inHand.contributor };
+        targetingMode = null;
       }
       recomputePreview();
       rerenderAll();
     },
     selectedCardId: playerCard?.defId ?? null,
+    cardTargetingPending: targetingMode !== null,
     // Pass A1 — roster-item hover drives the attributes panel during planning.
     // Updates the shared hover state then re-renders chrome only (no canvas
     // change). Canvas hover continues to work as before.
@@ -192,6 +274,10 @@ function rerenderChrome() {
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
+    onToggleRegionLabels: () => { showRegionLabels = !showRegionLabels; rerenderAll(); },
+    showRegionLabels,
+    cardTargetingPending: targetingMode !== null,
+    pickedCardDefId: playerCard?.defId ?? null,
   });
 }
 
@@ -220,6 +306,11 @@ function beginRound(): void {
   // belt-and-suspenders guard for the keyboard / __sim path.
   const playerStrat = strategyById(state.playerStrategy, state.teamSide[state.playerTeam], state.map);
   if (playerStrat && playerStrat.variants.length > 1 && state.playerVariantChoice === null) return;
+  // Pass D — if the player picked a hex/role-targeted card and never
+  // committed a target (e.g. Esc-cancelled), fill in a sensible default so
+  // the card still fires. Keeps __sim.beginRound() callable without first
+  // navigating the targeting UI.
+  if (playerCard) playerCard = fallbackTargetForCard(playerCard);
 
   const aiTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   const aiSide = state.teamSide[aiTeam];
@@ -256,6 +347,7 @@ function beginRound(): void {
   // Clear UI selection so the next planning phase starts fresh.
   playerCard = null;
   previewRoutes = null;
+  targetingMode = null;
   loop.start();
 }
 
@@ -368,12 +460,40 @@ attachClickToCommand(handle.canvas, {
   onSelect: (unitId) => { selection.unitId = unitId; rerenderAll(); },
 });
 
+// Pass D — canvas click-to-target for hex-targeted cards (Setup Play, Hold
+// the Line). Capture-phase, so a successful target commit short-circuits
+// click-to-select.
+attachCardTargeting(handle.canvas, {
+  getMode: () => targetingMode,
+  getMap: () => state.map,
+  onCommitHex: (cardDefId: string, hex: HexCoord) => {
+    if (!playerCard || playerCard.defId !== cardDefId) return;
+    const updated: PlayedCard = { ...playerCard, target: hex };
+    // Setup Play also needs a bonus-ally; pick the first non-contributor
+    // teammate if the player hasn't specified one via __sim.
+    if (cardDefId === 'setup_play' && !updated.secondaryTarget) {
+      const ally = state.units.find((u) => u.team === state.playerTeam && u.id !== updated.contributor);
+      if (ally) updated.secondaryTarget = ally.id;
+    }
+    playerCard = updated;
+    targetingMode = null;
+    recomputePreview();
+    rerenderAll();
+  },
+  onCancel: () => { targetingMode = null; rerenderAll(); },
+});
+
 window.addEventListener('keydown', (ev) => {
-  if (ev.key.toLowerCase() !== DEBUG_KEY) return;
   const target = ev.target as HTMLElement | null;
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-  debug.on = !debug.on;
-  rerenderAll();
+  const key = ev.key.toLowerCase();
+  if (key === DEBUG_KEY) {
+    debug.on = !debug.on;
+    rerenderAll();
+  } else if (key === REGION_LABEL_KEY) {
+    showRegionLabels = !showRegionLabels;
+    rerenderAll();
+  }
 });
 
 rerenderAll();

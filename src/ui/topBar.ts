@@ -5,6 +5,7 @@
 import type { GameState, Team } from '../game/types.ts';
 import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
 import { strategyById } from '../game/strategies.ts';
+import { cardById } from '../game/cardData.ts';
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
@@ -14,6 +15,14 @@ export type TopBarCallbacks = {
   onToggleShowEnemies: () => void;
   showEnemiesPlanning: boolean;
   onSetMap: (name: 'Foundry' | 'Atoll') => void;
+  // Pass D — region-name overlay toggle (mirrors `R` keybind).
+  onToggleRegionLabels: () => void;
+  showRegionLabels: boolean;
+  // Pass D — true when the player has picked a card requiring a target but
+  // not yet committed one. Begin Round is disabled.
+  cardTargetingPending: boolean;
+  // The picked card's def id (for the disabled-button tooltip), or null.
+  pickedCardDefId: string | null;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
@@ -101,6 +110,16 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   seBtn.addEventListener('click', cb.onToggleShowEnemies);
   host.appendChild(seBtn);
 
+  // Pass D — region-name overlay toggle. Faded region labels at each region
+  // centroid so the player can map "A site"/"mid"/"b_main" to actual hexes.
+  // Mirrors the `R` keybinding.
+  const rBtn = document.createElement('button');
+  rBtn.textContent = cb.showRegionLabels ? 'Regions: on' : 'Regions: off';
+  rBtn.title = 'Toggle region-name overlay (press R).';
+  if (cb.showRegionLabels) rBtn.classList.add('selected');
+  rBtn.addEventListener('click', cb.onToggleRegionLabels);
+  host.appendChild(rBtn);
+
   // Timeout button (spec §9.3, §17): available when the player team is at match
   // point — own score = MATCH_WIN_SCORE − 1 (=3) and opponent < MATCH_WIN_SCORE.
   const atMatchPoint =
@@ -129,6 +148,18 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
         disabled = true;
         hint = 'Pick A or B';
       }
+    }
+    // Pass D — disable Begin Round when the player picked a hex/role-targeted
+    // card but hasn't committed a target. The card-targeting handler clears
+    // `cardTargetingPending` once the click commits.
+    if (!disabled && cb.cardTargetingPending) {
+      disabled = true;
+      const def = cb.pickedCardDefId ? cardById(cb.pickedCardDefId) : null;
+      hint = def?.targeting === 'role'
+        ? `Pick a role for ${def.name}`
+        : def
+          ? `Click a hex for ${def.name}`
+          : 'Pick a target for your card';
     }
     begin.disabled = disabled;
     if (hint) begin.title = hint;

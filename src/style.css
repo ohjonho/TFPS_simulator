@@ -632,3 +632,108 @@ button.selected:not(:disabled) {
   letter-spacing: 0.06em;
   margin: 2px 0 6px;
 }
+
+/* Pass D — muted hint inside card pills (replaces (auto-targets) note). */
+.c-name .muted {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* Pass D — card-targeting cursor while a hex-target card is pending. */
+#canvas-area canvas.targeting-hex {
+  cursor: crosshair;
+}
+
+/* Pass D — instruction banner above the canvas during card targeting. */
+#targeting-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: rgba(250, 204, 21, 0.92);
+  color: #1a1606;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+#canvas-area {
+  position: relative;
+}
+
+/* Pass D — "Cards this round" subsection in the resolution side panel. */
+.cards-active {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  margin: 4px 0 12px;
+}
+
+.card-active {
+  background: #181c25;
+  border: 1px solid #232838;
+  border-left: 3px solid var(--accent);
+  padding: 5px 8px;
+  border-radius: 3px;
+  line-height: 1.35;
+}
+
+.card-active.none {
+  border-left-color: #2a2e38;
+  color: var(--text-dim);
+}
+
+.card-active .c-source {
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.card-active .muted {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+/* Pass D — cards-played section in the round-end modal. */
+.re-cards {
+  margin: 10px 0 14px;
+  padding: 8px 10px;
+  background: #131722;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+}
+
+.re-cards h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.re-card-row {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 2px 0;
+}
+
+.re-card-row .c-source {
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.re-card-row .re-card-blurb {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-left: 12px;
+}
