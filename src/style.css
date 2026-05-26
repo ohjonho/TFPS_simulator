@@ -158,6 +158,42 @@ body {
   background: #fde047 !important;
 }
 
+/* F1 — help modal tabs. Sticky bar at the top of the modal body so the
+   tab buttons stay visible while the content scrolls. */
+.help-modal .help-tabs {
+  position: sticky;
+  top: 0;
+  display: flex;
+  gap: 4px;
+  padding: 0 0 8px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--panel-border);
+  background: #1c2230;
+  z-index: 1;
+}
+
+.help-modal .help-tab {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.help-modal .help-tab:hover {
+  color: var(--text);
+}
+
+.help-modal .help-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* Pass E3.2 — help / glossary modal styling. The modal body is two
    stacked sections (tutorial + glossary); each section uses tight
    line-height and a sub-heading so the player can skim. */
@@ -234,11 +270,47 @@ body {
   font-size: 12px;
 }
 
-#top-bar .phase-label {
+/* F1 — centered, enlarged "scoreboard" block in the top bar. The score
+   is the most important read on the screen during a match; making it
+   stand out is the difference between "is it 2-1 me?" and "wait, where
+   am I in this match?". */
+#top-bar .match-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 14px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+#top-bar .match-info .score {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+#top-bar .match-info .round-label {
+  font-size: 14px;
   font-weight: 600;
+  color: var(--text);
+}
+
+#top-bar .match-info .half-label {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 3px;
+  background: rgba(250, 204, 21, 0.18);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+#top-bar .phase-label {
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text);
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 /* Pass B — plant indicator. Subtle when planting; loud when down. */

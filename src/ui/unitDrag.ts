@@ -23,6 +23,12 @@ export type UnitDragCallbacks = {
   // Optional hover-tracking during drag (used by main.ts to update the
   // hex highlight while dragging).
   onHover?: (hex: HexCoord | null) => void;
+  // F1 — drag state callback. Called on mousedown (start) with the cursor
+  // pixel + unit id; on every mousemove with the updated pixel; on commit
+  // / cancel with null. The renderer reads this to draw a "ghost" unit
+  // following the cursor so the player can SEE what they're dragging
+  // (pre-fix the unit was invisibly attached to the cursor).
+  onDragState?: (state: { unitId: string; pixel: { x: number; y: number } } | null) => void;
 };
 
 type Active = { unitId: string };
@@ -32,6 +38,11 @@ export function attachUnitDrag(
   canvas: HTMLCanvasElement,
   cb: UnitDragCallbacks,
 ): void {
+  function pixelFromEvent(ev: MouseEvent): { x: number; y: number } {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
   canvas.addEventListener('mousedown', (ev) => {
     if (ev.button !== 0) return;            // left button only
     if (!cb.canDrag()) return;
@@ -40,6 +51,7 @@ export function attachUnitDrag(
     if (!u) return;
     active = { unitId: u.id };
     canvas.classList.add('dragging-unit');
+    cb.onDragState?.({ unitId: u.id, pixel: pixelFromEvent(ev) });
     // Prevent the canvas-area click handler from also firing (otherwise
     // mousedown→click on the same hex would also select).
     ev.preventDefault();
@@ -49,6 +61,7 @@ export function attachUnitDrag(
     if (!active) return;
     const hex = canvasHexFromEvent(canvas, ev);
     cb.onHover?.(hex);
+    cb.onDragState?.({ unitId: active.unitId, pixel: pixelFromEvent(ev) });
   });
 
   // Document-level mouseup so a release outside the canvas still cleans up.
@@ -59,6 +72,7 @@ export function attachUnitDrag(
     active = null;
     canvas.classList.remove('dragging-unit');
     cb.onHover?.(null);
+    cb.onDragState?.(null);
     cb.onCommit(id, hex);
   });
 
@@ -68,6 +82,7 @@ export function attachUnitDrag(
     active = null;
     canvas.classList.remove('dragging-unit');
     cb.onHover?.(null);
+    cb.onDragState?.(null);
   });
 }
 

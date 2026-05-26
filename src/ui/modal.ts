@@ -4,9 +4,16 @@
 export type ModalAction = { label: string; onClick: () => void; primary?: boolean };
 
 let activeRoot: HTMLDivElement | null = null;
+let escListener: ((ev: KeyboardEvent) => void) | null = null;
 
 export function showModal(title: string, body: string, actions: ModalAction[]): void {
   dismissModal();
+  // F1 — Esc closes the modal. Skip when Esc is consumed elsewhere (e.g.
+  // active card-target session). The listener is removed on dismiss.
+  escListener = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape' && activeRoot) dismissModal();
+  };
+  window.addEventListener('keydown', escListener);
   const root = document.createElement('div');
   root.id = 'modal-root';
   root.style.cssText =
@@ -47,5 +54,9 @@ export function dismissModal(): void {
   if (activeRoot) {
     activeRoot.remove();
     activeRoot = null;
+  }
+  if (escListener) {
+    window.removeEventListener('keydown', escListener);
+    escListener = null;
   }
 }

@@ -1,17 +1,28 @@
-// Pass E3.2 — help modal: short How-to-play walkthrough + Glossary of every
-// role / skill / behavioral trait / hero / weapon / term that appears in the
-// UI. Reachable any time via the topbar "?" button; auto-opens on first load
-// per browser (dismissal persisted in localStorage under HELP_SEEN_KEY).
+// Pass E3.2 / F1 — help modal with three tabs (How to play, Glossary, Patch
+// notes). Reachable any time via the topbar "?" button; auto-opens on first
+// load per browser (dismissal persisted in localStorage). Pre-F1 the body
+// was a single long scroll; playtester said it didn't fit without
+// scrolling, so the content is now paginated.
 //
-// Pure HTML; mounted via showModal so the existing modal chrome (overlay,
-// close button) is reused. No new state on GameState.
+// The modal uses showModal under the hood; Esc closes the modal (modal.ts
+// listens for it once open).
 
-import { showModal } from './modal.ts';
+import { showModal, dismissModal } from './modal.ts';
 
 const HELP_SEEN_KEY = 'tfps:v0:help-seen';
 
+// Track the currently-active tab so reopening from inside the tab buttons
+// re-renders without flicker. Reset to 'play' each time the modal opens.
+type Tab = 'play' | 'glossary' | 'patch';
+let activeTab: Tab = 'play';
+
 export function showHelpModal(): void {
-  showModal('How to play', HELP_BODY, [
+  activeTab = 'play';
+  open();
+}
+
+function open(): void {
+  showModal('How to play', renderBody(activeTab), [
     {
       label: 'Got it',
       primary: true,
@@ -20,6 +31,7 @@ export function showHelpModal(): void {
       },
     },
   ]);
+  wireTabs();
 }
 
 // Auto-open on first session in this browser. Called once from main.ts after
@@ -31,12 +43,44 @@ export function maybeShowFirstLoadHelp(): void {
   if (!seen) showHelpModal();
 }
 
-// Mostly hand-authored content — keep it short and skim-friendly. Each
-// glossary row is one line: term + a sentence of what it does. Numbers
-// in parentheses are the actual config values (e.g. +10 HR) so the
-// glossary doubles as a quick reference.
-const HELP_BODY = `
-<div class="help-modal">
+function wireTabs(): void {
+  document.querySelectorAll<HTMLButtonElement>('.help-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const t = btn.getAttribute('data-tab') as Tab | null;
+      if (!t) return;
+      activeTab = t;
+      // Re-open with the new tab. showModal dismisses the previous one + sets
+      // up a fresh Esc listener, so this is the cheapest way to switch.
+      dismissModal();
+      open();
+    });
+  });
+}
+
+function renderBody(tab: Tab): string {
+  const tabs: ReadonlyArray<{ key: Tab; label: string }> = [
+    { key: 'play',     label: 'How to play' },
+    { key: 'glossary', label: 'Glossary' },
+    { key: 'patch',    label: 'Patch notes' },
+  ];
+  const tabBar = tabs.map((t) =>
+    `<button class="help-tab${t.key === tab ? ' active' : ''}" data-tab="${t.key}">${t.label}</button>`,
+  ).join('');
+  const content =
+    tab === 'play'     ? HOW_TO_PLAY :
+    tab === 'glossary' ? GLOSSARY :
+                         PATCH_NOTES;
+  return `
+    <div class="help-modal">
+      <div class="help-tabs">${tabBar}</div>
+      <div class="help-tab-body">${content}</div>
+    </div>
+  `;
+}
+
+// --- How to play -----------------------------------------------------------
+
+const HOW_TO_PLAY = `
   <section>
     <h3>The match</h3>
     <ul>
@@ -47,7 +91,6 @@ const HELP_BODY = `
         plays out automatically — no in-round controls).</li>
     </ul>
   </section>
-
   <section>
     <h3>Planning phase</h3>
     <ol>
@@ -64,7 +107,6 @@ const HELP_BODY = `
         you see during planning are previews of what your units will do.</li>
     </ol>
   </section>
-
   <section>
     <h3>Resolution phase</h3>
     <ul>
@@ -76,7 +118,6 @@ const HELP_BODY = `
         remaining duration.</li>
     </ul>
   </section>
-
   <section>
     <h3>Spike plant / defuse</h3>
     <ul>
@@ -89,7 +130,6 @@ const HELP_BODY = `
         ends on the 60-tick timer — defender side wins.</li>
     </ul>
   </section>
-
   <section>
     <h3>Quick keys</h3>
     <ul>
@@ -97,11 +137,10 @@ const HELP_BODY = `
         cone + visible hexes rendered).</li>
       <li><kbd>R</kbd> — toggle the region-name overlay (helps you map
         "A site" / "mid" / "b_main" to actual hexes).</li>
-      <li><kbd>Esc</kbd> — cancel an active card-target session or unit
-        selection.</li>
+      <li><kbd>Esc</kbd> — close this modal, cancel an active card-target
+        session, or deselect a unit.</li>
     </ul>
   </section>
-
   <section>
     <h3>Modes</h3>
     <ul>
@@ -113,9 +152,11 @@ const HELP_BODY = `
         matchup, so you can share interesting ones with friends.</li>
     </ul>
   </section>
+`;
 
-  <h2 class="help-section-title">Glossary</h2>
+// --- Glossary --------------------------------------------------------------
 
+const GLOSSARY = `
   <section>
     <h3>Roles</h3>
     <ul class="glossary">
@@ -129,7 +170,6 @@ const HELP_BODY = `
         card lets them mimic another role for the round.</li>
     </ul>
   </section>
-
   <section>
     <h3>Skill traits</h3>
     <ul class="glossary">
@@ -140,7 +180,6 @@ const HELP_BODY = `
         engagement (resets when the engagement ends).</li>
     </ul>
   </section>
-
   <section>
     <h3>Behavioral traits</h3>
     <ul class="glossary">
@@ -158,7 +197,6 @@ const HELP_BODY = `
         team. Doesn't retreat.</li>
     </ul>
   </section>
-
   <section>
     <h3>Heroes (card source)</h3>
     <ul class="glossary">
@@ -171,20 +209,20 @@ const HELP_BODY = `
         target, plus 5 ticks of LoS-bypass reveal).</li>
     </ul>
   </section>
-
   <section>
     <h3>Weapons</h3>
     <ul class="glossary">
       <li><strong>Rifle (R)</strong> — balanced; good at mid-range.
         70 / 75 / 55 % short / medium / long.</li>
-      <li><strong>Sniper (S)</strong> — 0.5 hex/tick movement.
-        Stationary: 30 / 60 / 80 %; moving: 15 / 30 / 45 %.
-        Vision cone narrows when stationary (45° → 22.5°).</li>
+      <li><strong>Sniper (S)</strong> — same speed as other units. If it
+        moved within the last 2 ticks its HR drops sharply (moving table).
+        Stationary: 30 / 60 / 80 %; moving: 15 / 30 / 45 %. Vision cone
+        narrows when stationary (45° → 22.5°).</li>
       <li><strong>Shotgun (G)</strong> — point-blank lethal.
-        80 / 30 / 5 %.</li>
+        80 / 30 / 5 %. Prefers tight corners and cover; avoids long
+        sightlines.</li>
     </ul>
   </section>
-
   <section>
     <h3>Terms</h3>
     <ul class="glossary">
@@ -202,5 +240,86 @@ const HELP_BODY = `
         position of an enemy that just left LoS (5 ticks).</li>
     </ul>
   </section>
-</div>
+`;
+
+// --- Patch notes -----------------------------------------------------------
+// Newest at the top. Keep entries terse — one bullet per change. The file is
+// hand-curated rather than auto-generated so we can explain WHY changes
+// happened, not just what.
+
+const PATCH_NOTES = `
+  <section>
+    <h3>v0.5.1 — playtester fixes</h3>
+    <ul>
+      <li>Attributes panel no longer stays pinned after clicking empty
+        space (click outside any unit to deselect).</li>
+      <li>Dragging a unit in planning now shows the unit following the
+        cursor (not just a teleport on release).</li>
+      <li>Help / glossary modal paginated into three tabs; <kbd>Esc</kbd>
+        now closes the modal.</li>
+      <li>Top-bar score &amp; round are larger and centered (FPS style).</li>
+      <li>Sniper change: same movement speed as other units; HR drops to
+        the moving table for 2 ticks after each step. Stand still to shoot.</li>
+      <li>Shotgun AI biases toward tight cover + short sightlines; no
+        longer tries to duel a sniper at mid.</li>
+      <li>Three more attributes wired into the sim: <strong>Headshot</strong>
+        (HS roll), <strong>Reflexes</strong> (first-shot scaling),
+        <strong>Positioning</strong> (cover-hold quality).</li>
+      <li>Map IQ collapsed into one attribute (was per-map foundry/atoll).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.5 — initial playtest build</h3>
+    <ul>
+      <li>Help modal with in-app tutorial &amp; glossary; auto-opens once
+        per browser.</li>
+      <li>Three-column layout: strategy + cards left, canvas center, roster
+        / unit info right. Kill feed moved to top-left of the canvas.</li>
+      <li>Player units can be dragged within their spawn zone during
+        planning.</li>
+      <li><strong>Randomize Units</strong> mode (top bar): seeded random
+        loadouts + attributes in [40, 60]. Seed shown + editable in the
+        right panel so you can reproduce a matchup.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.4 — card system</h3>
+    <ul>
+      <li>13 cards across traits / roles / heroes; per-team deck (9 cards,
+        hand of 3, discard + draw each round).</li>
+      <li>Card visuals during resolution (aura rings, mark crosshairs,
+        anchors). Enemy effects only render once your team has vision of
+        the relevant unit / hex.</li>
+      <li>Strategy variants A / B for Stack / Execute / Rush — the player
+        picks the site explicitly.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.3 — attributes + scoreboards</h3>
+    <ul>
+      <li>Per-unit 14-attribute schema (Aim, weapon-handling × 3, Awareness,
+        Clutch wired into sim; others displayed but inert).</li>
+      <li>Round-end &amp; match-end modals with K/D/A, ACS, KAST%, MVP
+        marker, per-round ACS sparklines.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.2 — match flow</h3>
+    <ul>
+      <li>Strategies (Hold / Stack / Pressure on defense; Execute / Rush /
+        Control on attack). AI opponent picks weighted by recent wins.</li>
+      <li>6-round match, halftime side swap at round 3, first to 4 wins.</li>
+      <li>Spike plant / defuse + 20-tick detonation timer.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.1 — simulation foundation</h3>
+    <ul>
+      <li>30×40 pointy-top hex grid, two maps (Foundry, Atoll).</li>
+      <li>Tick-based sim, vision cones with fog of war + ghost markers,
+        per-unit AI primitives, deterministic seeded RNG.</li>
+      <li>Combat pipeline: weapon × range hit table, headshot rolls, cover
+        penalty, traits / role / modifier seam.</li>
+    </ul>
+  </section>
 `;

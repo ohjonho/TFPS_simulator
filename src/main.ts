@@ -90,6 +90,10 @@ let targetingMode: TargetingMode = null;
 // switches preserve both (user choice: same units across maps).
 let matchMode: MatchMode = 'standard';
 let matchSeed: number = RNG_SEED_DEFAULT;
+// F1 — drag state: non-null while the player is dragging a unit during
+// planning. Read by the renderer to draw a "ghost" unit at the cursor pixel
+// (the dragged unit is skipped at its hex). Cleared on commit / Esc.
+let dragState: { unitId: string; pixel: { x: number; y: number } } | null = null;
 
 // Pass D — fallback auto-target used when the player picks a hex/role-targeted
 // card but commits Begin Round without explicitly setting a target (e.g. via
@@ -191,6 +195,7 @@ function rerenderCanvas() {
     handle.ctx, state, hover, selection, debug,
     handle.cssWidth, handle.cssHeight,
     showEnemiesPlanning, previewRoutes, showRegionLabels,
+    dragState,
   );
   updateTargetingBanner();
   updateCanvasCursor();
@@ -546,6 +551,13 @@ attachUnitDrag(handle.canvas, {
     } else {
       hover.unitId = null;
     }
+    rerenderCanvas();
+  },
+  // F1 — track cursor pixel during drag so the renderer can draw a "ghost"
+  // unit following the cursor (rather than the unit invisibly teleporting
+  // on release, which playtesters found jarring).
+  onDragState: (s) => {
+    dragState = s;
     rerenderCanvas();
   },
 });

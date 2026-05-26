@@ -6,6 +6,7 @@
 import type { GameState, HexCoord, Team } from '../game/types.ts';
 import { drawHexGrid } from './drawHexGrid.ts';
 import { drawPreviewRoutes, drawRoutes } from './drawRoutes.ts';
+import type { DragState } from './drawUnits.ts';
 import { drawUnits } from './drawUnits.ts';
 import { drawFog } from './drawFog.ts';
 import { drawEngagements } from './drawEngagements.ts';
@@ -38,6 +39,7 @@ export function render(
   showEnemiesPlanning = true,
   previewRoutes: Record<string, HexCoord[]> | null = null,
   showRegionLabels = false,
+  dragState: DragState = null,
 ): void {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
@@ -62,7 +64,7 @@ export function render(
   const hiddenEnemies = fogActive
     ? hiddenEnemyIdsFor(state, state.playerTeam)
     : new Set<string>();
-  drawUnits(ctx, state.units, hover.unitId, selection.unitId, hiddenEnemies);
+  drawUnits(ctx, state.units, hover.unitId, selection.unitId, hiddenEnemies, dragState);
 
   // Pass D — card-effect visuals layer on top of units so the player sees
   // active marks / auras / anchors mid-round.

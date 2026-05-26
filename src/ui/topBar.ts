@@ -71,16 +71,24 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     modeGroup.appendChild(b);
   }
 
+  // F1 — score / round / half / phase grouped into a centered "match-info"
+  // block with bigger font (FPS-style scoreboard). Sandwiched between two
+  // flex:1 spacers below so it stays horizontally centered regardless of
+  // the chrome on either side.
   const playerScore = state.scores[state.playerTeam];
   const oppTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   const oppScore = state.scores[oppTeam];
+
+  const matchInfo = document.createElement('div');
+  matchInfo.className = 'match-info';
+
   const score = document.createElement('span');
   score.className = 'score';
   score.textContent = `${playerScore} – ${oppScore}`;
 
   const round = document.createElement('span');
   round.className = 'round-label';
-  round.textContent = `Round ${state.round}`;
+  round.textContent = `R${state.round}`;
 
   const playerSide = state.teamSide[state.playerTeam];
   const half = document.createElement('span');
@@ -90,7 +98,9 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   const phase = document.createElement('span');
   phase.className = 'phase-label';
   phase.textContent =
-    state.phase === 'planning' ? 'Planning' : `Resolution — tick ${state.tick}`;
+    state.phase === 'planning' ? 'Planning' : `tick ${state.tick}`;
+
+  matchInfo.append(score, round, half, phase);
 
   // Pass B — spike status indicator. Only visible during resolution + when
   // either a plant is in progress, the spike is down, or a defuse is in
@@ -112,9 +122,11 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     }
   }
 
+  const leftSpacer = document.createElement('div');
+  leftSpacer.className = 'spacer';
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
-  host.append(mapName, modeGroup, score, round, half, phase, plantLabel, spacer);
+  host.append(mapName, modeGroup, leftSpacer, matchInfo, plantLabel, spacer);
 
   // Fog perspective toggle.
   const fogGroup = document.createElement('div');

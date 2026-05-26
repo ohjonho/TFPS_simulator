@@ -20,7 +20,11 @@ export function attachClickToCommand(
     const rect = canvas.getBoundingClientRect();
     const hex = pixelToOffset(ev.clientX - rect.left, ev.clientY - rect.top);
     const hit = aliveUnitAt(opts.getUnits(), hex);
-    if (hit) opts.onSelect(hit.id);
+    // F1 — empty-hex clicks now CLEAR the selection. Pre-fix, only hits
+    // updated selection, so the attributes panel stayed pinned to whatever
+    // unit you last clicked even after clicking empty space ("attributes
+    // window persists despite no unit hovered" from playtester report).
+    opts.onSelect(hit ? hit.id : null);
   });
 
   window.addEventListener('keydown', (ev) => {
