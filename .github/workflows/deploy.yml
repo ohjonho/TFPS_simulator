@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# Builds the Vite bundle on every push to `main` and publishes `dist/` to
+# GitHub Pages. The site lands at https://ohjonho.github.io/TFPS_simulator/.
+# Manual reruns: Actions tab → Deploy to GitHub Pages → "Run workflow".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages needs these permissions to fetch + write the artifact and publish.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't queue parallel deploys — if a push lands while one's running, replace it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
