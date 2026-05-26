@@ -83,6 +83,38 @@ body {
   font-weight: 700;
 }
 
+/* Pass E m5 — Mode toggle group + seed input. */
+.mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.seed-row {
+  margin: 6px 0 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seed-row input[data-seed] {
+  width: 90px;
+  padding: 2px 6px;
+  background: #181c25;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.seed-row button[data-regenerate] {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 #top-bar {
   grid-area: top;
   display: flex;

@@ -24,8 +24,15 @@ const NEUTRAL_ATTRIBUTES: Attributes = {
 const DEFENDER_FACING: Facing = 5; // SE — defenders (north) look downward toward attackers
 const ATTACKER_FACING: Facing = 1; // NE — attackers (south) look upward toward defenders
 
-export function createTeam(team: Team, spawns: readonly HexCoord[]): Unit[] {
-  const loadouts = LOADOUTS[team] as readonly Weapon[];
+// Pass E m5 — optional `loadoutOverride` lets Randomize Units mode pass in
+// seeded random loadouts (still constrained to a per-team rifle minimum via
+// pickRandomLoadout). Default = the Standard-mode LOADOUTS table.
+export function createTeam(
+  team: Team,
+  spawns: readonly HexCoord[],
+  loadoutOverride?: readonly Weapon[],
+): Unit[] {
+  const loadouts = loadoutOverride ?? (LOADOUTS[team] as readonly Weapon[]);
   const slotCount = loadouts.length;
   if (spawns.length < slotCount) {
     throw new Error(

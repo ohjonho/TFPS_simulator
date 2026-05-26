@@ -9,6 +9,7 @@ import type {
   GameState,
   GhostEntry,
   HexCoord,
+  MatchMode,
   MoveState,
   PlayedCard,
   Side,
@@ -19,21 +20,48 @@ import type {
 import { createTeam } from './units.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { assignAttributes } from './attributes.ts';
+import { assignAttributes, pickRandomLoadout } from './attributes.ts';
 import { createRng } from './rng.ts';
 import { buildDeck, drawCards } from './cards.ts';
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
 import type { MapDefinition } from './types.ts';
-import { AI, RNG_SEED_DEFAULT } from './config.ts';
+import { AI, RANDOMIZE_ATTRIBUTES, RNG_SEED_DEFAULT } from './config.ts';
 
-export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): GameState {
+// Pass E m5 — `mode` chooses between Standard (today's fixed loadouts + flat
+// attributes via ATTRIBUTES.generation) and Randomize (seeded random
+// loadouts via pickRandomLoadout + uniform [40, 60] attributes). `seed`
+// drives BOTH the loadout pick AND the attribute assignment so the same
+// (mode, seed, map) triple reproduces the same matchup deterministically.
+export function buildInitialState(
+  mapName: MapDefinition['name'] = 'Foundry',
+  mode: MatchMode = 'standard',
+  seed: number = RNG_SEED_DEFAULT,
+): GameState {
   const map = mapName === 'Atoll' ? atoll : foundry;
-  const defenders = createTeam('defenders', map.spawns.defenders);
-  const attackers = createTeam('attackers', map.spawns.attackers);
+
+  // Randomize mode: pre-roll team loadouts from the match seed before
+  // createTeam runs. Standard mode falls through to LOADOUTS in units.ts.
+  let defenderLoadouts: readonly ('shotgun' | 'rifle' | 'sniper')[] | undefined;
+  let attackerLoadouts: readonly ('shotgun' | 'rifle' | 'sniper')[] | undefined;
+  if (mode === 'randomize') {
+    // Separate RNG streams per team so the defender loadout doesn't shift
+    // the attacker stream when constraints change later.
+    defenderLoadouts = pickRandomLoadout(createRng((seed ^ 0xdef10ad) >>> 0), map.spawns.defenders.length);
+    attackerLoadouts = pickRandomLoadout(createRng((seed ^ 0xa7710ad) >>> 0), map.spawns.attackers.length);
+  }
+  const defenders = createTeam('defenders', map.spawns.defenders, defenderLoadouts);
+  const attackers = createTeam('attackers', map.spawns.attackers, attackerLoadouts);
   const units = [...defenders, ...attackers];
   // Random trait/role/hero/handling assignment at match start (spec §10–13).
-  assignAttributes(units, createRng(RNG_SEED_DEFAULT));
+  // Pass E m5: in Randomize mode, override the attribute range to [40, 60]
+  // (configurable via RANDOMIZE_ATTRIBUTES).
+  const attrRng = createRng(seed);
+  if (mode === 'randomize') {
+    assignAttributes(units, attrRng, {}, { rangeOverride: RANDOMIZE_ATTRIBUTES });
+  } else {
+    assignAttributes(units, attrRng);
+  }
 
   const targets: Record<string, null> = {};
   const moves: Record<string, MoveState> = {};
@@ -58,8 +86,10 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
   // then draw the 3-card starting hand. Deck shuffles use the seeded RNG so
   // hands replay identically. (Per team we derive a separate RNG stream so the
   // attacker deck doesn't depend on the defender's first.)
-  const defenderDeckRng = createRng(RNG_SEED_DEFAULT ^ 0xdec0de);
-  const attackerDeckRng = createRng(RNG_SEED_DEFAULT ^ 0xa77ac4);
+  // Pass E m5: derive from the match seed (was hardcoded to RNG_SEED_DEFAULT)
+  // so Randomize mode's seed also drives the deck order.
+  const defenderDeckRng = createRng((seed ^ 0xdec0de) >>> 0);
+  const attackerDeckRng = createRng((seed ^ 0xa77ac4) >>> 0);
   const defenderDeck = drawCards(buildDeck(defenders, defenderDeckRng), 3, defenderDeckRng);
   const attackerDeck = drawCards(buildDeck(attackers, attackerDeckRng), 3, attackerDeckRng);
   const cards: Record<Team, TeamDeck> = {
@@ -68,14 +98,17 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
   };
   const playedCard: Record<Team, PlayedCard | null> = { defenders: null, attackers: null };
 
-  const seed: GameState = {
+  // Pass E m5: renamed `seed` -> `initial` to avoid shadowing the new
+  // `seed: number` parameter (was a pre-existing variable name collision
+  // exposed by the arg refactor).
+  const initial: GameState = {
     phase: 'planning',
     map,
     units,
     playback: { playing: false, speed: 1 },
     playerTeam: 'defenders',
     tick: 0,
-    seed: RNG_SEED_DEFAULT,
+    seed,
     targets,
     moves,
     visibility: { defenders: new Set(), attackers: new Set() },
@@ -101,10 +134,11 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
     cardEffects: [],
     plant: { planted: null, planting: null, defusing: null },
     prevPerUnitVisible: {},
+    matchMode: mode,
   };
 
-  const { visibility } = computeVisibility(seed);
-  return { ...seed, visibility };
+  const { visibility } = computeVisibility(initial);
+  return { ...initial, visibility };
 }
 
 // Fresh AI state — starts moving (ticksSinceEnemySeen at the resume threshold so

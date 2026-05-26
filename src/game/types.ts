@@ -249,6 +249,13 @@ export type CardFlags = {
 
 export type Phase = 'planning' | 'resolution';
 
+// Pass E m5 — match generation mode. 'standard' = today's fixed loadouts +
+// flat-50 attributes (existing behavior; preserved as the v0 default).
+// 'randomize' = seeded random loadouts (at least one rifle per team) +
+// uniform-[40, 60] attributes + random traits/skills/role/hero. Exposed via
+// the top-bar toggle + a seed input in the planning panel.
+export type MatchMode = 'standard' | 'randomize';
+
 export type PlaybackSpeed = 1 | 2 | 4;
 export type Playback = {
   playing: boolean;
@@ -451,4 +458,8 @@ export type GameState = {
   // the first shot takes a small HR hit (modeling the held angle's lag).
   // Persists between rounds is fine; reset at round start for cleanliness.
   prevPerUnitVisible: Record<string, ReadonlySet<HexKey>>;
+  // Pass E m5 — generation mode the match was built with. Mirrored from the
+  // buildInitialState arg so the UI can show mode-relevant chrome (seed
+  // input + Regenerate button) and __sim can introspect.
+  matchMode: MatchMode;
 };

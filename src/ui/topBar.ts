@@ -2,7 +2,7 @@
 // phase/tick indicator + flow buttons (Begin Round / Back to Planning) +
 // optional Timeout button (match-point only) + fog POV toggle.
 
-import type { GameState, Team } from '../game/types.ts';
+import type { GameState, MatchMode, Team } from '../game/types.ts';
 import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
 import { strategyById } from '../game/strategies.ts';
 import { cardById } from '../game/cardData.ts';
@@ -23,6 +23,9 @@ export type TopBarCallbacks = {
   cardTargetingPending: boolean;
   // The picked card's def id (for the disabled-button tooltip), or null.
   pickedCardDefId: string | null;
+  // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
+  // match (preserving seed by default, see main.ts).
+  onSetMode: (mode: MatchMode) => void;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
@@ -38,6 +41,22 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     b.title = 'Switch map (starts a new match).';
     b.addEventListener('click', () => cb.onSetMap(m));
     mapName.appendChild(b);
+  }
+
+  // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
+  // match with the new mode (and the current seed by user choice — see
+  // main.ts.onSetMode).
+  const modeGroup = document.createElement('div');
+  modeGroup.className = 'mode-toggle';
+  for (const m of ['standard', 'randomize'] as const) {
+    const b = document.createElement('button');
+    b.textContent = m === 'standard' ? 'Standard' : 'Randomize';
+    if (state.matchMode === m) b.classList.add('selected');
+    b.title = m === 'standard'
+      ? 'Fixed 2 rifles + 1 sniper, flat-50 attributes.'
+      : 'Seeded random loadouts + attributes (40–60). Same units across map switches with the same seed.';
+    b.addEventListener('click', () => cb.onSetMode(m));
+    modeGroup.appendChild(b);
   }
 
   const playerScore = state.scores[state.playerTeam];
@@ -83,7 +102,7 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
 
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
-  host.append(mapName, score, round, half, phase, plantLabel, spacer);
+  host.append(mapName, modeGroup, score, round, half, phase, plantLabel, spacer);
 
   // Fog perspective toggle.
   const fogGroup = document.createElement('div');

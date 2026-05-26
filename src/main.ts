@@ -3,7 +3,7 @@
 // halftime/next round → match end).
 
 import './style.css';
-import type { GameState, HexCoord, PlayedCard, PlaybackSpeed, Role, Team, Unit } from './game/types.ts';
+import type { GameState, HexCoord, MatchMode, PlayedCard, PlaybackSpeed, Role, Team, Unit } from './game/types.ts';
 import { previewPlayerPlan } from './game/planningPreview.ts';
 import { cardById } from './game/cardData.ts';
 import { buildInitialState } from './game/state.ts';
@@ -14,7 +14,7 @@ import { resolveShot } from './game/combat.ts';
 import type { ShotContextInput } from './game/combat.ts';
 import { createRng } from './game/rng.ts';
 import { cardSanityCheck, determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
-import { ROLE_AGGRESSION } from './game/config.ts';
+import { ROLE_AGGRESSION, RNG_SEED_DEFAULT } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
 import { DEBUG_KEY, REGION_LABEL_KEY } from './game/config.ts';
 import {
@@ -81,6 +81,12 @@ let showRegionLabels = false;
 // picked a hex/role-targeted card and hasn't committed a target yet. Begin
 // Round is disabled until this clears.
 let targetingMode: TargetingMode = null;
+// Pass E m5 — Match-mode / seed UI state. matchMode is mirrored on
+// GameState.matchMode after each buildInitialState; matchSeed is kept here so
+// the seed input + Regenerate button can reproduce or step the seed. Map
+// switches preserve both (user choice: same units across maps).
+let matchMode: MatchMode = 'standard';
+let matchSeed: number = RNG_SEED_DEFAULT;
 
 // Pass D — fallback auto-target used when the player picks a hex/role-targeted
 // card but commits Begin Round without explicitly setting a target (e.g. via
@@ -247,6 +253,14 @@ function rerenderChrome() {
       hover.unitId = unitId;
       rerenderChrome();
     },
+    // Pass E m5 — Regenerate (in Randomize mode): rebuild the match on the
+    // current map with the user-supplied seed.
+    onRegenerate: (seed: number) => {
+      matchSeed = seed;
+      state = buildInitialState(state.map.name, matchMode, matchSeed);
+      initialUnitsById = snapshotUnits(state.units);
+      rerenderAll();
+    },
   });
   // Pass E m4 — card hand + cards-this-round live in the new left panel.
   renderCardPanel(shell.cardPanel, state, {
@@ -279,7 +293,9 @@ function rerenderChrome() {
     onToggleShowEnemies: () => { showEnemiesPlanning = !showEnemiesPlanning; rerenderAll(); },
     showEnemiesPlanning,
     onSetMap: (name) => {
-      state = buildInitialState(name);
+      // Pass E m5 — preserve current mode + seed across map switches (user
+      // choice: same units, different map).
+      state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
@@ -287,6 +303,12 @@ function rerenderChrome() {
     showRegionLabels,
     cardTargetingPending: targetingMode !== null,
     pickedCardDefId: playerCard?.defId ?? null,
+    onSetMode: (mode: MatchMode) => {
+      matchMode = mode;
+      state = buildInitialState(state.map.name, matchMode, matchSeed);
+      initialUnitsById = snapshotUnits(state.units);
+      rerenderAll();
+    },
   });
 }
 
@@ -441,7 +463,11 @@ function showMatchEndModal(): void {
     label: 'New Match',
     primary: true,
     onClick: () => {
-      state = buildInitialState(currentMap);
+      // Pass E m5 — preserve mode but increment seed so the next match isn't
+      // identical (in Randomize mode). In Standard mode the seed advance is
+      // inert (attribute generation is flat-50).
+      matchSeed = (matchSeed + 1) >>> 0;
+      state = buildInitialState(currentMap, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
@@ -674,16 +700,33 @@ if (import.meta.env.DEV) {
         halftimeTaken,
       };
     },
-    newMatch: (mapName?: 'Foundry' | 'Atoll') => {
-      state = buildInitialState(mapName);
+    // Pass E m5 — accept optional mode + seed; default to current UI state.
+    newMatch: (mapName?: 'Foundry' | 'Atoll', mode?: MatchMode, seed?: number) => {
+      if (mode !== undefined) matchMode = mode;
+      if (seed !== undefined) matchSeed = seed;
+      state = buildInitialState(mapName ?? state.map.name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
     setMap: (name: 'Foundry' | 'Atoll') => {
-      state = buildInitialState(name);
+      state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
+    setMode: (mode: MatchMode) => {
+      matchMode = mode;
+      state = buildInitialState(state.map.name, matchMode, matchSeed);
+      initialUnitsById = snapshotUnits(state.units);
+      rerenderAll();
+    },
+    setSeed: (seed: number) => {
+      matchSeed = seed;
+      state = buildInitialState(state.map.name, matchMode, matchSeed);
+      initialUnitsById = snapshotUnits(state.units);
+      rerenderAll();
+    },
+    getMatchMode: () => matchMode,
+    getMatchSeed: () => matchSeed,
     getMatch: () => ({
       round: state.round, scores: state.scores, teamSide: state.teamSide,
       playerStrategy: state.playerStrategy, aiStrategy: state.aiStrategy,

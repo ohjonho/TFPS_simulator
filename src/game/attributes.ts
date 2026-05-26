@@ -8,9 +8,9 @@
 // consumes 6 of them (Aim, Rifle/Shotgun/Sniper Handling, Awareness, Clutch);
 // the others are generated, displayed in the UI, and inert until v1.
 
-import type { Attributes, BehavioralTrait, Hero, Role, SkillTrait, Unit } from './types.ts';
+import type { Attributes, BehavioralTrait, Hero, Role, SkillTrait, Unit, Weapon } from './types.ts';
 import type { Rng } from './rng.ts';
-import { ATTRIBUTES, ROLE_AGGRESSION } from './config.ts';
+import { ATTRIBUTES, LOADOUT_POOL, ROLE_AGGRESSION } from './config.ts';
 
 const SKILL_TRAITS: readonly SkillTrait[] = ['Sharp Aim', 'Headhunter', 'Eagle Eye', 'First Shot'];
 const BEHAVIORAL_TRAITS: readonly BehavioralTrait[] = [
@@ -46,7 +46,11 @@ function sampleUniform(rng: Rng, min: number, max: number): number {
   return rng.range(min, max);
 }
 
-function sampleAttribute(rng: Rng): number {
+function sampleAttribute(rng: Rng, rangeOverride?: { min: number; max: number }): number {
+  // Pass E m5 — Randomize Units mode passes a uniform range override to clamp
+  // every attribute slot to [40, 60] regardless of the global distribution
+  // setting. Keeps Standard mode's flat-50 default intact.
+  if (rangeOverride) return sampleUniform(rng, rangeOverride.min, rangeOverride.max);
   const g = ATTRIBUTES.generation;
   if (g.distribution === 'flat') return g.mean;  // deterministic baseline
   if (g.distribution === 'normal') return sampleNormal(rng, g.mean, g.stdDev, g.min, g.max);
@@ -54,36 +58,60 @@ function sampleAttribute(rng: Rng): number {
 }
 
 // Pure: returns a fresh Attributes record. Deterministic given the RNG.
-export function generateAttributes(rng: Rng): Attributes {
+// Pass E m5 — accepts an optional `rangeOverride` (e.g. [40, 60]) used by
+// Randomize Units mode to pin every attribute into a single uniform window.
+export function generateAttributes(rng: Rng, rangeOverride?: { min: number; max: number }): Attributes {
   return {
-    aim:             sampleAttribute(rng),
-    headshot:        sampleAttribute(rng),
-    reflexes:        sampleAttribute(rng),
-    sprayControl:    sampleAttribute(rng),
-    rifleHandling:   sampleAttribute(rng),
-    shotgunHandling: sampleAttribute(rng),
-    sniperHandling:  sampleAttribute(rng),
-    awareness:       sampleAttribute(rng),
-    positioning:     sampleAttribute(rng),
+    aim:             sampleAttribute(rng, rangeOverride),
+    headshot:        sampleAttribute(rng, rangeOverride),
+    reflexes:        sampleAttribute(rng, rangeOverride),
+    sprayControl:    sampleAttribute(rng, rangeOverride),
+    rifleHandling:   sampleAttribute(rng, rangeOverride),
+    shotgunHandling: sampleAttribute(rng, rangeOverride),
+    sniperHandling:  sampleAttribute(rng, rangeOverride),
+    awareness:       sampleAttribute(rng, rangeOverride),
+    positioning:     sampleAttribute(rng, rangeOverride),
     mapIQ: {
-      foundry: sampleAttribute(rng),
-      atoll:   sampleAttribute(rng),
+      foundry: sampleAttribute(rng, rangeOverride),
+      atoll:   sampleAttribute(rng, rangeOverride),
     },
-    clutch:          sampleAttribute(rng),
-    composure:       sampleAttribute(rng),
-    confidence:      sampleAttribute(rng),
-    teamwork:        sampleAttribute(rng),
-    discipline:      sampleAttribute(rng),
-    communication:   sampleAttribute(rng),
+    clutch:          sampleAttribute(rng, rangeOverride),
+    composure:       sampleAttribute(rng, rangeOverride),
+    confidence:      sampleAttribute(rng, rangeOverride),
+    teamwork:        sampleAttribute(rng, rangeOverride),
+    discipline:      sampleAttribute(rng, rangeOverride),
+    communication:   sampleAttribute(rng, rangeOverride),
   };
+}
+
+// Pass E m5 — pick `n` random loadouts from LOADOUT_POOL with the constraint
+// "at least one rifle per team". Slot 0 is pinned to 'rifle', the rest are
+// uniform; the result is then shuffled (Fisher-Yates with the same RNG) so
+// the rifle isn't always the first unit visually. Deterministic given seed.
+export function pickRandomLoadout(rng: Rng, n: number): Weapon[] {
+  if (n <= 0) return [];
+  const out: Weapon[] = ['rifle'];
+  for (let i = 1; i < n; i++) {
+    out.push(rng.pick(LOADOUT_POOL));
+  }
+  // Fisher-Yates shuffle.
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 // Assign attributes to every unit. `overrides` (keyed by unit id) lets callers
 // (tests / the batch harness) pin specific attributes for A/B comparisons.
+// Pass E m5 — `options.rangeOverride` clamps every attribute slot to a single
+// uniform window (used by Randomize Units mode for [40, 60]). Overrides still
+// apply on top.
 export function assignAttributes(
   units: Unit[],
   rng: Rng,
   overrides: Record<string, AttributeOverride> = {},
+  options: { rangeOverride?: { min: number; max: number } } = {},
 ): void {
   for (const u of units) {
     const o = overrides[u.id] ?? {};
@@ -110,7 +138,8 @@ export function assignAttributes(
     // Pass A1: roll the full 14-attribute record. Order of RNG draws is fixed
     // by generateAttributes() so determinism holds across A2+ even after
     // partial-override merges.
-    const generated = generateAttributes(rng);
+    // Pass E m5: pass through the optional rangeOverride for Randomize mode.
+    const generated = generateAttributes(rng, options.rangeOverride);
     const ao = o.attributes;
     if (ao) {
       u.attributes = {

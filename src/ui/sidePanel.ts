@@ -18,6 +18,9 @@ export type SidePanelCallbacks = {
   // events here so the floating attributes panel can pop in planning phase
   // (canvas hover already covers resolution + planning units on the map).
   onHoverUnit: (unitId: string | null) => void;
+  // Pass E m5 — Randomize Units: regenerate the match with a new (or typed)
+  // seed. Only visible in randomize mode.
+  onRegenerate: (seed: number) => void;
 };
 
 export function renderSidePanel(
@@ -46,6 +49,23 @@ export function renderSidePanel(
         if (v !== null) cb.onPickVariant(parseInt(v, 10));
       });
     });
+    // Pass E m5 — Randomize seed input + Regenerate. Only rendered in
+    // randomize mode (see planningHtml).
+    const regenBtn = host.querySelector<HTMLButtonElement>('button[data-regenerate]');
+    const seedInput = host.querySelector<HTMLInputElement>('input[data-seed]');
+    if (regenBtn && seedInput) {
+      regenBtn.addEventListener('click', () => {
+        const v = parseInt(seedInput.value, 10);
+        if (Number.isFinite(v) && v >= 0) cb.onRegenerate(v);
+      });
+      // Enter key in the seed input also regenerates.
+      seedInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          const v = parseInt(seedInput.value, 10);
+          if (Number.isFinite(v) && v >= 0) cb.onRegenerate(v);
+        }
+      });
+    }
   }
 
   // Pass A1: roster-row hover → drive the floating attributes panel. Works in
@@ -66,9 +86,26 @@ function planningHtml(state: GameState): string {
   const opp = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   return `
     <h2>Planning — Round ${state.round}</h2>
+    ${seedRowHtml(state)}
     ${rosterHtml(state, state.playerTeam, 'You')}
     ${rosterHtml(state, opp, 'Opponent')}
     ${strategyMenuHtml(state, playerSide)}
+  `;
+}
+
+// Pass E m5 — discreet seed display + input + Regenerate, only visible in
+// Randomize Units mode. The text input is pre-filled with the current seed
+// so the player can copy/paste it; submitting (Enter or Regenerate) rebuilds
+// the match with that exact seed for reproducibility.
+function seedRowHtml(state: GameState): string {
+  if (state.matchMode !== 'randomize') return '';
+  return `
+    <div class="seed-row">
+      <label>Seed:
+        <input type="number" data-seed value="${state.seed}" min="0" step="1" />
+      </label>
+      <button data-regenerate>Regenerate</button>
+    </div>
   `;
 }
 

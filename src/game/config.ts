@@ -336,6 +336,13 @@ export const STAY_ENGAGED_TICKS = 2;
 export const POST_PLANT_SEARCH_RADIUS = 6;
 export const POST_PLANT_PREFERRED_RANGE = { min: 4, max: 10 } as const;
 
+// Pass E m5 — Randomize Units mode. The top-bar toggle flips matches between
+// "Standard" (today's fixed 2r+1s loadout + flat-50 attributes) and
+// "Randomize" (seeded random loadouts + attributes uniform in [40, 60] +
+// random traits/skills). Foundation for the v1 management/training layer.
+export const LOADOUT_POOL: readonly Weapon[] = ['shotgun', 'rifle', 'sniper'];
+export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
+
 // --- Pass 8: cards (spec §15) --------------------------------------------
 // Every per-card tunable. Card handlers read these — no magic numbers in the
 // handler bodies. Hit-pp values are additive to the effective-stat sum in
