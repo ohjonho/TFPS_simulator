@@ -180,7 +180,13 @@ export function stepTick(state: GameState): GameState {
     // Pass 7.7 — light stalemate breaker: a unit that's been idle for a long
     // stretch without seeing anyone re-targets to the mid centroid (where
     // contact is most likely). Applies to both sides equally.
-    if (mode === 'holding' && ticksSinceEnemySeen >= ROTATE_AFTER_HOLD_TICKS) {
+    // F3 — shotguns are excluded from the mid push. Mid is the worst place
+    // for them (open sightlines, dueling rifles/snipers at distances where
+    // shotgun HR is 5%); they hold a tight angle instead and let the rest
+    // of the team rotate.
+    if (mode === 'holding'
+        && ticksSinceEnemySeen >= ROTATE_AFTER_HOLD_TICKS
+        && u.weapon !== 'shotgun') {
       const midGoal = midCentroid(state);
       if (midGoal && !sameHex(midGoal, u.pos)) {
         mode = 'moving';
