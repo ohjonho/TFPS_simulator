@@ -222,28 +222,18 @@ const FOUNDRY_ATK: Strategy[] = [
 const FOUNDRY_DEF: Strategy[] = [
   {
     id: 'Hold', name: 'Hold', side: 'defender',
-    description: '1 each on A site, B site, mid. Sniper denies plant on the chosen site; rifle anchor holds the other from site edge.',
+    description: 'Even split — rifle anchors A, rifle anchors B, sniper holds back-mid covering both lanes. No site bias.',
     variants: [
-      // Variant A: sniper plays A plant (denies plant directly); rifle holds
-      // the OTHER site (B) from its edge so attackers can still plant B if
-      // they out-route the sniper. Asymmetric per round — variant choice
-      // matters strategically.
+      // Single variant — Hold "splits the team evenly" (per user direction).
+      // Sniper sits at the back of mid where they can swing toward either
+      // main lane on contact; rifles anchor each site's edge.
       [
-        { id: 'a_sniper',  pick: sniperPref, region: 'a_plant',
-          directives: [safeSniper(reg('a_main')), rotateOnContact(reg('b_plant'), ['b_anchor'], 4)] },
-        { id: 'b_anchor',  pick: rifle,      region: 'b_site', anchorOffset: 1,
-          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_plant'), ['a_sniper'], 4)] },
-        { id: 'mid',       pick: rifle,      region: 'mid',    anchorOffset: 6,
-          directives: [holdAngle(enemySpawn), tradeFor('a_sniper', 4)] },
-      ],
-      // Variant B: sniper plays B plant; rifle holds A site edge.
-      [
-        { id: 'b_sniper',  pick: sniperPref, region: 'b_plant',
-          directives: [safeSniper(reg('b_main')), rotateOnContact(reg('a_plant'), ['a_anchor'], 4)] },
-        { id: 'a_anchor',  pick: rifle,      region: 'a_site', anchorOffset: 1,
-          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_plant'), ['b_sniper'], 4)] },
-        { id: 'mid',       pick: rifle,      region: 'mid',    anchorOffset: 6,
-          directives: [holdAngle(enemySpawn), tradeFor('b_sniper', 4)] },
+        { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
+          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
+        { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
+          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
+        { id: 'mid',      pick: sniperPref, region: 'mid',    anchorOffset: 6,
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
       ],
     ],
     fallbackRegion: 'mid',
@@ -277,25 +267,17 @@ const FOUNDRY_DEF: Strategy[] = [
   },
   {
     id: 'Pressure', name: 'Pressure', side: 'defender',
-    description: 'Push forward off spawn — rifle contests mid; sniper holds one main choke deep.',
+    description: 'Push mid off spawn — two rifles contest the mid corridor; sniper holds the long mid lane from behind.',
     variants: [
-      // Variant A: sniper plays A-main, rifle pushes mid, second rifle contests B-main shallow.
+      // Single variant — "pushes mid" (per user direction). Both rifles
+      // forward in mid; sniper anchors back-mid for long sightline.
       [
-        { id: 'mid_push',   pick: rifle,      region: 'mid',    anchorOffset: 2,
-          directives: [peek(reg('mid')), holdAngle(enemySpawn), tradeFor('a_sniper_deep', 4)] },
-        { id: 'a_sniper_deep', pick: sniperPref, region: 'a_main', anchorOffset: 18,
-          directives: [safeSniper(reg('a_main')), rotateOnContact(reg('mid'), ['mid_push'], 3)] },
-        { id: 'b_contest',  pick: rifle,      region: 'b_main', anchorOffset: 18,
-          directives: [holdAngle(reg('b_main')), tradeFor('mid_push', 4)] },
-      ],
-      // Variant B: sniper plays B-main, rifle pushes mid, second rifle contests A-main shallow.
-      [
-        { id: 'mid_push',   pick: rifle,      region: 'mid',    anchorOffset: 2,
-          directives: [peek(reg('mid')), holdAngle(enemySpawn), tradeFor('b_sniper_deep', 4)] },
-        { id: 'b_sniper_deep', pick: sniperPref, region: 'b_main', anchorOffset: 18,
-          directives: [safeSniper(reg('b_main')), rotateOnContact(reg('mid'), ['mid_push'], 3)] },
-        { id: 'a_contest',  pick: rifle,      region: 'a_main', anchorOffset: 18,
-          directives: [holdAngle(reg('a_main')), tradeFor('mid_push', 4)] },
+        { id: 'mid_push',  pick: rifle,      region: 'mid', anchorOffset: 2,
+          directives: [peek(reg('mid')), holdAngle(enemySpawn), tradeFor('mid_support', 4)] },
+        { id: 'mid_support', pick: rifle,    region: 'mid', anchorOffset: 4,
+          directives: [holdAngle(enemySpawn), tradeFor('mid_push', 4)] },
+        { id: 'mid_sniper', pick: sniperPref, region: 'mid', anchorOffset: 8,
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['mid_push'], 3)] },
       ],
     ],
     fallbackRegion: 'mid',
@@ -385,23 +367,16 @@ const ATOLL_ATK: Strategy[] = [
 const ATOLL_DEF: Strategy[] = [
   {
     id: 'Hold', name: 'Hold', side: 'defender',
-    description: '1 each on A site, B site, courtyard. Sniper denies plant on chosen site; rifle anchor holds other site from edge.',
+    description: 'Even split — rifle anchors A, rifle anchors B, sniper holds back-courtyard. No site bias.',
     variants: [
+      // Single variant — "splits the team evenly" (per user direction).
       [
-        { id: 'a_sniper', pick: sniperPref, region: 'a_plant',
-          directives: [safeSniper(reg('a_main')), rotateOnContact(reg('b_plant'), ['b_anchor'], 4)] },
-        { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
-          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_plant'), ['a_sniper'], 4)] },
-        { id: 'mid',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 6,
-          directives: [holdAngle(enemySpawn), tradeFor('a_sniper', 4)] },
-      ],
-      [
-        { id: 'b_sniper', pick: sniperPref, region: 'b_plant',
-          directives: [safeSniper(reg('b_main')), rotateOnContact(reg('a_plant'), ['a_anchor'], 4)] },
         { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
-          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_plant'), ['b_sniper'], 4)] },
-        { id: 'mid',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 6,
-          directives: [holdAngle(enemySpawn), tradeFor('b_sniper', 4)] },
+          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
+        { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
+          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
+        { id: 'mid',      pick: sniperPref, region: 'mid_courtyard', anchorOffset: 6,
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
       ],
     ],
     fallbackRegion: 'mid_courtyard',
@@ -435,23 +410,16 @@ const ATOLL_DEF: Strategy[] = [
   },
   {
     id: 'Pressure', name: 'Pressure', side: 'defender',
-    description: 'Push forward off spawn — rifle contests courtyard; sniper holds one main deep.',
+    description: 'Push courtyard off spawn — two rifles contest mid; sniper holds back-mid long lane.',
     variants: [
+      // Single variant — "pushes mid" (per user direction).
       [
-        { id: 'mid_push',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 2,
-          directives: [peek(reg('mid_courtyard')), holdAngle(enemySpawn), tradeFor('a_sniper_deep', 4)] },
-        { id: 'a_sniper_deep', pick: sniperPref, region: 'a_main', anchorOffset: 18,
-          directives: [safeSniper(reg('a_main')), rotateOnContact(reg('mid_courtyard'), ['mid_push'], 3)] },
-        { id: 'b_contest',     pick: rifle,      region: 'b_main', anchorOffset: 18,
-          directives: [holdAngle(reg('b_main')), tradeFor('mid_push', 4)] },
-      ],
-      [
-        { id: 'mid_push',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 2,
-          directives: [peek(reg('mid_courtyard')), holdAngle(enemySpawn), tradeFor('b_sniper_deep', 4)] },
-        { id: 'b_sniper_deep', pick: sniperPref, region: 'b_main', anchorOffset: 18,
-          directives: [safeSniper(reg('b_main')), rotateOnContact(reg('mid_courtyard'), ['mid_push'], 3)] },
-        { id: 'a_contest',     pick: rifle,      region: 'a_main', anchorOffset: 18,
-          directives: [holdAngle(reg('a_main')), tradeFor('mid_push', 4)] },
+        { id: 'mid_push',    pick: rifle,      region: 'mid_courtyard', anchorOffset: 2,
+          directives: [peek(reg('mid_courtyard')), holdAngle(enemySpawn), tradeFor('mid_support', 4)] },
+        { id: 'mid_support', pick: rifle,      region: 'mid_courtyard', anchorOffset: 4,
+          directives: [holdAngle(enemySpawn), tradeFor('mid_push', 4)] },
+        { id: 'mid_sniper',  pick: sniperPref, region: 'mid_courtyard', anchorOffset: 8,
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['mid_push'], 3)] },
       ],
     ],
     fallbackRegion: 'mid_courtyard',

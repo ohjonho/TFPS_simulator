@@ -4,7 +4,7 @@
 
 import type { ActiveCardEffect, Buff, MapDefinition, RangeBand, Unit, Weapon } from './types.ts';
 import type { Rng } from './rng.ts';
-import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
+import { hexDistance, hexLine } from './hex.ts';
 import {
   ATTRIBUTES,
   CARD_EFFECTS,
@@ -34,7 +34,7 @@ export type ShotContext = {
   ticksIntoRound: number;
   // --- Pass 8 card-derived flags (precomputed by combat from cardEffects) ---
   markedTarget: boolean;        // shooter's team has Mark Target on this target
-  flankedByShooter: boolean;    // shooter is >60° off target's facing
+  // (Pass C2 — `flankedByShooter` removed; Setup Play no longer flank-gated.)
   warderAnchorStationary: boolean; // Warden Hold-the-Line stationary at anchor
   spearheadFirstEngagement: boolean;
   // --- Pass B: peeker's advantage ---
@@ -184,9 +184,14 @@ function cardHitPp(unit: Unit, ctx: ShotContext): number {
   if (ctx.spearheadFirstEngagement) {
     pp += CARD_EFFECTS.spearhead.firstEngagementHitPp;
   }
-  // Setup Play: +20 HR when this shooter is the named ally AND flanked.
-  if (unit.cardFlags.setupPlayBonus && ctx.flankedByShooter) {
-    pp += CARD_EFFECTS.setupPlay.flankHitPp;
+  // Setup Play: Pass C2 — +20 HR when this shooter is the named ally AND
+  // within `allyRangeHexes` of the anchor (flank gate dropped). Anchor hex
+  // lives on the ally's cardFlags so we range-check at shot time.
+  if (unit.cardFlags.setupPlayBonus && unit.cardFlags.setupPlayAnchor) {
+    const dist = hexDistance(unit.pos, unit.cardFlags.setupPlayAnchor);
+    if (dist <= CARD_EFFECTS.setupPlay.allyRangeHexes) {
+      pp += CARD_EFFECTS.setupPlay.allyHitPp;
+    }
   }
   // Hold the Line: Warden stationary at the anchor → +20 HR.
   if (ctx.warderAnchorStationary) {
@@ -213,23 +218,9 @@ function cardHeadshotPp(unit: Unit, ctx: ShotContext): number {
   return pp;
 }
 
-// Compute whether the shooter is flanking the target (>60° off target's facing
-// bearing). Used by Setup Play.
-function isFlanking(shooter: Unit, target: Unit, angleDeg: number): boolean {
-  const a = offsetToPixel(target.pos.col, target.pos.row);
-  const b = offsetToPixel(shooter.pos.col, shooter.pos.row);
-  const shooterBearing = Math.atan2(b.y - a.y, b.x - a.x);
-  // Target facing bearing (canonical neighbor order in unit-ai/vision; use the
-  // pointy-top neighbor at the facing index as the reference).
-  // Reproducing the bearing without circular import: facing 0..5 maps to angle
-  // offsets along the 6 neighbors. We approximate via canonical hex directions.
-  // For pointy-top w/ neighbor order E(0)/NE(1)/NW(2)/W(3)/SW(4)/SE(5):
-  const FACING_RAD = [0, -Math.PI / 3, -2 * Math.PI / 3, Math.PI, 2 * Math.PI / 3, Math.PI / 3];
-  const facingBearing = FACING_RAD[target.facing];
-  let delta = Math.abs(shooterBearing - facingBearing);
-  while (delta > Math.PI) delta = 2 * Math.PI - delta;
-  return (delta * 180) / Math.PI > angleDeg;
-}
+// (Pass C2 — `isFlanking` helper removed; Setup Play no longer needs a
+// flank-angle gate. Could be revived for a future card that wants angle-of-
+// attack as a condition.)
 
 // Dynamic-modifier hit contribution (spec §13.1). Aggression only counts in the
 // first few ticks of a round; clutch-default applies when last alive without the
@@ -343,7 +334,6 @@ export function resolveShot(
       e.targetId === target.id &&
       (e.expiresAtTick === undefined || currentTick <= e.expiresAtTick),
   );
-  const flankedByShooter = isFlanking(shooter, target, CARD_EFFECTS.setupPlay.flankAngleDeg);
   const warderAnchorStationary =
     shooter.cardFlags.holdTheLineAnchor !== undefined &&
     shooter.cardFlags.holdTheLineAnchor.col === shooter.pos.col &&
@@ -356,7 +346,6 @@ export function resolveShot(
     band: rangeBand(dist),
     crossesCover: shotCrossesCover(shooter, target, map),
     markedTarget,
-    flankedByShooter,
     warderAnchorStationary,
     spearheadFirstEngagement,
     ...input,

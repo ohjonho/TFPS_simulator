@@ -19,7 +19,7 @@ const TRAIT_CARDS: CardDef[] = [
     type: 'directive',
     targeting: 'none',
     description:
-      'Unit holds spawn-side position all round; doubles trait bonus (+50 HR / +40 HS stationary).',
+      "Doubles Sentinel's stationary bonus this round (+50 HR / +40 HS once held 3 ticks). Hold wherever the strategy places you.",
   },
   {
     id: 'reckless_push',
@@ -28,7 +28,7 @@ const TRAIT_CARDS: CardDef[] = [
     type: 'directive',
     targeting: 'none',
     description:
-      'Unit ignores retreat all round; +1 movement speed; +15 HR moving.',
+      'Unit ignores retreat all round; +1 movement speed; +15 HR moving. As an attacker, plants the spike 1 tick faster.',
   },
   {
     id: 'slow_flank',
@@ -37,7 +37,7 @@ const TRAIT_CARDS: CardDef[] = [
     type: 'directive',
     targeting: 'none',
     description:
-      'Unit takes the longest perimeter route to its region; +20 HR wall-adjacent; arrives unspotted longer.',
+      "Unit hugs the perimeter route AND is hidden from enemy AI vision until they fire or close to 3 hexes. True lurker — flank unspotted.",
   },
   {
     id: 'opening_pick',
@@ -84,11 +84,12 @@ const ROLE_CARDS: CardDef[] = [
     name: 'Setup Play',
     source: 'Tactician',
     type: 'directive',
-    // Two-pick: hex (Tactician's destination) plus an ally (the flank bonus
-    // recipient). The UI flow picks hex first, then ally.
+    // Two-pick: hex (Tactician's destination) plus an ally (the bonus
+    // recipient). Pass C2 — bonus fires whenever the ally is within 5 hex
+    // of the anchor; no flank-angle gate.
     targeting: 'hex',
     description:
-      'Tactician moves to a chosen hex first; a named ally gets +20 HR if engaging from a flank angle (>60° off enemy facing).',
+      'Tactician moves to a chosen hex; a named ally gets +20 HR all round while within 5 hex of that anchor.',
   },
   {
     id: 'hold_the_line',
@@ -97,7 +98,7 @@ const ROLE_CARDS: CardDef[] = [
     type: 'directive',
     targeting: 'hex',
     description:
-      'Warden holds a chosen hex; +20 HR stationary; allies reaching that hex get a 3-tick safe window.',
+      "Warden holds a chosen hex; +20 HR stationary. Allies reaching the anchor get a 3-tick safe window. If anchor is on a planted site's plant zone, defusers on the spike also get the safe window.",
   },
   {
     id: 'adapt',
@@ -105,10 +106,11 @@ const ROLE_CARDS: CardDef[] = [
     source: 'Specialist',
     type: 'buff',
     // Player picks one of the three role cards (Spearhead / Setup Play / Hold
-    // the Line) — its effect is applied to the Specialist instead.
+    // the Line) — its effect is applied to the Specialist. Pass C2 — also
+    // grants the Specialist a flat +10 HR for the entire round on top.
     targeting: 'role',
     description:
-      "Specialist gains another role's card effect for the round (must be a role on the team).",
+      "Specialist gains another role's card effect this round AND a flat +10 HR all round on top.",
   },
 ];
 
@@ -130,7 +132,7 @@ const HERO_CARDS: CardDef[] = [
     type: 'utility',
     targeting: 'none',
     description:
-      'Reveals all enemy positions for 5 ticks at round start (overrides fog of war).',
+      'Reveals all enemy positions for 3 ticks at round start (overrides fog of war).',
   },
   {
     id: 'mark_target',

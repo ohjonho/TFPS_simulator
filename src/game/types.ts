@@ -230,10 +230,19 @@ export type CardFlags = {
   // clears this flag for the rest of the round.
   markTargetPending?: boolean;
   setupPlayBonus?: boolean;
+  // Pass C2 — Setup Play anchor hex (the Tactician's chosen position). Allies
+  // within `setupPlay.allyRangeHexes` of this hex with `setupPlayBonus` get
+  // the +20 HR; combat.ts reads both flags.
+  setupPlayAnchor?: HexCoord;
   holdTheLineAnchor?: HexCoord;
   // Set when an ally reaches a Hold-the-Line anchor; shots vs this unit forced
   // miss while tick < safeWindowUntilTick.
   safeWindowUntilTick?: number;
+  // Pass C2 — Slow Flank invisibility. While true, the unit is omitted from
+  // the OPPOSING team's `enemiesVisibleTo` filter — AI can't acquire them as
+  // a target until they fire OR get within `slowFlank.proximityHexes`. Cleared
+  // by tick.ts when the unit fires (or by proximity check in vision-filter).
+  invisibleUntilFire?: boolean;
 };
 
 // --- Match flow -------------------------------------------------------------

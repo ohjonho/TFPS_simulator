@@ -99,22 +99,11 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
 
-// Pass C — derive an A/B label for a variant from its first slot's region.
-// "a_plant" → "A site", "b_plant" → "B site", "a_main" → "A main", etc.
-// Falls back to "Variant A/B/C" if the region name doesn't parse.
+// Pass C — variant labels are just the letter ("A", "B", …). Region nicknames
+// were noisy; the label is contextual to the parent strategy already.
 const VARIANT_LETTERS = ['A', 'B', 'C', 'D'];
-function variantLabel(strat: ReturnType<typeof strategyById>, idx: number): string {
-  const letter = VARIANT_LETTERS[idx] ?? `V${idx + 1}`;
-  if (!strat) return `${letter}`;
-  const variant = strat.variants[idx];
-  const firstRegion = variant?.[0]?.region ?? '';
-  // Prefix-aware nickname: "a_*" → "A …", "b_*" → "B …", strip prefix.
-  if (firstRegion.startsWith('a_') || firstRegion.startsWith('b_')) {
-    const rest = firstRegion.slice(2).replace(/_/g, ' ');
-    const tag = firstRegion[0].toUpperCase();
-    return `${letter} — ${tag} ${rest}`;
-  }
-  return `${letter} — ${firstRegion.replace(/_/g, ' ') || 'variant'}`;
+function variantLabel(_strat: ReturnType<typeof strategyById>, idx: number): string {
+  return VARIANT_LETTERS[idx] ?? `V${idx + 1}`;
 }
 
 function strategyMenuHtml(state: GameState, side: Side): string {

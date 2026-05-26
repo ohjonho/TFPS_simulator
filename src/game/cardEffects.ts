@@ -20,13 +20,16 @@ import { cardById } from './cardData.ts';
 type Handler = (state: GameState, played: PlayedCard, team: Team, rng: Rng) => GameState;
 
 const HANDLERS: Record<string, Handler> = {
-  // 1. Anchor Position (Sentinel directive): hold spawn-side hex; doubles
-  // Sentinel bonus (combat.ts checks cardFlags.anchorPosition).
+  // 1. Anchor Position (Sentinel directive): doubles Sentinel bonus when
+  // stationary 3+ ticks. Pass C2 — no longer locks the unit to its current
+  // (spawn) hex; it now follows the strategy's assignment and the bonus
+  // fires wherever the Sentinel ends up holding. Strands-at-spawn problem
+  // fixed; Sentinel can anchor mid/site/plant naturally per strategy.
   anchor_position: (state, played, _team) =>
     updateUnit(state, played.contributor, (u) => ({
       ...u,
       cardFlags: { ...u.cardFlags, anchorPosition: true },
-    }), { lockTargetToPos: true }),
+    })),
 
   // 2. Reckless Push (Run-n-Gun directive): ignore retreat, +1 speed, +15 HR
   // moving (movement.ts + unit-ai.ts + combat.ts read the flag).
@@ -36,12 +39,14 @@ const HANDLERS: Record<string, Handler> = {
       cardFlags: { ...u.cardFlags, recklessPush: true },
     })),
 
-  // 3. Slow Flank (Lurker directive): pathfind via the perimeter
-  // (tick.ts/pathfind.ts swap algorithm based on the flag).
+  // 3. Slow Flank (Lurker directive): perimeter pathfinding + Pass C2
+  // invisibility — unit is filtered out of enemy AI's `enemiesVisibleTo`
+  // until they fire OR proximity-check trips. tick.ts clears the flag on
+  // fire; vision-filter handles proximity. True lurker identity.
   slow_flank: (state, played) =>
     updateUnit(state, played.contributor, (u) => ({
       ...u,
-      cardFlags: { ...u.cardFlags, slowFlank: true },
+      cardFlags: { ...u.cardFlags, slowFlank: true, invisibleUntilFire: true },
     })),
 
   // 4. Opening Pick (Entry buff): combat overrides Entry's bonus + skips post.
@@ -95,8 +100,11 @@ const HANDLERS: Record<string, Handler> = {
     return s;
   },
 
-  // 8. Setup Play (Tactician directive): Tactician moves to chosen hex first;
-  // a named ally gets +20 HR on flank shots for a window.
+  // 8. Setup Play (Tactician directive): Tactician moves to chosen hex.
+  // Pass C2 — drop the flank-angle gate; the named ally gets +20 HR all
+  // round whenever they're within `allyRangeHexes` of the anchor. Simpler,
+  // fires reliably. Anchor hex stored on ally's cardFlags.setupPlayAnchor
+  // so combat.ts can range-check at shot time.
   setup_play: (state, played, team) => {
     const target = played.target as HexCoord | undefined;
     const allyId = played.secondaryTarget;
@@ -107,7 +115,7 @@ const HANDLERS: Record<string, Handler> = {
     if (allyId !== played.contributor) {
       s = updateUnit(s, allyId, (u) => ({
         ...u,
-        cardFlags: { ...u.cardFlags, setupPlayBonus: true },
+        cardFlags: { ...u.cardFlags, setupPlayBonus: true, setupPlayAnchor: target },
       }));
     }
     const expiresAtTick = s.tick + CARD_EFFECTS.setupPlay.windowTicks;
@@ -138,8 +146,11 @@ const HANDLERS: Record<string, Handler> = {
     };
   },
 
-  // 10. Adapt (Specialist buff): re-invokes a chosen role card's handler on
-  // the Specialist. Player picks one of the role cards in their team's pool.
+  // 10. Adapt (Specialist buff): Pass C2 — invokes a chosen role card's
+  // handler on the Specialist AND grants a flat +10 HR for the round on top.
+  // Two-layer effect: the role card brings tactical positioning/buffs; the
+  // flat HR makes Adapt feel impactful even if the role card's effect is
+  // niche (e.g. Setup Play with no good range target).
   adapt: (state, played, team, rng) => {
     const role = played.target as Role | undefined;
     if (!role) return state;
@@ -151,20 +162,29 @@ const HANDLERS: Record<string, Handler> = {
     if (!roleCardId) return state;
     const handler = HANDLERS[roleCardId];
     if (!handler) return state;
-    // Forward the same played card, but route to the chosen role's handler.
-    // For Setup Play / Hold the Line which need a hex target, the Specialist
-    // re-uses the Specialist's current position as a fallback hex (best-effort
-    // — for v0, Adapt-on-targeted-cards just doesn't need full UI re-pick).
     const specialist = state.units.find((u) => u.id === played.contributor);
     if (!specialist) return state;
     const fallbackHex: HexCoord = specialist.pos;
     const allyId = played.secondaryTarget ??
       state.units.find((u) => u.team === team && u.id !== specialist.id)?.id;
-    return handler(state, {
+    let s = handler(state, {
       ...played,
       target: roleCardId === 'spearhead' ? undefined : fallbackHex,
       secondaryTarget: allyId,
     }, team, rng);
+    // Pass C2 — additional flat +10 HR buff for the Specialist, full round.
+    const buffs = { ...s.buffs };
+    buffs[played.contributor] = [
+      ...(buffs[played.contributor] ?? []),
+      {
+        id: `adapt-${played.contributor}-${s.tick}`,
+        source: 'adapt',
+        hitPp: CARD_EFFECTS.adapt.allRoundHitPp,
+        expiresAtTick: s.tick + CARD_EFFECTS.adapt.durationTicks,
+      },
+    ];
+    s = { ...s, buffs };
+    return s;
   },
 
   // 11. Guardian Aura (Angelic buff): register effect; tick.ts manages the

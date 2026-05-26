@@ -333,11 +333,19 @@ export const STAY_ENGAGED_TICKS = 2;
 export const CARD_EFFECTS = {
   // Anchor Position adds these on top of the Sentinel trait bonus when active
   // and the unit is stationary 3+ ticks (so total = trait 25/20 + card 25/20).
+  // Pass C2: the card no longer locks the unit to spawn — it follows the
+  // strategy normally, and the bonus fires wherever the unit ends up
+  // stationary 3+ ticks (canonically the strategy target).
   anchorPosition: { hitPp: 25, hsPp: 20 },
   // Reckless Push: ignores retreat, +1 speed, +15 HR when moving.
-  recklessPush: { speedBonus: 1.0, movingHitPp: 15 },
+  // Pass C2: card-owning attacker plants `plantTicksReduction` ticks faster
+  // (PLANT_TICKS - reduction, min 1) — adds a plant-mechanic-specific hook.
+  recklessPush: { speedBonus: 1.0, movingHitPp: 15, plantTicksReduction: 1 },
   // Slow Flank: A* weight for non-perimeter hexes (added to base step cost).
-  slowFlank: { perimeterPenalty: 0.5 },
+  // Pass C2: also makes the unit invisible to the OPPOSING team's AI vision
+  // (enemiesVisibleTo filter) until they fire OR get within `proximityHexes`
+  // hexes of any opposing alive unit. Real Lurker identity.
+  slowFlank: { perimeterPenalty: 0.5, proximityHexes: 3 },
   // Opening Pick overrides Entry's stock first-3-tick bonus and skips post.
   openingPick: { hitPp: 30, hsPp: 15, windowTicks: 3 },
   // Crossfire: when an ally fires, push a 5-tick +25 HR buff (cap 1 extra).
@@ -348,14 +356,23 @@ export const CARD_EFFECTS = {
   tradeWindow: { markTicks: 4, allyHitPp: 20, allyBuffTicks: 4 },
   // Spearhead: Vanguard +15 HR first engagement; allies delayed N ticks.
   spearhead: { firstEngagementHitPp: 15, allyDelayTicks: 2 },
-  // Setup Play: ally +20 HR when shooting from >60° off target's facing.
-  setupPlay: { flankHitPp: 20, flankAngleDeg: 60, windowTicks: 30 },
+  // Setup Play: Pass C2 — drops the flank-angle gate. Tactician moves to the
+  // chosen hex; the named ally gets +20 HR for the round when within
+  // `allyRangeHexes` of the anchor. Simpler and fires reliably.
+  setupPlay: { allyHitPp: 20, allyRangeHexes: 5, windowTicks: 30 },
   // Hold the Line: Warden stationary +20 HR; ally at anchor takes 0 dmg N ticks.
+  // Pass C2: when the anchor hex is on the planted site's plant hexes, the
+  // safe-window extends to ANY ally on the planted site's plant zone — so
+  // the Warden anchoring near a planted spike protects defusers too.
   holdTheLine: { stationaryHitPp: 20, safeWindowTicks: 3 },
+  // Adapt: Pass C2 — invokes a role card's handler on the Specialist AND
+  // additionally grants a flat +10 HR buff for the full round (60 ticks).
+  adapt: { allRoundHitPp: 10, durationTicks: 60 },
   // Guardian Aura: +1 maxHp within N hexes of source.
   guardianAura: { radius: 5, maxHpBonus: 1 },
   // Tactical Scan: reveal all enemies for N ticks at round start.
-  tacticalScan: { ticks: 5 },
+  // Pass C2 tone-down: 5 → 3 ticks.
+  tacticalScan: { ticks: 3 },
   // Mark Target: all allied attacks vs the marked enemy +20 HR / +10 HS.
   // Pass 9 m3 — first-spotted trigger model; reveal lasts `revealTicks` even
   // past LoS once the mark is set.

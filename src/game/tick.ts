@@ -385,6 +385,11 @@ export function stepTick(state: GameState): GameState {
     });
     ai.shotClock = FIRE_RATE[u.weapon] - 1;
 
+    // Pass C2 — Slow Flank invisibility clears on first fire.
+    if (u.cardFlags.invisibleUntilFire) {
+      u.cardFlags = { ...u.cardFlags, invisibleUntilFire: false };
+    }
+
     // Pass 8 — Crossfire trigger: when this unit fires, any teammate with
     // crossfireEligible and < extraStack card buffs gets a +25 HR / N-tick buff.
     for (const ally of working) {
@@ -440,7 +445,7 @@ export function stepTick(state: GameState): GameState {
   //      coverage (allies within radius of a live aura source get +1).
   //   b) Hold the Line: any ally on a Warden's anchor hex gets the safe-window
   //      flag set to expire `safeWindowTicks` ticks from now.
-  applyCardPostDamage(working, state.cardEffects, tick);
+  applyCardPostDamage(working, state.cardEffects, tick, state);
 
   // Pass 9 m4 — Trade Window trigger: for each death this tick, if the dead
   // unit's team has any alive teammate with `tradeWindowEnabled`, auto-mark
@@ -570,7 +575,13 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
     if (chosen) {
       const cur = state.plant.planting;
       const continuing = cur !== null && cur.unitId === chosen.planter.id && cur.site === chosen.site;
-      if (continuing && tick - cur.startedAtTick >= PLANT_TICKS) {
+      // Pass C2 — Reckless Push planter plants `plantTicksReduction` ticks
+      // faster (min 1). Read from the planter's cardFlags at decision time.
+      const effectivePlantTicks = Math.max(
+        1,
+        PLANT_TICKS - (chosen.planter.cardFlags.recklessPush ? CARD_EFFECTS.recklessPush.plantTicksReduction : 0),
+      );
+      if (continuing && tick - cur.startedAtTick >= effectivePlantTicks) {
         nextPlant = {
           planted: { site: chosen.site, plantedAtTick: tick },
           planting: null,
@@ -673,6 +684,7 @@ function applyCardPostDamage(
   units: Unit[],
   cardEffects: readonly import('./types.ts').ActiveCardEffect[],
   tick: number,
+  state: GameState,
 ): void {
   // a) Guardian Aura — recompute coverage from live aura sources, then sync.
   // Build a per-unit "covered" bool from the union of all live aura sources.
@@ -701,11 +713,32 @@ function applyCardPostDamage(
   }
 
   // b) Hold the Line — allies on the anchor hex get the safe-window flag.
+  // Pass C2 — when the spike is planted AND the Warden's anchor hex is on
+  // the planted site's plant zone, the safe-window extends to ANY ally on
+  // any plant hex of that site (so a Warden anchoring near the spike
+  // protects defusers).
   for (const fx of cardEffects) {
     if (fx.kind !== 'hold_the_line') continue;
+
+    // Pass C2 plant-zone extension: precompute whether anchor is on plant.
+    let plantZoneHexes: Set<string> | null = null;
+    if (state.plant.planted) {
+      const site = state.plant.planted.site;
+      const sitePlantHexes = state.map.sites[site].plantHexes;
+      const onPlant = sitePlantHexes.some(
+        (h) => h.col === fx.anchorHex.col && h.row === fx.anchorHex.row,
+      );
+      if (onPlant) {
+        plantZoneHexes = new Set(sitePlantHexes.map((h) => `${h.col},${h.row}`));
+      }
+    }
+
     for (const u of units) {
       if (u.team !== fx.team || u.state !== 'alive') continue;
-      if (u.pos.col !== fx.anchorHex.col || u.pos.row !== fx.anchorHex.row) continue;
+      const onAnchor = u.pos.col === fx.anchorHex.col && u.pos.row === fx.anchorHex.row;
+      const onPlantZone = plantZoneHexes !== null
+        && plantZoneHexes.has(`${u.pos.col},${u.pos.row}`);
+      if (!onAnchor && !onPlantZone) continue;
       u.cardFlags = {
         ...u.cardFlags,
         safeWindowUntilTick: tick + CARD_EFFECTS.holdTheLine.safeWindowTicks,
@@ -841,7 +874,15 @@ function enemiesVisibleTo(
   const out: Unit[] = [];
   for (const e of units) {
     if (e.team === unit.team || e.state !== 'alive') continue;
-    if (visibleHexes.has(hexKey(e.pos))) out.push(e);
+    if (!visibleHexes.has(hexKey(e.pos))) continue;
+    // Pass C2 — Slow Flank invisibility. The enemy is normally visible
+    // (their hex is in our cone), but their card flag hides them from AI
+    // targeting until they fire OR they're within proximityHexes of us.
+    if (e.cardFlags.invisibleUntilFire) {
+      const dist = hexDistance(unit.pos, e.pos);
+      if (dist > CARD_EFFECTS.slowFlank.proximityHexes) continue;
+    }
+    out.push(e);
   }
   return out;
 }
