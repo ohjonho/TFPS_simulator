@@ -30,7 +30,7 @@ import {
 import { pickAiCard, pickAiStrategy } from './game/aiOpponent.ts';
 import { defenderTeam, eliminationWinner, endRound as endRoundFn } from './game/match.ts';
 import { ROUND_TICK_LIMIT } from './game/config.ts';
-import { strategiesFor } from './game/strategies.ts';
+import { strategiesFor, strategyById } from './game/strategies.ts';
 import { setupCanvas } from './render/canvas.ts';
 import { render } from './render/renderer.ts';
 import type { DebugOverlay, RenderHover, Selection } from './render/renderer.ts';
@@ -131,7 +131,14 @@ function rerenderChrome() {
   renderAttributesPanel(shell.attributesPanel, attrSubject, selected !== null);
   renderSidePanel(shell.sidePanel, hovered, state, {
     onPickStrategy: (id: string) => {
-      setState({ ...state, playerStrategy: id });
+      // Pass C — picking a new strategy clears any prior A/B variant choice
+      // so the player has to make the site bet fresh.
+      setState({ ...state, playerStrategy: id, playerVariantChoice: null });
+      recomputePreview();
+      rerenderCanvas();
+    },
+    onPickVariant: (idx: number) => {
+      setState({ ...state, playerVariantChoice: idx });
       recomputePreview();
       rerenderCanvas();
     },
@@ -208,11 +215,20 @@ function snapshotUnits(units: readonly Unit[]): Record<string, Unit> {
 
 function beginRound(): void {
   if (!state.playerStrategy) return;
+  // Pass C — multi-variant strategies require an explicit A/B pick before
+  // Begin Round can fire. Top-bar UI also disables the button; this is a
+  // belt-and-suspenders guard for the keyboard / __sim path.
+  const playerStrat = strategyById(state.playerStrategy, state.teamSide[state.playerTeam], state.map);
+  if (playerStrat && playerStrat.variants.length > 1 && state.playerVariantChoice === null) return;
+
   const aiTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   const aiSide = state.teamSide[aiTeam];
   const pickRng = createRng((state.seed ^ (state.round * 0x9e3779b1)) >>> 0);
   const aiId = pickAiStrategy(state, aiTeam, aiSide, pickRng);
-  let next = applyStrategies(state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng);
+  let next = applyStrategies(
+    state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng,
+    state.playerVariantChoice,
+  );
   // Pass 8 — AI picks its card here (player's card is the UI-held playerCard).
   const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
   next = commitCards(next, state.playerTeam, playerCard, aiTeam, aiCard, pickRng);
@@ -469,7 +485,9 @@ if (import.meta.env.DEV) {
       return { matrix, cards, det };
     },
     // --- Pass 7 match-flow hooks ---
-    pickStrategy: (id: string) => setState({ ...state, playerStrategy: id }),
+    pickStrategy: (id: string) =>
+      setState({ ...state, playerStrategy: id, playerVariantChoice: null }),
+    pickVariant: (idx: number) => setState({ ...state, playerVariantChoice: idx }),
     beginRound: () => beginRound(),
     strategies: (side: 'attacker' | 'defender') =>
       strategiesFor(side, state.map).map((s) => ({ id: s.id, name: s.name, description: s.description })),
@@ -482,7 +500,12 @@ if (import.meta.env.DEV) {
       const aiSide = state.teamSide[aiTeam];
       const pickRng = createRng((state.seed ^ (state.round * 0x9e3779b1)) >>> 0);
       const aiId = pickAiStrategy(state, aiTeam, aiSide, pickRng);
-      let s = applyStrategies(state, state.playerTeam, playerStrategyId, aiTeam, aiId, pickRng);
+      // Pass C — honor `state.playerVariantChoice` for the headless run too,
+      // so __sim drives match the UI's variant pick.
+      let s = applyStrategies(
+        state, state.playerTeam, playerStrategyId, aiTeam, aiId, pickRng,
+        state.playerVariantChoice,
+      );
       // Pass 8 — also apply cards (player's pre-committed + AI's pick) so
       // simulateRound exercises the full Begin-Round pipeline.
       const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);

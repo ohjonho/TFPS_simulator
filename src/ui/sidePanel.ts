@@ -6,11 +6,15 @@
 import type { GameState, Side, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
 import { killFeedLines } from './killFeed.ts';
-import { strategiesFor } from '../game/strategies.ts';
+import { strategiesFor, strategyById } from '../game/strategies.ts';
 import { cardById } from '../game/cardData.ts';
 
 export type SidePanelCallbacks = {
   onPickStrategy: (id: string) => void;
+  // Pass C — A/B variant pick for multi-variant strategies (Hold/Stack on
+  // defender, Execute/Rush on attacker). idx maps to strategy.variants[idx]
+  // (0 = A, 1 = B in current authoring).
+  onPickVariant: (idx: number) => void;
   // Pass 8: toggle card selection. Pass null to clear. Returns true if the
   // selection actually changed (so the caller knows to re-render the preview).
   onPickCard: (defId: string | null) => void;
@@ -38,6 +42,14 @@ export function renderSidePanel(
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-strategy');
         if (id) cb.onPickStrategy(id);
+      });
+    });
+    // Pass C — A/B sub-row buttons (only present under the currently-selected
+    // multi-variant strategy).
+    host.querySelectorAll<HTMLButtonElement>('button[data-variant]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-variant');
+        if (v !== null) cb.onPickVariant(parseInt(v, 10));
       });
     });
     host.querySelectorAll<HTMLButtonElement>('button[data-card]').forEach((btn) => {
@@ -87,15 +99,48 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
 
+// Pass C — derive an A/B label for a variant from its first slot's region.
+// "a_plant" → "A site", "b_plant" → "B site", "a_main" → "A main", etc.
+// Falls back to "Variant A/B/C" if the region name doesn't parse.
+const VARIANT_LETTERS = ['A', 'B', 'C', 'D'];
+function variantLabel(strat: ReturnType<typeof strategyById>, idx: number): string {
+  const letter = VARIANT_LETTERS[idx] ?? `V${idx + 1}`;
+  if (!strat) return `${letter}`;
+  const variant = strat.variants[idx];
+  const firstRegion = variant?.[0]?.region ?? '';
+  // Prefix-aware nickname: "a_*" → "A …", "b_*" → "B …", strip prefix.
+  if (firstRegion.startsWith('a_') || firstRegion.startsWith('b_')) {
+    const rest = firstRegion.slice(2).replace(/_/g, ' ');
+    const tag = firstRegion[0].toUpperCase();
+    return `${letter} — ${tag} ${rest}`;
+  }
+  return `${letter} — ${firstRegion.replace(/_/g, ' ') || 'variant'}`;
+}
+
 function strategyMenuHtml(state: GameState, side: Side): string {
   const options = strategiesFor(side, state.map);
   const sel = state.playerStrategy;
+  const variantChoice = state.playerVariantChoice;
   const items = options.map((s) => {
-    const cls = sel === s.id ? 'strategy selected' : 'strategy';
+    const isSelected = sel === s.id;
+    const cls = isSelected ? 'strategy selected' : 'strategy';
+    let variantRow = '';
+    if (isSelected && s.variants.length > 1) {
+      // Pass C — sub-row for A/B variant pick. Only rendered for the
+      // currently-selected multi-variant strategy.
+      const buttons = s.variants.map((_v, idx) => {
+        const vcls = variantChoice === idx ? 'variant selected' : 'variant';
+        return `<button class="${vcls}" data-variant="${idx}">${variantLabel(s, idx)}</button>`;
+      }).join('');
+      const hint = variantChoice === null
+        ? `<div class="variant-hint">Pick a site:</div>`
+        : '';
+      variantRow = `<div class="variant-row">${hint}${buttons}</div>`;
+    }
     return `<button class="${cls}" data-strategy="${s.id}">
       <div class="s-name">${s.name}</div>
       <div class="s-desc">${s.description}</div>
-    </button>`;
+    </button>${variantRow}`;
   }).join('');
   return `<h3>Strategy (${side}) — required</h3><div class="strategy-menu">${items}</div>`;
 }
@@ -105,9 +150,14 @@ function strategyMenuHtml(state: GameState, side: Side): string {
 // Adapt) auto-target in v0 (see main.ts.onPickCard); a future milestone adds
 // the click-target flow on the canvas.
 function cardMenuHtml(state: GameState, selectedCardId: string | null): string {
-  const hand = state.cards[state.playerTeam].hand;
+  const teamDeck = state.cards[state.playerTeam];
+  const hand = teamDeck.hand;
+  // Pass C — deck/discard counts so the player sees the cycle (cards
+  // discard on round-end, deck reshuffles from discard when empty).
+  const cycleLine =
+    `<div class="card-cycle">Deck: ${teamDeck.deck.length} · Discard: ${teamDeck.discard.length}</div>`;
   if (hand.length === 0) {
-    return `<h3>Card (optional)</h3><p class="hint">Hand empty.</p>`;
+    return `<h3>Card (optional)</h3>${cycleLine}<p class="hint">Hand empty.</p>`;
   }
   const items = hand.map((c) => {
     const def = cardById(c.defId);
@@ -126,6 +176,7 @@ function cardMenuHtml(state: GameState, selectedCardId: string | null): string {
   const skipCls = selectedCardId === null ? 'card-skip selected' : 'card-skip';
   return `
     <h3>Card (optional)</h3>
+    ${cycleLine}
     <div class="card-menu">${items}</div>
     <button class="${skipCls}" data-card-skip>Skip card this round</button>
   `;

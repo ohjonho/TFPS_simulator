@@ -89,6 +89,7 @@ export function buildInitialState(mapName: MapDefinition['name'] = 'Foundry'): G
     scores: { defenders: 0, attackers: 0 },
     teamSide,
     playerStrategy: null,
+    playerVariantChoice: null,
     aiStrategy: null,
     roundResult: null,
     timeoutUsed: { defenders: false, attackers: false },

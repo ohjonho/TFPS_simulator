@@ -4,6 +4,7 @@
 
 import type { GameState, Team } from '../game/types.ts';
 import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
+import { strategyById } from '../game/strategies.ts';
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
@@ -118,7 +119,19 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     const begin = document.createElement('button');
     begin.className = 'btn-primary';
     begin.textContent = 'Begin Round';
-    begin.disabled = !state.playerStrategy;
+    // Pass C — disable Begin Round if the picked strategy has multiple
+    // variants and the player hasn't chosen A/B yet.
+    let disabled = !state.playerStrategy;
+    let hint = '';
+    if (state.playerStrategy) {
+      const strat = strategyById(state.playerStrategy, state.teamSide[state.playerTeam], state.map);
+      if (strat && strat.variants.length > 1 && state.playerVariantChoice === null) {
+        disabled = true;
+        hint = 'Pick A or B';
+      }
+    }
+    begin.disabled = disabled;
+    if (hint) begin.title = hint;
     begin.addEventListener('click', cb.onBeginRound);
     host.appendChild(begin);
   } else {

@@ -46,7 +46,13 @@ export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanP
   // determinism aligned with beginRound, run it the same way: pass the actual
   // AI strategy id state.aiStrategy if present, else fall back to a default.
   const aiStrategyId = state.aiStrategy ?? defaultStrategyFor(state, aiTeam);
-  let s = applyStrategies(state, state.playerTeam, sel.strategyId, aiTeam, aiStrategyId, pickRng);
+  // Pass C — honor the player's explicit A/B variant choice so the preview
+  // routes shift the moment a different variant is selected. Same RNG, same
+  // AI variant — so reverting to the original A or B yields identical routes.
+  let s = applyStrategies(
+    state, state.playerTeam, sel.strategyId, aiTeam, aiStrategyId, pickRng,
+    state.playerVariantChoice,
+  );
   s = commitCards(s, state.playerTeam, sel.card, aiTeam, null, pickRng);
 
   const targets: Record<string, HexCoord | null> = {};

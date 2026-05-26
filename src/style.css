@@ -584,3 +584,51 @@ button.selected:not(:disabled) {
 .attr-row.v0 .attr-val {
   color: var(--fg);
 }
+
+/* --- Pass C: A/B variant sub-row under a selected strategy --- */
+.variant-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px 12px;
+  font-size: 11px;
+}
+
+.variant-hint {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.variant {
+  background: #1c1f26;
+  color: var(--text-dim);
+  border: 1px solid #2a2e38;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+}
+
+.variant:hover {
+  background: #232732;
+  color: var(--text);
+}
+
+.variant.selected {
+  background: var(--accent);
+  color: #1a1606;
+  border-color: var(--accent-dim);
+  font-weight: 600;
+}
+
+/* Card cycle line (deck / discard counts) */
+.card-cycle {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 2px 0 6px;
+}

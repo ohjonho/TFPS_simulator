@@ -104,6 +104,7 @@ export function startRound(state: GameState): GameState {
     tick: 0,
     playback: { ...state.playback, playing: false },
     playerStrategy: null,
+    playerVariantChoice: null,
     aiStrategy: null,
     roundResult: null,
     // Pass 8: card picks reset per round; deck/hand/discard persist (spec).
@@ -120,7 +121,14 @@ export function startRound(state: GameState): GameState {
 }
 
 // Resolve both teams' picks into per-unit targets + aggression/retreat mods,
-// then transition to resolution. Rush/Stack pick a variant via the seeded RNG.
+// then transition to resolution. Rush/Stack pick a variant via the seeded
+// RNG by default; Pass C — `playerVariantIdx` lets the caller override the
+// player team's variant (player explicitly picks A or B in the UI). AI's
+// variant still goes through the seeded RNG.
+//
+// Determinism note: AI variant is drawn FIRST so swapping the player's
+// explicit choice for an RNG draw (or vice-versa) doesn't shift the AI's
+// RNG position. Same seed + same player variant choice → identical AI pick.
 export function applyStrategies(
   state: GameState,
   playerTeam: Team,
@@ -128,6 +136,7 @@ export function applyStrategies(
   aiTeam: Team,
   aiStrategyId: string,
   rng: Rng,
+  playerVariantIdx: number | null = null,
 ): GameState {
   const playerSide = state.teamSide[playerTeam];
   const aiSide = state.teamSide[aiTeam];
@@ -135,8 +144,13 @@ export function applyStrategies(
   const aiStrat = strategyById(aiStrategyId, aiSide, state.map);
   if (!playerStrat || !aiStrat) return state;
 
-  const playerVariant = playerStrat.variants[rng.int(playerStrat.variants.length)];
+  // AI first → its RNG position is stable across player variant choices.
   const aiVariant = aiStrat.variants[rng.int(aiStrat.variants.length)];
+  const playerVariantIndex =
+    playerVariantIdx !== null && playerVariantIdx >= 0 && playerVariantIdx < playerStrat.variants.length
+      ? playerVariantIdx
+      : rng.int(playerStrat.variants.length);
+  const playerVariant = playerStrat.variants[playerVariantIndex];
 
   // Pass A strategy review — slot-based assignment. For each team, walk the
   // chosen variant's slots and greedily pick which actual unit on the team

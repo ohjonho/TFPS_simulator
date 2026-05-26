@@ -414,6 +414,12 @@ export type GameState = {
   scores: Record<Team, number>;
   teamSide: Record<Team, Side>;           // each team's role this half; swaps at halftime
   playerStrategy: string | null;          // chosen strategy id this round (player team)
+  // Pass C — player's chosen variant index for the selected strategy. null
+  // until they pick (Begin Round disabled for multi-variant strategies until
+  // set). Reset to null on startRound + when the player switches strategy.
+  // Single-variant strategies (Control / Pressure) ignore this field. AI
+  // continues to pick its variant via the seeded RNG.
+  playerVariantChoice: number | null;
   aiStrategy: string | null;              // opponent's pick (set by aiOpponent at Begin Round)
   roundResult: { winner: Team | 'draw' } | null;
   timeoutUsed: Record<Team, boolean>;
