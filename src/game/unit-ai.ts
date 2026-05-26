@@ -4,8 +4,9 @@
 
 import type { Facing, HexCoord, MapDefinition, Unit } from './types.ts';
 import { hexDistance, offsetToPixel } from './hex.ts';
-import { neighbors, passableAt, findPath } from './pathfind.ts';
-import { AI } from './config.ts';
+import { neighbors, passableAt, isCoverAdjacent, findPath } from './pathfind.ts';
+import { isVisibleAlongLine } from './vision.ts';
+import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
 
 // Pass 7.8 — target prioritization. Ranked tiebreakers:
 //   1. lowest HP first (secure the kill before it walks behind cover);
@@ -196,6 +197,73 @@ function wrapPi(x: number): number {
   while (v > Math.PI) v -= 2 * Math.PI;
   while (v <= -Math.PI) v += 2 * Math.PI;
   return v;
+}
+
+// Pass E m2 — post-plant attacker cover-seek. BFS around the PLANT CENTROID
+// (`targetHex`) within `POST_PLANT_SEARCH_RADIUS`; among reachable
+// cover-adjacent hexes with line of sight to the plant, pick the one that
+// minimizes the unit's required rotation while staying in the rifle/sniper
+// sweet-spot range. Returns null when no candidate qualifies; the caller
+// (tick.ts) then falls back to the existing directive.
+//
+// Implementation note: the search center is the plant, not the unit, so
+// attackers far from the spike still get a cover position to path toward
+// (they'll move there over multiple ticks via the standard pathing).
+export function findCoverWithLosTo(
+  unit: Unit,
+  targetHex: HexCoord,
+  map: MapDefinition,
+  occupied: ReadonlySet<string> = new Set(),
+): HexCoord | null {
+  const start = unit.pos;
+  const center = targetHex;
+  const centerKey = `${center.col},${center.row}`;
+  const seen = new Set<string>([centerKey]);
+  // BFS from the plant centroid out to POST_PLANT_SEARCH_RADIUS.
+  const queue: HexCoord[] = [center];
+  const candidates: HexCoord[] = [];
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head++];
+    if (hexDistance(cur, center) <= POST_PLANT_SEARCH_RADIUS) candidates.push(cur);
+    for (const nb of neighbors(cur)) {
+      const k = `${nb.col},${nb.row}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (!passableAt(map, nb)) continue;
+      // Don't pick a hex another unit currently stands on (except the
+      // moving unit itself — in case it's already on a cover hex).
+      if (k !== `${start.col},${start.row}` && occupied.has(k)) continue;
+      if (hexDistance(nb, center) > POST_PLANT_SEARCH_RADIUS) continue;
+      queue.push(nb);
+    }
+  }
+
+  // Score each candidate; require cover-adjacent + LoS to the target. The
+  // sweet-spot range bonus pushes the unit out to rifle/sniper distance so it
+  // isn't crowding the spike (which would force short-range disadvantage
+  // against defuser shotguns). Bias toward the candidate closest to the
+  // unit's current pos so multiple attackers spread across distinct angles
+  // instead of stacking on one cover.
+  let bestHex: HexCoord | null = null;
+  let bestScore = -Infinity;
+  for (const cand of candidates) {
+    if (!isCoverAdjacent(map, cand)) continue;
+    if (!isVisibleAlongLine(cand, targetHex, map)) continue;
+    const dist = hexDistance(cand, targetHex);
+    let score = 10;
+    if (dist >= POST_PLANT_PREFERRED_RANGE.min && dist <= POST_PLANT_PREFERRED_RANGE.max) {
+      score += 5;
+    }
+    // Light bias toward the unit's current pos so the attacker doesn't fly
+    // across the map when a closer cover hex would work.
+    score -= hexDistance(cand, start) * 0.2;
+    if (score > bestScore) {
+      bestScore = score;
+      bestHex = cand;
+    }
+  }
+  return bestHex;
 }
 
 // 2 if adjacent to a wall, 1 if adjacent to cover, 0 otherwise. Walls beat

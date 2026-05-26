@@ -326,6 +326,16 @@ export const FIRST_SIGHT_HIT_PENALTY_PP = 10;
 // an engaged enemy briefly steps behind a wall.
 export const STAY_ENGAGED_TICKS = 2;
 
+// Pass E m2 — post-plant attacker cover-seek. After the spike is planted,
+// remaining alive attackers not on the plant zone re-target to a
+// cover-adjacent hex within this radius (of their current pos) that has line
+// of sight to the plant centroid, so they can pick off defusers. Pre-Pass-E
+// they kept their pre-plant directive (wandering); now they hold the angle.
+// `PreferredRange` biases the candidate score toward rifle/sniper sweet-spot
+// distances — anything in [min, max] gets a flat bonus.
+export const POST_PLANT_SEARCH_RADIUS = 6;
+export const POST_PLANT_PREFERRED_RANGE = { min: 4, max: 10 } as const;
+
 // --- Pass 8: cards (spec §15) --------------------------------------------
 // Every per-card tunable. Card handlers read these — no magic numbers in the
 // handler bodies. Hit-pp values are additive to the effective-stat sum in

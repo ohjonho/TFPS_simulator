@@ -26,6 +26,7 @@ import {
 } from './vision.ts';
 import {
   findCoverHoldHex,
+  findCoverWithLosTo,
   nearestFacing,
   nearestWallRetreatHex,
   shouldEngage,
@@ -208,6 +209,35 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
+    // Pass E m2 — post-plant attacker cover hold. Once the spike is down,
+    // alive attackers not on the plant zone re-target to a cover-adjacent
+    // hex within POST_PLANT_SEARCH_RADIUS of their current pos that has LoS
+    // to the plant centroid — so they can kill defusers instead of
+    // wandering pre-plant directives. Attackers already on the plant zone
+    // stay put (they're covering the spike at point-blank). Engaged
+    // attackers keep shooting (they're presumably already fighting a
+    // defuser). Retreat (HP 1) still wins.
+    if (state.plant.planted && !retreat && mode !== 'engaged') {
+      const atkTeam: Team = state.teamSide.attackers === 'attacker' ? 'attackers' : 'defenders';
+      if (u.team === atkTeam) {
+        const site = state.plant.planted.site;
+        const plantHexes = site === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
+        const onPlant = plantHexes.some((h) => sameHex(h, u.pos));
+        if (!onPlant && plantHexes.length > 0) {
+          const centroid = plantHexes[Math.floor(plantHexes.length / 2)];
+          const coverHex = findCoverWithLosTo(u, centroid, state.map, claimed);
+          if (coverHex && !sameHex(u.pos, coverHex)) {
+            mode = 'moving';
+            effectiveTarget = coverHex;
+            // Persist the override so the user-visible "target" in the side
+            // panel reflects the post-plant cover seek rather than the stale
+            // pre-plant strategy target.
+            nextTargets[u.id] = coverHex;
+          }
+        }
+      }
+    }
+
     // Pass 7.6 cover-seek: if we'd still hold, see if a neighbor hex offers
     // better defensive geometry (wall- or cover-adjacent). Shuffle there if
     // so, and commit the cover hex as the unit's region target so subsequent
@@ -266,15 +296,26 @@ export function stepTick(state: GameState): GameState {
         // stare at the wall it's pathing around; the cone should point at
         // what matters tactically. Priority: directive's hold-angle facing
         // (e.g. safe_sniper looks down a lane) → tracked enemy bearing →
-        // overall destination (so cone leads the path) → movement direction
-        // (current fallback). Keeps cones useful while units navigate.
+        // overall destination (so cone leads the path) → enemy spawn /
+        // mid centroid (a sensible threat direction) → movement direction
+        // (final fallback). Pass E m1: added enemy spawn + midCentroid so a
+        // unit that lands on its destination this tick still has a useful
+        // facing direction (used to silently fall through to movement dir).
         const tracked = state.tracking[u.id]?.lastKnownHex;
+        const arrivedThisTick = effectiveTarget && sameHex(u.pos, effectiveTarget);
         if (directiveFacing) {
           u.facing = nearestFacing(u.pos, directiveFacing);
         } else if (tracked) {
           u.facing = nearestFacing(u.pos, tracked);
-        } else if (effectiveTarget && !sameHex(u.pos, effectiveTarget)) {
+        } else if (effectiveTarget && !arrivedThisTick) {
           u.facing = nearestFacing(u.pos, effectiveTarget);
+        } else {
+          // Arrived (or no target) — fall back to enemy spawn / mid centroid
+          // so the cone doesn't keep staring at the last-traversed wall.
+          const fallback = enemySpawnForSide(u, state) ?? midCentroid(state);
+          if (fallback && !sameHex(fallback, u.pos)) {
+            u.facing = nearestFacing(u.pos, fallback);
+          }
         }
         nextMoves[u.id] = result.move;
       }
@@ -289,13 +330,26 @@ export function stepTick(state: GameState): GameState {
     // last-known hex as the threat bearing (the tracked enemy is the actual
     // immediate threat — facing the spawn direction would point the wrong
     // way if the enemy is flanking).
+    // Pass E m1: added midCentroid as the final fallback for the rare case
+    // when a map's enemy-spawn list is empty (defensive); together with the
+    // every-tick re-derivation, this guarantees a holding unit always has a
+    // sensible facing direction instead of staying stuck on whatever wall
+    // its last movement step happened to align with.
     if (mode === 'holding') {
       // Pass 9 — directive-supplied facing (e.g. hold_angle.facingHex) wins
       // over the default threat-bearing logic.
-      const threat = directiveFacing
+      // Pass E m1 — skip directiveFacing if it resolves to a wall hex
+      // (the directive author got it wrong, or the chosen hex moved with
+      // a map redesign). Re-deriving from tracking/spawn/midCentroid each
+      // tick beats staring at a wall forever.
+      const useDirective = directiveFacing && !isWallHex(state.map, directiveFacing);
+      const threat = (useDirective ? directiveFacing : undefined)
         ?? state.tracking[u.id]?.lastKnownHex
-        ?? enemySpawnForSide(u, state);
-      if (threat) u.facing = nearestFacing(u.pos, threat);
+        ?? enemySpawnForSide(u, state)
+        ?? midCentroid(state);
+      if (threat && !sameHex(threat, u.pos)) {
+        u.facing = nearestFacing(u.pos, threat);
+      }
     }
 
     const stationaryTicks = sameHex(prevPos[u.id], u.pos) ? prevAi.stationaryTicks + 1 : 0;
@@ -820,6 +874,13 @@ function enemySpawnForSide(unit: Unit, state: GameState): HexCoord | null {
   const spawns = state.map.spawns[oppositeSpawnKey];
   if (spawns.length === 0) return null;
   return spawns[Math.floor(spawns.length / 2)];
+}
+
+// Pass E m1 — is a hex a `wall` cell? Used to skip directive-supplied facings
+// that point at walls so a holding unit doesn't stare at one indefinitely.
+function isWallHex(map: GameState['map'], hex: HexCoord): boolean {
+  if (hex.row < 0 || hex.row >= map.height || hex.col < 0 || hex.col >= map.width) return false;
+  return map.grid[hex.row][hex.col] === 'wall';
 }
 
 // Pass 7.7 — middle passable hex of the mid region, used as the rotation
