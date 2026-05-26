@@ -1,16 +1,12 @@
-// Side panel content depends on phase:
-//   planning   → roster summary for both teams + strategy menu (player's side)
-//                + card hand (+ targeting hint when a hex-targeted card is
-//                in the targeting-pending state)
-//   resolution → hovered-unit info + "Cards this round" section showing both
-//                teams' active card picks with countdown timers
-// Kill feed is always shown below.
+// Right-side panel:
+//   planning   → roster summary for both teams + strategy menu
+//   resolution → hovered-unit info
+// Card hand + cards-this-round live in src/ui/cardPanel.ts (Pass E m4).
+// Kill feed lives in src/ui/killFeedOverlay.ts (Pass E m4).
 
-import type { ActiveCardEffect, GameState, Side, Unit } from '../game/types.ts';
+import type { GameState, Side, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
-import { killFeedLines } from './killFeed.ts';
 import { strategiesFor, strategyById } from '../game/strategies.ts';
-import { cardById } from '../game/cardData.ts';
 
 export type SidePanelCallbacks = {
   onPickStrategy: (id: string) => void;
@@ -18,15 +14,6 @@ export type SidePanelCallbacks = {
   // defender; Execute / Rush on attacker). idx maps to strategy.variants[idx]
   // (0 = A, 1 = B in current authoring).
   onPickVariant: (idx: number) => void;
-  // Pass 8: toggle card selection. Pass null to clear. Returns true if the
-  // selection actually changed (so the caller knows to re-render the preview).
-  onPickCard: (defId: string | null) => void;
-  // Currently-selected card def id for the player (null = no card). Read so
-  // the UI can highlight the active card; lives in main.ts UI state, not state.
-  selectedCardId: string | null;
-  // Pass D — true while a hex-targeted card is selected but not yet targeted.
-  // Card pill in the hand renders a "click a hex" hint when this is true.
-  cardTargetingPending: boolean;
   // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
   // events here so the floating attributes panel can pop in planning phase
   // (canvas hover already covers resolution + planning units on the map).
@@ -39,11 +26,10 @@ export function renderSidePanel(
   state: GameState,
   cb: SidePanelCallbacks,
 ): void {
-  const main =
+  host.innerHTML =
     state.phase === 'planning'
-      ? planningHtml(state, cb.selectedCardId, cb.cardTargetingPending)
-      : unitInfoOrHint(hoveredUnit, state) + cardsThisRoundHtml(state);
-  host.innerHTML = main + killFeedHtml(state);
+      ? planningHtml(state)
+      : unitInfoOrHint(hoveredUnit, state);
 
   if (state.phase === 'planning') {
     host.querySelectorAll<HTMLButtonElement>('button[data-strategy]').forEach((btn) => {
@@ -60,15 +46,6 @@ export function renderSidePanel(
         if (v !== null) cb.onPickVariant(parseInt(v, 10));
       });
     });
-    host.querySelectorAll<HTMLButtonElement>('button[data-card]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-card');
-        // Card buttons toggle: clicking the active card again clears it.
-        cb.onPickCard(id === cb.selectedCardId ? null : id);
-      });
-    });
-    const skipBtn = host.querySelector<HTMLButtonElement>('button[data-card-skip]');
-    if (skipBtn) skipBtn.addEventListener('click', () => cb.onPickCard(null));
   }
 
   // Pass A1: roster-row hover → drive the floating attributes panel. Works in
@@ -84,7 +61,7 @@ export function renderSidePanel(
 
 // --- Planning phase: rosters + strategy menu ------------------------------
 
-function planningHtml(state: GameState, selectedCardId: string | null, targetingPending: boolean): string {
+function planningHtml(state: GameState): string {
   const playerSide = state.teamSide[state.playerTeam];
   const opp = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   return `
@@ -92,7 +69,6 @@ function planningHtml(state: GameState, selectedCardId: string | null, targeting
     ${rosterHtml(state, state.playerTeam, 'You')}
     ${rosterHtml(state, opp, 'Opponent')}
     ${strategyMenuHtml(state, playerSide)}
-    ${cardMenuHtml(state, selectedCardId, targetingPending)}
   `;
 }
 
@@ -142,50 +118,6 @@ function strategyMenuHtml(state: GameState, side: Side): string {
   return `<h3>Strategy (${side}) — required</h3><div class="strategy-menu">${items}</div>`;
 }
 
-// Pass 8 — hand UI. Cards are OPTIONAL: the player can leave it unselected and
-// hit Begin Round. Pass D — hex-targeted cards (Setup Play, Hold the Line)
-// and Adapt now route through cardTargeting; the auto-target fallback applies
-// only when the player skips the explicit pick.
-function cardMenuHtml(state: GameState, selectedCardId: string | null, targetingPending: boolean): string {
-  const teamDeck = state.cards[state.playerTeam];
-  const hand = teamDeck.hand;
-  // Pass C — deck/discard counts so the player sees the cycle (cards
-  // discard on round-end, deck reshuffles from discard when empty).
-  const cycleLine =
-    `<div class="card-cycle">Deck: ${teamDeck.deck.length} · Discard: ${teamDeck.discard.length}</div>`;
-  if (hand.length === 0) {
-    return `<h3>Card (optional)</h3>${cycleLine}<p class="hint">Hand empty.</p>`;
-  }
-  const items = hand.map((c) => {
-    const def = cardById(c.defId);
-    if (!def) return '';
-    const cls = selectedCardId === c.defId ? 'card selected' : 'card';
-    const sourceLabel = `From: ${def.source} (${c.contributor})`;
-    let targetingNote = '';
-    if (def.targeting === 'hex') {
-      targetingNote = selectedCardId === c.defId && targetingPending
-        ? ` <span class="warn">— click a hex on the map</span>`
-        : ` <span class="muted">(click to target)</span>`;
-    } else if (def.targeting === 'role') {
-      targetingNote = selectedCardId === c.defId && targetingPending
-        ? ` <span class="warn">— pick a role</span>`
-        : ` <span class="muted">(pick role)</span>`;
-    }
-    return `<button class="${cls}" data-card="${c.defId}">
-      <div class="c-name">${def.name}${targetingNote}</div>
-      <div class="c-source">${sourceLabel}</div>
-      <div class="c-desc">${def.description}</div>
-    </button>`;
-  }).join('');
-  const skipCls = selectedCardId === null ? 'card-skip selected' : 'card-skip';
-  return `
-    <h3>Card (optional)</h3>
-    ${cycleLine}
-    <div class="card-menu">${items}</div>
-    <button class="${skipCls}" data-card-skip>Skip card this round</button>
-  `;
-}
-
 // --- Resolution phase: hovered-unit info ----------------------------------
 
 function unitInfoOrHint(unit: Unit | null, state: GameState): string {
@@ -216,54 +148,5 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
   // src/ui/attributesPanel.ts.
 }
 
-// --- Resolution phase: cards-this-round summary --------------------------
-// Pass D — visible reminder of both teams' picks + countdown timers for the
-// timed effects (Tactical Scan, Setup Play, Trade Window). Sources cards from
-// `state.playedCard` (commits at Begin Round) and read durations from the
-// matching ActiveCardEffect entries when available.
-
-function cardsThisRoundHtml(state: GameState): string {
-  const teams: Array<{ team: 'defenders' | 'attackers'; label: string }> = [
-    { team: state.playerTeam, label: 'You' },
-    { team: state.playerTeam === 'defenders' ? 'attackers' : 'defenders', label: 'Opp' },
-  ];
-  const rows = teams.map(({ team, label }) => {
-    const played = state.playedCard[team];
-    if (!played) return `<div class="card-active none">${label}: <em>no card</em></div>`;
-    const def = cardById(played.defId);
-    if (!def) return '';
-    const contributor = state.units.find((u) => u.id === played.contributor);
-    const dead = contributor && contributor.state === 'dead' ? ' <span class="warn">contributor dead</span>' : '';
-    const duration = durationLineFor(state, played.defId, team);
-    return `<div class="card-active"><strong>${label}: «${def.name}»</strong> <span class="c-source">${def.source} (${played.contributor})</span>${duration}${dead}</div>`;
-  }).join('');
-  return `<h3>Cards this round</h3><div class="cards-active">${rows}</div>`;
-}
-
-function durationLineFor(state: GameState, defId: string, team: 'defenders' | 'attackers'): string {
-  // Pull from state.cardEffects for the cards that register one.
-  let match: ActiveCardEffect | null = null;
-  for (const e of state.cardEffects) {
-    if (e.team !== team) continue;
-    if (defId === 'tactical_scan' && e.kind === 'tactical_scan') { match = e; break; }
-    if (defId === 'setup_play' && e.kind === 'setup_play') { match = e; break; }
-    // Trade Window registers a mark_target with expiresAtTick; report that
-    // window. Mark Target's mark is round-scoped (no expiresAtTick), so no
-    // timer is rendered for it.
-    if (defId === 'trade_window' && e.kind === 'mark_target' && e.expiresAtTick !== undefined) { match = e; break; }
-  }
-  if (match && 'expiresAtTick' in match && typeof match.expiresAtTick === 'number') {
-    const remaining = Math.max(0, match.expiresAtTick - state.tick);
-    if (remaining <= 0) return ` <span class="muted">— expired</span>`;
-    return ` <span class="muted">— ${remaining}t left</span>`;
-  }
-  // Untimed effects: just label as round-scoped.
-  return ` <span class="muted">— round</span>`;
-}
-
-function killFeedHtml(state: GameState): string {
-  const lines = killFeedLines(state);
-  if (lines.length === 0) return `<h2>Kill Feed</h2><p class="hint">No combat yet.</p>`;
-  const rows = lines.map((l) => `<div class="feed-line">${l}</div>`).join('');
-  return `<h2>Kill Feed</h2><div class="kill-feed">${rows}</div>`;
-}
+// (Cards-this-round summary + kill feed moved to src/ui/cardPanel.ts and
+// src/ui/killFeedOverlay.ts respectively in Pass E m4.)

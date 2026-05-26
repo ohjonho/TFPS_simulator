@@ -24,13 +24,63 @@ body {
 
 #app {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  /* Pass E m4 — 3-column layout: card panel left, canvas center, side panel
+     right. Kill feed becomes an absolute overlay inside canvas-area. */
+  grid-template-columns: 260px 1fr 280px;
   grid-template-rows: 48px 1fr 64px;
   grid-template-areas:
-    'top    top'
-    'canvas side'
-    'bottom bottom';
+    'top    top    top'
+    'card   canvas side'
+    'bottom bottom bottom';
   min-height: 100vh;
+}
+
+/* Pass E m4 — left card panel (mirror of #side-panel chrome). */
+#card-panel {
+  grid-area: card;
+  background: var(--panel);
+  border-right: 1px solid var(--panel-border);
+  padding: 12px 14px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+#card-panel h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Pass E m4 — kill-feed overlay anchored bottom-left in canvas area. */
+.kill-feed-overlay {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: 360px;
+  max-height: 160px;
+  overflow-y: auto;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.82);
+  font-family: ui-monospace, Consolas, monospace;
+  z-index: 5;
+}
+
+.kill-feed-overlay .kfo-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pass E m4 — bold card titles for at-a-glance scan. */
+.c-name {
+  font-weight: 700;
 }
 
 #top-bar {

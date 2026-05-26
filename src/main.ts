@@ -39,6 +39,8 @@ import { renderSidePanel } from './ui/sidePanel.ts';
 import { renderAttributesPanel } from './ui/attributesPanel.ts';
 import { renderBottomControls } from './ui/bottomControls.ts';
 import { renderTopBar } from './ui/topBar.ts';
+import { renderCardPanel } from './ui/cardPanel.ts';
+import { renderKillFeedOverlay } from './ui/killFeedOverlay.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
 import { attachCardTargeting, showAdaptRoleModal } from './ui/cardTargeting.ts';
@@ -119,6 +121,53 @@ function targetingLabelFor(defId: string): string {
   return `Pick a target for ${def.name}`;
 }
 
+// Pass 8 + D — pick (or clear with null) a card from the player's hand.
+// For 'none'-targeting cards: commit immediately. For 'hex' cards (Setup
+// Play, Hold the Line): enter canvas click-targeting mode. For 'role' cards
+// (Adapt): open the role-pick modal. Begin Round stays disabled until any
+// targeting mode resolves.
+// Pass E m4 — extracted from inline callback so the new cardPanel can call it.
+function pickCard(defId: string | null): void {
+  // Clearing the pick — also exits any targeting mode.
+  if (defId === null) {
+    playerCard = null;
+    targetingMode = null;
+    recomputePreview();
+    rerenderAll();
+    return;
+  }
+  const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
+  if (!inHand) return;
+  const def = cardById(defId);
+  if (!def) return;
+
+  if (def.targeting === 'none') {
+    playerCard = { defId, contributor: inHand.contributor };
+    targetingMode = null;
+  } else if (def.targeting === 'hex') {
+    playerCard = { defId, contributor: inHand.contributor };
+    targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
+  } else if (def.targeting === 'role') {
+    // For role-pick, the modal is the targeting UI; mark the card picked
+    // but pending and open the modal.
+    playerCard = { defId, contributor: inHand.contributor };
+    targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
+    showAdaptRoleModal((role: Role) => {
+      if (!playerCard || playerCard.defId !== defId) return;
+      playerCard = { ...playerCard, target: role };
+      targetingMode = null;
+      recomputePreview();
+      rerenderAll();
+    });
+  } else {
+    // Fallback (enemy/ally targeting — not exercised by the current 13 cards).
+    playerCard = { defId, contributor: inHand.contributor };
+    targetingMode = null;
+  }
+  recomputePreview();
+  rerenderAll();
+}
+
 function recomputePreview(): void {
   previewRoutes = previewPlayerPlan(state, {
     strategyId: state.playerStrategy,
@@ -191,54 +240,6 @@ function rerenderChrome() {
       recomputePreview();
       rerenderCanvas();
     },
-    // Pass 8 + D — pick (or clear) a card from the player's hand. For
-    // 'none'-targeting cards: commit immediately. For 'hex' cards (Setup Play,
-    // Hold the Line): enter canvas click-targeting mode. For 'role' cards
-    // (Adapt): open the role-pick modal. Begin Round stays disabled until
-    // any targeting mode resolves.
-    onPickCard: (defId: string | null) => {
-      // Clearing the pick — also exits any targeting mode.
-      if (defId === null) {
-        playerCard = null;
-        targetingMode = null;
-        recomputePreview();
-        rerenderAll();
-        return;
-      }
-      const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
-      if (!inHand) return;
-      const def = cardById(defId);
-      if (!def) return;
-
-      if (def.targeting === 'none') {
-        playerCard = { defId, contributor: inHand.contributor };
-        targetingMode = null;
-      } else if (def.targeting === 'hex') {
-        playerCard = { defId, contributor: inHand.contributor };
-        targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
-      } else if (def.targeting === 'role') {
-        // For role-pick, the modal is the targeting UI; mark the card picked
-        // but pending and open the modal.
-        playerCard = { defId, contributor: inHand.contributor };
-        targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
-        showAdaptRoleModal((role: Role) => {
-          if (!playerCard || playerCard.defId !== defId) return;
-          playerCard = { ...playerCard, target: role };
-          targetingMode = null;
-          recomputePreview();
-          rerenderAll();
-        });
-      } else {
-        // Fallback (enemy/ally targeting — not exercised by the current 13
-        // cards): commit without target.
-        playerCard = { defId, contributor: inHand.contributor };
-        targetingMode = null;
-      }
-      recomputePreview();
-      rerenderAll();
-    },
-    selectedCardId: playerCard?.defId ?? null,
-    cardTargetingPending: targetingMode !== null,
     // Pass A1 — roster-item hover drives the attributes panel during planning.
     // Updates the shared hover state then re-renders chrome only (no canvas
     // change). Canvas hover continues to work as before.
@@ -247,6 +248,14 @@ function rerenderChrome() {
       rerenderChrome();
     },
   });
+  // Pass E m4 — card hand + cards-this-round live in the new left panel.
+  renderCardPanel(shell.cardPanel, state, {
+    onPickCard: pickCard,
+    selectedCardId: playerCard?.defId ?? null,
+    cardTargetingPending: targetingMode !== null,
+  });
+  // Pass E m4 — kill feed as a small overlay anchored bottom-left in canvas.
+  renderKillFeedOverlay(shell.killFeedOverlay, state);
   renderBottomControls(shell.bottomBar, state, {
     onPlayToggle: () => {
       if (state.playback.playing) loop.pause();
