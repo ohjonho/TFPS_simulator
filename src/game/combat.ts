@@ -16,6 +16,7 @@ import {
   HIT_TABLE,
   MODIFIERS,
   RANGE,
+  SNIPER_SETTLED_TICKS,
   TRAITS,
 } from './config.ts';
 
@@ -73,13 +74,26 @@ export function rangeBand(dist: number): RangeBand {
 }
 
 // HIT_TABLE row: snipers split moving/stationary; others use their own row.
-function hitRow(weapon: Weapon, stationary: boolean): string {
-  if (weapon === 'sniper') return stationary ? 'sniperStationary' : 'sniperMoving';
+// F2 — sniper "settled" now requires SNIPER_SETTLED_TICKS ticks of
+// stillness, not just "didn't move this tick". A sniper that moved 1 tick
+// ago is still on the moving table (heavily reduced HR). This is what the
+// new sniper-speed rule trades for: same movement as other units, but no
+// instant-shot lethality after moving.
+function hitRow(weapon: Weapon, stationary: boolean, stationaryTicks: number): string {
+  if (weapon === 'sniper') {
+    const settled = stationary && stationaryTicks >= SNIPER_SETTLED_TICKS;
+    return settled ? 'sniperStationary' : 'sniperMoving';
+  }
   return weapon;
 }
 
-export function baseHitPct(weapon: Weapon, band: RangeBand, stationary: boolean): number {
-  return HIT_TABLE[hitRow(weapon, stationary)][band];
+export function baseHitPct(
+  weapon: Weapon,
+  band: RangeBand,
+  stationary: boolean,
+  stationaryTicks: number,
+): number {
+  return HIT_TABLE[hitRow(weapon, stationary, stationaryTicks)][band];
 }
 
 // True when a half-wall cover hex lies on the shot line adjacent to the target
@@ -112,7 +126,15 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
   let pp = 0;
   switch (unit.skillTrait) {
     case 'Sharp Aim': pp += TRAITS.sharpAimHitPp; break;
-    case 'First Shot': if (ctx.firstShot) pp += TRAITS.firstShotHitPp; break;
+    case 'First Shot':
+      if (ctx.firstShot) {
+        // F2 — Reflexes scales First Shot magnitude. (reflexes - 50) ×
+        // multiplier added to 1.0 produces a 0.6×–1.4× scaling at the
+        // [10, 90] tails. At rating 50 the scaling is 1.0 (no change).
+        const reflexScale = 1 + (unit.attributes.reflexes - 50) * ATTRIBUTES.formulas.reflexes.firstShotMultiplier;
+        pp += TRAITS.firstShotHitPp * reflexScale;
+      }
+      break;
     default: break; // Headhunter (HS only), Eagle Eye (vision) — no HR effect
   }
   switch (unit.behavioralTrait) {
@@ -285,7 +307,7 @@ function attributeHitPp(unit: Unit): number {
 }
 
 export function effectiveHitPct(shooter: Unit, ctx: ShotContext, buffs: readonly Buff[]): number {
-  let pct = baseHitPct(shooter.weapon, ctx.band, ctx.stationary);
+  let pct = baseHitPct(shooter.weapon, ctx.band, ctx.stationary, ctx.stationaryTicks);
   pct += traitHitPp(shooter, ctx)
        + modifierHitPp(shooter, ctx)
        + cardHitPp(shooter, ctx)
@@ -297,12 +319,23 @@ export function effectiveHitPct(shooter: Unit, ctx: ShotContext, buffs: readonly
   return clamp(pct, HIT_CLAMP.minPct, HIT_CLAMP.maxPct);
 }
 
+// F2 — Headshot attribute: linear pp shift on the headshot roll. Same shape
+// as Aim on the hit roll. Wired through headshotPct alongside traits, cards,
+// modifiers, and buffs in the existing effective-stat seam.
+function attributeHeadshotPp(unit: Unit): number {
+  return (unit.attributes.headshot - 50) * ATTRIBUTES.formulas.headshot.multiplier;
+}
+
 export function headshotPct(shooter: Unit, ctx: ShotContext, buffs: readonly Buff[]): number {
   let pct = HEADSHOT.basePct;
   if (shooter.weapon === 'sniper' && ctx.stationary && ctx.band === 'long') {
     pct += HEADSHOT.sniperLongBonusPp;
   }
-  pct += traitHeadshotPp(shooter, ctx) + modifierHeadshotPp(shooter, ctx) + cardHeadshotPp(shooter, ctx) + sumBuff(buffs, 'headshotPp');
+  pct += traitHeadshotPp(shooter, ctx)
+       + modifierHeadshotPp(shooter, ctx)
+       + cardHeadshotPp(shooter, ctx)
+       + attributeHeadshotPp(shooter)
+       + sumBuff(buffs, 'headshotPp');
   return clamp(pct, 0, 100);
 }
 

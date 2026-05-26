@@ -663,17 +663,15 @@ if (import.meta.env.DEV) {
       }
       return state.units.find((u) => u.id === id)?.attributes ?? null;
     },
-    // setRating(id, 'aim', 90) or setRating(id, 'mapIQ.foundry', 80). Pinning
-    // ratings at runtime lets us verify A2-A4 hooks once they come online.
+    // setRating(id, 'aim', 90) or setRating(id, 'mapIQ', 80). F2 — mapIQ
+    // collapsed to a single number; pre-fix nested-key forms removed.
     setRating: (id: string, key: string, value: number) => {
       setState({
         ...state,
         units: state.units.map((u) => {
           if (u.id !== id) return u;
           const a = u.attributes;
-          if (key === 'mapIQ.foundry') return { ...u, attributes: { ...a, mapIQ: { ...a.mapIQ, foundry: value } } };
-          if (key === 'mapIQ.atoll')   return { ...u, attributes: { ...a, mapIQ: { ...a.mapIQ, atoll: value } } };
-          if (key in a && key !== 'mapIQ') return { ...u, attributes: { ...a, [key]: value } };
+          if (key in a) return { ...u, attributes: { ...a, [key]: value } };
           return u;
         }),
       });

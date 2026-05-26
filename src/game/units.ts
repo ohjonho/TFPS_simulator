@@ -12,7 +12,7 @@ const NEUTRAL_ATTRIBUTES: Attributes = {
   aim: 50, headshot: 50, reflexes: 50, sprayControl: 50,
   rifleHandling: 50, shotgunHandling: 50, sniperHandling: 50,
   awareness: 50, positioning: 50,
-  mapIQ: { foundry: 50, atoll: 50 },
+  mapIQ: 50,
   clutch: 50, composure: 50, confidence: 50,
   teamwork: 50, discipline: 50, communication: 50,
 };
@@ -59,7 +59,7 @@ export function createTeam(
     preferredRole: 'Specialist',
     hero: 'Angelic',
     modifiers: { aggression: 50, offPosition: false, retreatThresholdMod: 0 },
-    attributes: { ...NEUTRAL_ATTRIBUTES, mapIQ: { ...NEUTRAL_ATTRIBUTES.mapIQ } },
+    attributes: { ...NEUTRAL_ATTRIBUTES },
     cardFlags: {},
     directives: [],
   }));

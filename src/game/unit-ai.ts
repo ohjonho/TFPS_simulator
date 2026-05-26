@@ -107,11 +107,18 @@ export function holdPosition(unit: Unit): HoldAction {
 // candidate is what matters, not just any neighbor wall (a unit hugging a wall
 // facing the wrong way isn't actually covered). Pure; called by tick.ts before
 // deciding to mode='holding'.
+// F2 — `searchRadius` lets the caller (tick.ts) widen the cover-seek BFS
+// based on the unit's Positioning attribute. radius=0 → no shuffle, radius=1
+// → current behavior (adjacent neighbors), radius=2 → 2-hex BFS (rewards
+// high-positioning units with better cover spots they can sometimes find a
+// few hexes away). Defaults to 1 to preserve pre-F2 behavior for callers
+// that don't know about Positioning.
 export function findCoverHoldHex(
   unit: Unit,
   map: MapDefinition,
   occupied: ReadonlySet<string> = new Set(),
   threat?: HexCoord,
+  searchRadius = 1,
 ): HexCoord {
   const here = unit.pos;
   const selfKey = `${here.col},${here.row}`;
@@ -119,16 +126,31 @@ export function findCoverHoldHex(
     threat ? sightlineCoverScore(h, map, threat) : coverScore(h, map);
   let best = here;
   let bestScore = score(here);
-  for (const nb of neighbors(here)) {
-    if (!passableAt(map, nb)) continue;
-    const key = `${nb.col},${nb.row}`;
-    if (key !== selfKey && occupied.has(key)) continue;
-    const s = score(nb);
-    // Strict > so the unit doesn't shuffle when its own hex is already best.
-    if (s > bestScore) {
-      best = nb;
-      bestScore = s;
+  if (searchRadius <= 0) return best;
+
+  // BFS up to `searchRadius` hexes from `here`. Candidates are passable +
+  // unoccupied (except own hex). Strict > so the unit doesn't shuffle when
+  // its current hex is already as good as anything reachable.
+  const seen = new Set<string>([selfKey]);
+  let frontier: HexCoord[] = [here];
+  for (let depth = 0; depth < searchRadius; depth++) {
+    const next: HexCoord[] = [];
+    for (const cur of frontier) {
+      for (const nb of neighbors(cur)) {
+        const key = `${nb.col},${nb.row}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!passableAt(map, nb)) continue;
+        if (key !== selfKey && occupied.has(key)) continue;
+        const s = score(nb);
+        if (s > bestScore) {
+          best = nb;
+          bestScore = s;
+        }
+        next.push(nb);
+      }
     }
+    frontier = next;
   }
   return best;
 }

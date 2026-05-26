@@ -9,10 +9,13 @@
 
 import type { Attributes, Unit } from '../game/types.ts';
 
-// v0-active attribute keys (combat/vision integration in A2-A4). Everything
-// not in this set renders greyed with a "v1" tag.
+// v0-active attribute keys (combat/vision integration in A2-A4 + F2 wired
+// headshot/reflexes/positioning). Everything not in this set renders
+// greyed with a "v1" tag.
 const V0_ATTRIBUTES: ReadonlySet<string> = new Set([
-  'aim', 'rifleHandling', 'shotgunHandling', 'sniperHandling', 'awareness', 'clutch',
+  'aim', 'headshot', 'reflexes',
+  'rifleHandling', 'shotgunHandling', 'sniperHandling',
+  'awareness', 'positioning', 'clutch',
 ]);
 
 // Display order matches the four design-doc categories so the UI mirrors §3.
@@ -28,9 +31,9 @@ const ATTR_ROWS: ReadonlyArray<{
   { key: 'aim',             label: 'Aim',              getter: (a) => a.aim,
     desc: 'Base hit-rate modifier across all weapons (±8pp at the tails).' },
   { key: 'headshot',        label: 'Headshot',         getter: (a) => a.headshot,
-    desc: 'v1 — modifies headshot chance on every hit.' },
+    desc: 'Modifies headshot chance on every hit (±8pp at the tails).' },
   { key: 'reflexes',        label: 'Reflexes',         getter: (a) => a.reflexes,
-    desc: 'v1 — first-shot bonus magnitude and cone snap-to-track speed.' },
+    desc: 'Scales the First Shot trait magnitude (0.6× to 1.4× at the tails).' },
   { key: 'sprayControl',    label: 'Spray Control',    getter: (a) => a.sprayControl,
     desc: 'v1+ — HR retention past tick 5 of a sustained engagement.' },
   { key: 'rifleHandling',   label: 'Rifle Handling',   getter: (a) => a.rifleHandling,
@@ -43,11 +46,9 @@ const ATTR_ROWS: ReadonlyArray<{
   { key: 'awareness',       label: 'Awareness',        getter: (a) => a.awareness,
     desc: 'Widens the vision cone (±20°) and extends/shortens team ghost markers.' },
   { key: 'positioning',     label: 'Positioning',      getter: (a) => a.positioning,
-    desc: 'v1 — quality of the hex chosen when holding a region (cover, angles).' },
-  { key: 'mapIQ.foundry',   label: 'Map IQ — Foundry', getter: (a) => a.mapIQ.foundry,
-    desc: 'v1 — Foundry familiarity; reduces the off-position penalty on this map.' },
-  { key: 'mapIQ.atoll',     label: 'Map IQ — Atoll',   getter: (a) => a.mapIQ.atoll,
-    desc: 'v1 — Atoll familiarity; reduces the off-position penalty on this map.' },
+    desc: 'Widens the cover-seek search radius when settling into hold (0–2 hex).' },
+  { key: 'mapIQ',           label: 'Map IQ',           getter: (a) => a.mapIQ,
+    desc: 'v1 — overall map familiarity (rotation timing, plant-zone awareness).' },
   // Mental
   { key: 'clutch',          label: 'Clutch',           getter: (a) => a.clutch,
     desc: 'Scales the last-alive HR/HS bonus, with or without the Clutch trait.' },

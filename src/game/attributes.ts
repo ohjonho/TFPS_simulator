@@ -24,10 +24,9 @@ export type AttributeOverride = Partial<
 > & {
   // Pass A1: pin individual attribute ratings for batch/A-B tests. Any key
   // present here is honored literally; absent keys are random-generated.
-  // mapIQ overrides accept partial sub-keys (foundry / atoll).
-  // (Pass A3 — `weaponHandling` flat override removed; pin per-weapon handling
-  // via attributes.{rifleHandling, shotgunHandling, sniperHandling}.)
-  attributes?: Partial<Omit<Attributes, 'mapIQ'>> & { mapIQ?: Partial<Attributes['mapIQ']> };
+  // F2 — mapIQ is now a single number (was { foundry, atoll }); overrides
+  // accept a flat partial of all attribute keys.
+  attributes?: Partial<Attributes>;
 };
 
 // Truncated-normal sample via Box–Muller, clamped to [min, max]. Rejection
@@ -60,6 +59,7 @@ function sampleAttribute(rng: Rng, rangeOverride?: { min: number; max: number })
 // Pure: returns a fresh Attributes record. Deterministic given the RNG.
 // Pass E m5 — accepts an optional `rangeOverride` (e.g. [40, 60]) used by
 // Randomize Units mode to pin every attribute into a single uniform window.
+// F2 — mapIQ collapsed from { foundry, atoll } to a single rating.
 export function generateAttributes(rng: Rng, rangeOverride?: { min: number; max: number }): Attributes {
   return {
     aim:             sampleAttribute(rng, rangeOverride),
@@ -71,10 +71,7 @@ export function generateAttributes(rng: Rng, rangeOverride?: { min: number; max:
     sniperHandling:  sampleAttribute(rng, rangeOverride),
     awareness:       sampleAttribute(rng, rangeOverride),
     positioning:     sampleAttribute(rng, rangeOverride),
-    mapIQ: {
-      foundry: sampleAttribute(rng, rangeOverride),
-      atoll:   sampleAttribute(rng, rangeOverride),
-    },
+    mapIQ:           sampleAttribute(rng, rangeOverride),
     clutch:          sampleAttribute(rng, rangeOverride),
     composure:       sampleAttribute(rng, rangeOverride),
     confidence:      sampleAttribute(rng, rangeOverride),
@@ -142,11 +139,9 @@ export function assignAttributes(
     const generated = generateAttributes(rng, options.rangeOverride);
     const ao = o.attributes;
     if (ao) {
-      u.attributes = {
-        ...generated,
-        ...ao,
-        mapIQ: { ...generated.mapIQ, ...(ao.mapIQ ?? {}) },
-      };
+      // F2 — mapIQ is now a flat number, so the partial-override merge is a
+      // simple spread (was a nested mapIQ.{foundry, atoll} merge).
+      u.attributes = { ...generated, ...ao };
     } else {
       u.attributes = generated;
     }

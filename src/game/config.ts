@@ -71,13 +71,24 @@ export const TICK = {
 
 export const PLAYBACK_SPEEDS = [1, 2, 4] as const;
 
-// Hex-units of movement per tick, per weapon. Sniper 0.5 → one hex every two
-// ticks. Behavioral-trait speed bonuses (Run-n-Gun) layer on in Pass 6.
+// Hex-units of movement per tick, per weapon. F2 — sniper bumped to 1.0
+// (was 0.5). Sniper risk now comes from the "must stop and settle" rule in
+// combat.ts: the sniper uses the stationaryHit table only after
+// SNIPER_SETTLED_TICKS ticks of stillness — within that window it's on the
+// (much lower) moving table. Net: snipers can move at full speed but lose
+// most of their lethality for two ticks after every step. Encourages real
+// AWP-style play (rotate fast, peek slow).
 export const SPEED: Record<Weapon, number> = {
   shotgun: 1.0,
   rifle: 1.0,
-  sniper: 0.5,
+  sniper: 1.0,
 };
+
+// F2 — ticks of stillness required for a sniper to qualify for the
+// stationary hit table. 2 = "moved within the last 2 ticks → moving table"
+// per the playtester-requested change. Lower (e.g. 1) makes snipers feel
+// like rifles; higher (3+) makes them very slow to set up.
+export const SNIPER_SETTLED_TICKS = 2;
 
 // Movement modifiers. runAndGunBonus is a Pass 6 hook — read by effectiveSpeed
 // but inert in Pass 2 (all behavioral traits are null until then).
@@ -240,6 +251,22 @@ export const ATTRIBUTES = {
       withTraitMultiplier: 0.15,                                // stacks on Clutch trait; A4
       withoutTraitMultiplier: 0.15,                             // default last-alive bonus; A4
     },
+    // F2 — Headshot attribute: linear pp contribution to headshotPct on every
+    // hit. Neutral at 50, ±8pp at the [10, 90] generation tails.
+    headshot: { multiplier: 0.2 },
+    // F2 — Reflexes attribute: scales the First Shot trait magnitude (and
+    // the firstShot card-derived bonuses) by a multiplicative factor. At
+    // rating 50: 1.0× (no change). At 90: 1.4× (~+8pp on top of trait's
+    // 20pp = +28pp total). At 10: 0.6× (12pp). The Aim/handling additive
+    // shape doesn't fit here because First Shot is already gated to "first
+    // shot of an engagement" — we're tuning the magnitude, not adding a
+    // separate slot.
+    reflexes: { firstShotMultiplier: 0.01 },                    // per (rating-50)
+    // F2 — Positioning attribute: expands the cover-seek search radius
+    // when settling into hold. Default radius 1 hex (current behavior);
+    // high-positioning (>= highThreshold) widens to 2; very low (<=
+    // lowThreshold) collapses to 0 (no shuffle, just hold where they are).
+    positioning: { highThreshold: 70, lowThreshold: 30 },
   },
   performanceStats: {
     acs: {

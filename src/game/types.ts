@@ -66,19 +66,20 @@ export type Hero = 'Angelic' | 'Techy' | 'Cursed';
 export type Attributes = {
   // Mechanical
   aim: number;              // v0 (A2)
-  headshot: number;         // v1
-  reflexes: number;         // v1
+  headshot: number;         // v0 (F2 — wired into HS roll)
+  reflexes: number;         // v0 (F2 — scales First Shot trait magnitude)
   sprayControl: number;     // v1+
   rifleHandling: number;    // v0 (A3)
   shotgunHandling: number;  // v0 (A3)
   sniperHandling: number;   // v0 (A3)
   // Game Sense
   awareness: number;        // v0 (A4)
-  positioning: number;      // v1
-  mapIQ: {                  // v1
-    foundry: number;
-    atoll: number;
-  };
+  positioning: number;      // v0 (F2 — widens cover-seek search radius)
+  // F2 — consolidated from { foundry, atoll }. The previous split was
+  // anticipated for v1 per-map familiarity training; collapsing it
+  // simplifies the UI for v0 playtest and matches "Map IQ" as a single
+  // attribute that broadly captures map awareness. v1 can split back.
+  mapIQ: number;            // v1
   // Mental
   clutch: number;           // v0 (A4)
   composure: number;        // v1
