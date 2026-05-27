@@ -146,10 +146,11 @@ const HOW_TO_PLAY = `
     <ul>
       <li><strong>Standard</strong>: fixed 2 rifles + 1 sniper per team,
         all attributes at 50. The validation default.</li>
-      <li><strong>Randomize</strong>: seeded random loadouts (one rifle
-        per team minimum) + attributes uniformly in [40, 60]. The seed
-        appears in the right panel; the same seed reproduces the same
-        matchup, so you can share interesting ones with friends.</li>
+      <li><strong>Draft</strong>: pool of 8 random units (≥2 of each
+        weapon); you and the AI snake-pick 3 each (P-A-A-P-P-A). The
+        leftover 2 are discarded. Drafted units carry random
+        attributes (40–60) + 3 random traits each. The seed appears in
+        the right panel; same seed reproduces the same pool + AI picks.</li>
     </ul>
   </section>
 `;
@@ -171,30 +172,77 @@ const GLOSSARY = `
     </ul>
   </section>
   <section>
-    <h3>Skill traits</h3>
+    <h3>Attributes (5 visible / 10 hidden)</h3>
+    <p>Each unit has 5 visible attributes shown as the primary stat card,
+      backed by 10 hidden sub-attributes that combat math actually reads.
+      Open the "Details (sub-attributes)" disclosure on the attributes
+      panel to see them.</p>
     <ul class="glossary">
-      <li><strong>Sharp Aim</strong> — +10 HR on every shot.</li>
-      <li><strong>Headhunter</strong> — +10 headshot chance with rifles.</li>
-      <li><strong>Eagle Eye</strong> — +30° wider vision cone.</li>
-      <li><strong>First Shot</strong> — +20 HR on the first shot of an
-        engagement (resets when the engagement ends).</li>
+      <li><strong>Mechanics</strong> — shooting skill. Subs: Aim, Headshot,
+        Reflexes, Weapon Affinity.</li>
+      <li><strong>Game Sense</strong> — what they perceive. Subs: Vision
+        (cone width + tracking), Map IQ (cover-seek quality).</li>
+      <li><strong>Discipline</strong> — adherence to assigned directives.
+        Sub: Tenacity. <em>(gates strategy compliance — H3)</em></li>
+      <li><strong>Improvisation</strong> — off-plan quality + stress.
+        Subs: Composure (last-alive scaling), Adaptability <em>(H3)</em>.</li>
+      <li><strong>Leadership</strong> — buff aura magnitude. Sub: Comms
+        <em>(wires fully in H3)</em>.</li>
     </ul>
   </section>
   <section>
-    <h3>Behavioral traits</h3>
+    <h3>Traits — 23 total, 3 per unit</h3>
+    <p>Every unit rolls one Skill + one Behavioral + one Personality trait.
+      Each trait gives sub-attribute bonuses (visible in the panel) AND
+      forward-data "unlocks" that surface extra strategies on the menu
+      once H3 lands. Hover any trait chip for the full description.
+      Trait tier (starter / earned / event) is shown in the tooltip — v1
+      progression uses it to gate scout / XP-earned / event-triggered
+      acquisition.</p>
+    <h4>Skill (7)</h4>
     <ul class="glossary">
-      <li><strong>Sentinel</strong> — +25 HR / +20 HS once stationary 3+
-        ticks. Doesn't retreat at 1 HP.</li>
-      <li><strong>Run-n-Gun</strong> — +0.5 movement speed; +15 HR while
-        moving.</li>
-      <li><strong>Lurker</strong> — +20 HR / +10 HS when adjacent to a wall.
-        Retreats to a wall hex at 1 HP.</li>
-      <li><strong>Entry</strong> — +20 HR / +15 HS for the first 3 ticks of
-        engagement, then −10 HR after. Doesn't retreat at 1 HP.</li>
-      <li><strong>Trader</strong> — +15 HR when an ally fired within the
-        last 3 ticks.</li>
-      <li><strong>Clutch</strong> — +20 HR / +15 HS while last alive on the
-        team. Doesn't retreat.</li>
+      <li><strong>Sharp Aim</strong> — +10 HR on every shot. +15 Aim.</li>
+      <li><strong>Headhunter</strong> — +10 HS with rifles. +15 Headshot.</li>
+      <li><strong>Eagle Eye</strong> — +30° wider cone. +10 Vision.</li>
+      <li><strong>First Shot</strong> — +20 HR on first shot of an
+        engagement (Reflexes scales magnitude).</li>
+      <li><strong>Spray Down</strong> — +15 HR after the first 3 engagement
+        ticks (sustained fire). Opposite of First Shot.</li>
+      <li><strong>Deadeye</strong> — +15 HR at long range.</li>
+      <li><strong>Close Quarters</strong> — +15 HR at short range.</li>
+    </ul>
+    <h4>Behavioral (8)</h4>
+    <ul class="glossary">
+      <li><strong>Sentinel</strong> — +25 HR / +20 HS stationary 3+ ticks.
+        No retreat.</li>
+      <li><strong>Run-n-Gun</strong> — +0.5 speed, +15 HR moving.</li>
+      <li><strong>Lurker</strong> — +20 HR / +10 HS wall-adjacent.
+        Retreats to wall.</li>
+      <li><strong>Entry</strong> — +20/+15 first 3 engagement ticks,
+        then −10 HR. No retreat.</li>
+      <li><strong>Trader</strong> — +15 HR when ally fired last 3 ticks.</li>
+      <li><strong>Clutch</strong> — +20/+15 last alive (Composure scales).
+        No retreat.</li>
+      <li><strong>Roamer</strong> — mobile defender; rotates between
+        angles. +Reflexes +MapIQ −Tenacity.</li>
+      <li><strong>Hot Head</strong> — engages on sight; ignores hold
+        orders. +Aim −Tenacity.</li>
+    </ul>
+    <h4>Personality (8)</h4>
+    <ul class="glossary">
+      <li><strong>Big Brain</strong> — reads enemy rotations. +MapIQ
+        +Tenacity +Adaptability.</li>
+      <li><strong>Ego</strong> — high-Aim freelancer. +Aim −Tenacity
+        (won't follow plan).</li>
+      <li><strong>Composed</strong> — steady under pressure. +15 Composure.</li>
+      <li><strong>Leader</strong> — buffs allies. +20 Comms +Tenacity.</li>
+      <li><strong>Lone Wolf</strong> — solo plays. +Aim −Comms.</li>
+      <li><strong>Paranoid</strong> — over-rotates, sees ghosts.
+        +Vision +Reflexes −Tenacity.</li>
+      <li><strong>Patient</strong> — +15 HR after tick 30. Rewards long
+        rounds.</li>
+      <li><strong>Old Pro</strong> — veteran feel; +5 to Aim, Composure,
+        MapIQ, Tenacity. v1 "earned via match XP".</li>
     </ul>
   </section>
   <section>
@@ -249,6 +297,39 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.7 — H1 + H2: attributes + traits redesign</h3>
+    <ul>
+      <li><strong>14 attributes → 5 visible / 10 hidden.</strong> The panel
+        shows Mechanics / Game Sense / Discipline / Improvisation /
+        Leadership; the 10 sub-attributes that combat actually reads are
+        in a "Details" disclosure below. No more spreadsheet sim.</li>
+      <li>Cut inert + duplicative slots: sprayControl, confidence,
+        per-weapon handling × 3 (collapsed to one Weapon Affinity sub
+        that reads against the equipped weapon), positioning, teamwork +
+        communication. Trait combat hooks unchanged.</li>
+      <li><strong>3 traits per unit</strong> (was 2): Skill + Behavioral +
+        new <strong>Personality</strong> category. Total pool: 23 traits
+        across the three categories.</li>
+      <li>New skill traits: Spray Down, Deadeye, Close Quarters. New
+        behavioral: Roamer, Hot Head. New personality: Big Brain, Ego,
+        Composed, Leader, Lone Wolf, Paranoid, Patient, Old Pro.</li>
+      <li>Every trait now carries an <code>unlocks</code> list of
+        strategy ids. H3 turns these into actual strategy menu entries
+        ("Anchor Hold" unlocked by Sentinel, "Scatter Push" unlocked by
+        Lone Wolf, etc.). Roster composition will drive tactical
+        identity.</li>
+      <li>Trait tier metadata (<em>starter</em> / <em>earned</em> /
+        <em>event</em>) added — v1 progression hook for "freshly scouted
+        units roll starters only; earned + event come via training and
+        in-match triggers."</li>
+      <li>Mode toggle renamed: <strong>Randomize → Draft</strong>. Draft
+        is the same generator under the hood but adds the pre-match
+        snake-pick UI.</li>
+      <li>Hover any trait chip to see its description, sub-attribute
+        bonuses, and forward-data strategy unlocks.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.5.1 — playtester fixes</h3>
     <ul>
       <li>Attributes panel no longer stays pinned after clicking empty
@@ -297,8 +378,8 @@ const PATCH_NOTES = `
   <section>
     <h3>v0.3 — attributes + scoreboards</h3>
     <ul>
-      <li>Per-unit 14-attribute schema (Aim, weapon-handling × 3, Awareness,
-        Clutch wired into sim; others displayed but inert).</li>
+      <li>Per-unit attribute schema introduced (later redesigned in v0.7
+        to 5 visible / 10 hidden).</li>
       <li>Round-end &amp; match-end modals with K/D/A, ACS, KAST%, MVP
         marker, per-round ACS sparklines.</li>
     </ul>

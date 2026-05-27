@@ -8,6 +8,7 @@
 import type { DraftState, GameState, Team, Unit } from '../game/types.ts';
 import { WEAPON_GLYPH } from '../game/config.ts';
 import { visibleAttributeBlockHtml } from './attributesPanel.ts';
+import { traitSpan } from './traitChip.ts';
 
 export type DraftPanelCallbacks = {
   onPick: (unitId: string) => void;
@@ -137,9 +138,10 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
       ? '<span class="pick-tag you">YOU</span>'
       : '<span class="pick-tag opp">OPP</span>';
   const cls = ['pool-card', picked ? 'picked' : 'available'].join(' ');
-  const skill = u.skillTrait ?? '—';
-  const beh = u.behavioralTrait ?? '—';
-  const personality = u.personalityTrait ?? '—';
+  // H2.2 — trait chips with hover tooltips (description + bonuses + unlocks).
+  const skillChip = traitSpan(u.skillTrait, 'skill');
+  const behChip = traitSpan(u.behavioralTrait, 'beh');
+  const personalityChip = traitSpan(u.personalityTrait, 'personality');
   // Attribute bars: Pass H1 — pool cards show the 5 visible aggregates only,
   // matching the H1 thesis (manager sees the legible scout card, not the
   // sub-attribute breakdown). The floating attributes panel still exposes
@@ -155,9 +157,9 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
         ${tag}
       </div>
       <div class="pool-card-traits">
-        <span class="trait skill">${skill}</span>
-        <span class="trait beh">${beh}</span>
-        <span class="trait personality">${personality}</span>
+        ${skillChip}
+        ${behChip}
+        ${personalityChip}
       </div>
       <div class="pool-card-attrs">${inner}</div>
     </div>
@@ -171,7 +173,9 @@ function rosterHtml(draft: DraftState, team: Team, _label: 'You' | 'Opp'): strin
       const u = draft.pool.find((x) => x.id === p.unitId);
       if (!u) return '';
       const glyph = WEAPON_GLYPH[u.weapon];
-      return `<li>${i + 1}. <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span> ${u.role} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'}/${u.personalityTrait ?? '—'}</li>`;
+      // H2.2 — trait chips with tooltips here too; visually consistent with
+      // the pool cards above + the side-panel roster.
+      return `<li>${i + 1}. <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span> ${u.role} · ${traitSpan(u.skillTrait, 'skill')} ${traitSpan(u.behavioralTrait, 'beh')} ${traitSpan(u.personalityTrait, 'personality')}</li>`;
     })
     .join('');
   return `<ul>${rows || '<li class="empty">—</li>'}</ul>`;

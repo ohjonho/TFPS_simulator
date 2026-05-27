@@ -8,6 +8,7 @@
 
 import type { GameState, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
+import { traitSpan } from './traitChip.ts';
 
 export type SidePanelCallbacks = {
   // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
@@ -81,10 +82,28 @@ function planningHtml(state: GameState): string {
 function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: string): string {
   const teamUnits = state.units.filter((u) => u.team === team);
   const side = state.teamSide[team] === 'defender' ? 'DEF' : 'ATK';
+  // H2.1 — two-row layout per unit: top row = identity (id + weapon + role
+  // + HP + off-pos warning); bottom row = three trait chips visually
+  // grouped. Avoids the run-on single-line mess that 3 traits + role + HP
+  // + warnings created.
   const rows = teamUnits.map((u) => {
-    const off = u.modifiers.offPosition ? ' <span class="warn">⚠off-pos</span>' : '';
-    const dead = u.state === 'dead' ? ' DEAD' : '';
-    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'}/${u.personalityTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
+    const off = u.modifiers.offPosition ? '<span class="warn" title="Off preferred role (−10pp HR)">⚠off-pos</span>' : '';
+    const dead = u.state === 'dead' ? '<span class="warn">DEAD</span>' : '';
+    return `
+      <li data-roster-unit="${u.id}">
+        <div class="ru-line1">
+          <strong>${u.id}</strong>
+          <span class="ru-weapon">${u.weapon}</span>
+          <span class="ru-role">${u.role}</span>
+          <span class="ru-hp">HP ${u.hp}/${UNIT_DEFAULTS.maxHp}</span>
+          ${off}${dead}
+        </div>
+        <div class="ru-line2">
+          ${traitSpan(u.skillTrait, 'skill')}
+          ${traitSpan(u.behavioralTrait, 'beh')}
+          ${traitSpan(u.personalityTrait, 'personality')}
+        </div>
+      </li>`;
   }).join('');
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
@@ -127,9 +146,9 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>AI mode</dt><dd>${mode}${tgt}</dd>
       <dt>Role</dt><dd>${roleLabel}</dd>
       <dt>Hero</dt><dd>${unit.hero}</dd>
-      <dt>Skill trait</dt><dd>${unit.skillTrait ?? '—'}</dd>
-      <dt>Behavioral</dt><dd>${unit.behavioralTrait ?? '—'}</dd>
-      <dt>Personality</dt><dd>${unit.personalityTrait ?? '—'}</dd>
+      <dt>Skill trait</dt><dd>${traitSpan(unit.skillTrait, 'skill')}</dd>
+      <dt>Behavioral</dt><dd>${traitSpan(unit.behavioralTrait, 'beh')}</dd>
+      <dt>Personality</dt><dd>${traitSpan(unit.personalityTrait, 'personality')}</dd>
       <dt>Aggr</dt><dd>${unit.modifiers.aggression}</dd>
       <dt>Hex</dt><dd>(${col}, ${row})</dd>
     </dl>
