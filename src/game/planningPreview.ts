@@ -10,10 +10,9 @@
 import type {
   GameState,
   HexCoord,
-  PlayedCard,
   Team,
 } from './types.ts';
-import { applyStrategies, commitCards } from './match.ts';
+import { applyStrategies } from './match.ts';
 import { findPath, findPerimeterPath } from './pathfind.ts';
 import { createRng } from './rng.ts';
 import { CARD_EFFECTS } from './config.ts';
@@ -22,7 +21,6 @@ import { initialAi } from './state.ts';
 
 export type PlayerSelection = {
   strategyId: string | null;
-  card: PlayedCard | null;
 };
 
 export type PlanPreview = {
@@ -49,11 +47,12 @@ export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanP
   // Pass C — honor the player's explicit A/B variant choice so the preview
   // routes shift the moment a different variant is selected. Same RNG, same
   // AI variant — so reverting to the original A or B yields identical routes.
-  let s = applyStrategies(
+  const s = applyStrategies(
     state, state.playerTeam, sel.strategyId, aiTeam, aiStrategyId, pickRng,
     state.playerVariantChoice,
   );
-  s = commitCards(s, state.playerTeam, sel.card, aiTeam, null, pickRng);
+  // H3.4 — commitCards removed; applyStrategies already populates strategy
+  // synergies + hero passives directly into cardFlags / cardEffects.
 
   const targets: Record<string, HexCoord | null> = {};
   const routes: Record<string, HexCoord[]> = {};

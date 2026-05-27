@@ -3,20 +3,19 @@
 // aggregates outcomes — to measure trait/role differentiation and, later, tune
 // balance. Pure logic (no DOM); invoked from the dev `__sim` hook.
 //
-// Pass 9 m5 — also hosts the strategy-matrix / card-sanity / determinism
-// validation helpers built on the real applyStrategies + commitCards pipeline.
+// H3.4 — card-sanity check removed (card system deleted). Strategy matrix
+// + determinism check remain.
 
-import type { GameEvent, GameState, MapDefinition, PlayedCard, Team } from './types.ts';
+import type { GameEvent, GameState, MapDefinition, Team } from './types.ts';
 import type { AttributeOverride } from './attributes.ts';
 import { buildInitialState } from './state.ts';
 import { assignAttributes } from './attributes.ts';
 import { assignTarget } from './movement.ts';
 import { roundFinished, stepTick } from './tick.ts';
 import { createRng } from './rng.ts';
-import { applyStrategies, commitCards, eliminationWinner, defenderTeam } from './match.ts';
+import { applyStrategies, eliminationWinner, defenderTeam } from './match.ts';
 import { ROUND_TICK_LIMIT } from './config.ts';
 import { regionCentroid } from './strategies.ts';
-import { cardById } from './cardData.ts';
 
 export type SkirmishOpts = {
   // Per-unit attribute overrides, or a blanket override per team (A/B tests).
@@ -113,9 +112,7 @@ export type StrategyRoundOpts = {
   defenderStrategy: string;
   // AI team's (attacker side) strategy id.
   attackerStrategy: string;
-  // Optional card def ids to play this round. Defaults to no card.
-  defenderCardDefId?: string | null;
-  attackerCardDefId?: string | null;
+  // H3.4 — defenderCardDefId / attackerCardDefId removed (card system deleted).
   mapName?: MapDefinition['name'];
   cap?: number;
   // Pass A5 follow-up: per-unit attribute overrides used to isolate strategy
@@ -150,9 +147,8 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
   state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng);
 
-  const defCard = makePlayedCard(state, playerTeam, opts.defenderCardDefId ?? null);
-  const atkCard = makePlayedCard(state, aiTeam, opts.attackerCardDefId ?? null);
-  state = commitCards(state, playerTeam, defCard, aiTeam, atkCard, pickRng);
+  // H3.4 — commitCards removed; applyStrategies populated synergies + hero
+  // passives directly above.
 
   const cap = opts.cap ?? ROUND_TICK_LIMIT;
   // Hard ceiling protects against runaway loops if both teams stalemate at
@@ -191,33 +187,7 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   };
 }
 
-// Build a PlayedCard from a def id by picking a contributor from the team's
-// hand. Auto-targets are sensible defaults so batches can exercise targeted
-// cards (Setup Play / Hold the Line / Adapt) without UI input.
-function makePlayedCard(state: GameState, team: Team, defId: string | null): PlayedCard | null {
-  if (!defId) return null;
-  const inHand = state.cards[team].hand.find((c) => c.defId === defId);
-  if (!inHand) return null; // not in this seed's deck — skip
-  const def = cardById(defId);
-  if (!def) return null;
-  const played: PlayedCard = { defId, contributor: inHand.contributor };
-  if (def.targeting === 'hex') {
-    // Setup Play → vanguard region centroid + first non-tactician ally.
-    // Hold the Line → warden region centroid.
-    const contributor = state.units.find((u) => u.id === inHand.contributor);
-    if (!contributor) return null;
-    played.target = contributor.pos;
-    if (defId === 'setup_play') {
-      const ally = state.units.find((u) => u.team === team && u.id !== inHand.contributor);
-      if (ally) played.secondaryTarget = ally.id;
-    }
-  } else if (def.targeting === 'role') {
-    played.target = 'Vanguard';
-  }
-  // 'enemy' / 'ally' / 'none' targeting: untargeted at selection time (Mark
-  // Target is now 'none' post-Pass 9 m3).
-  return played;
-}
+// H3.4 — makePlayedCard removed (card system deleted).
 
 // ---- Strategy matrix --------------------------------------------------------
 
@@ -254,74 +224,8 @@ export function runStrategyMatrix(seeds = 20, mapName: MapDefinition['name'] = '
   return out;
 }
 
-// ---- Card sanity ------------------------------------------------------------
-
-export type CardSanityRow = {
-  cardId: string;
-  cardName: string;
-  baselineDefWinPct: number;
-  withCardDefWinPct: number;
-  deltaPp: number;          // positive = card helped defender
-};
-
-// For each card, run N matches with that card forced into the defender team's
-// hand vs no card. Reports the win-rate delta. Cards near 0pp delta may need
-// re-tuning (or simply don't apply to the test scenario).
-export function cardSanityCheck(seeds = 20, mapName: MapDefinition['name'] = 'Foundry'): CardSanityRow[] {
-  const ids = [
-    'anchor_position', 'reckless_push', 'slow_flank', 'opening_pick',
-    'crossfire', 'trade_window', 'spearhead', 'setup_play', 'hold_the_line',
-    'adapt', 'guardian_aura', 'tactical_scan', 'mark_target',
-  ];
-  const out: CardSanityRow[] = [];
-  // Baseline: Hold vs Execute, no cards.
-  let baseDefWins = 0;
-  for (let i = 0; i < seeds; i++) {
-    const r = runStrategyRound(2000 + i, {
-      defenderStrategy: 'Hold',
-      attackerStrategy: 'Execute',
-      mapName,
-    });
-    if (r.winner === 'defenders') baseDefWins++;
-  }
-  const baseDefPct = Math.round((baseDefWins / seeds) * 1000) / 10;
-  for (const cardId of ids) {
-    let withWins = 0;
-    let played = 0;
-    for (let i = 0; i < seeds; i++) {
-      const r = runStrategyRound(2000 + i, {
-        defenderStrategy: 'Hold',
-        attackerStrategy: 'Execute',
-        defenderCardDefId: cardId,
-        mapName,
-      });
-      // Confirm the card actually played (it might not be in this seed's hand).
-      if (r.events.some((e) => e.type === 'cardPlay' && e.team === 'defenders' && e.defId === cardId)) {
-        played++;
-        if (r.winner === 'defenders') withWins++;
-      }
-    }
-    if (played === 0) {
-      out.push({
-        cardId,
-        cardName: cardById(cardId)?.name ?? cardId,
-        baselineDefWinPct: baseDefPct,
-        withCardDefWinPct: NaN,
-        deltaPp: NaN,
-      });
-      continue;
-    }
-    const withPct = Math.round((withWins / played) * 1000) / 10;
-    out.push({
-      cardId,
-      cardName: cardById(cardId)?.name ?? cardId,
-      baselineDefWinPct: baseDefPct,
-      withCardDefWinPct: withPct,
-      deltaPp: Math.round((withPct - baseDefPct) * 10) / 10,
-    });
-  }
-  return out;
-}
+// H3.4 — CardSanityRow + cardSanityCheck removed (card system deleted).
+// H3.5 will add a complianceTest harness for the new probabilistic gate.
 
 // ---- Determinism check -----------------------------------------------------
 
@@ -338,9 +242,11 @@ function hashEvents(events: readonly GameEvent[]): string {
   for (const e of events) {
     if (e.type === 'shot') parts.push(`${e.tick}:S:${e.shooter}>${e.target}:${e.hit?'H':'M'}:${e.headshot?'h':'b'}:${e.damage}:${e.range}:${e.cover?1:0}`);
     else if (e.type === 'death') parts.push(`${e.tick}:D:${e.target}`);
-    else if (e.type === 'cardPlay') parts.push(`${e.tick}:C:${e.team}:${e.defId}:${e.contributor}`);
-    else if (e.type === 'safeWindowBlock') parts.push(`${e.tick}:B:${e.shooter}>${e.target}`);
-    else if (e.type === 'strategyPick') parts.push(`${e.tick}:P:R${e.round}:${e.playerStrategy}/${e.aiStrategy}/${e.playerCardDefId}/${e.aiCardDefId}`);
+    // H3.4 — cardPlay / safeWindowBlock variants removed from GameEvent.
+    else if (e.type === 'strategyPick') parts.push(`${e.tick}:P:R${e.round}:${e.playerStrategy}/${e.aiStrategy}`);
+    else if (e.type === 'plant') parts.push(`${e.tick}:PL:${e.unit}@${e.site}`);
+    else if (e.type === 'defuse') parts.push(`${e.tick}:DF:${e.unit}`);
+    else if (e.type === 'detonate') parts.push(`${e.tick}:DT@${e.site}`);
   }
   // Sum-based fingerprint — cheap, stable enough for cross-run match detection.
   let h = 5381 >>> 0;

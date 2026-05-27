@@ -10,9 +10,7 @@ import type {
   GhostEntry,
   HexCoord,
   MoveState,
-  PlayedCard,
   Team,
-  TeamDeck,
   TrackEntry,
   Unit,
 } from './types.ts';
@@ -22,8 +20,8 @@ import { computeVisibility } from './vision.ts';
 import { applyAnchorOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
 import type { Directive } from './types.ts';
-import { applyCards } from './cardEffects.ts';
-import { discardPlayed, drawCards } from './cards.ts';
+// H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
+// strategy + hero synergies in applyStrategies (H3.3).
 import {
   CARD_EFFECTS,
   HALFTIME_AFTER_ROUND,
@@ -32,7 +30,7 @@ import {
   ROLE_AGGRESSION,
   UNIT_DEFAULTS,
 } from './config.ts';
-import { createRng, type Rng } from './rng.ts';
+import type { Rng } from './rng.ts';
 
 // Returns the spawn list this team should occupy this round, based on its
 // current side (attacker → attackers spawns, defender → defenders spawns).
@@ -116,8 +114,8 @@ export function startRound(state: GameState): GameState {
     playerVariantChoice: null,
     aiStrategy: null,
     roundResult: null,
-    // Pass 8: card picks reset per round; deck/hand/discard persist (spec).
-    playedCard: { defenders: null, attackers: null },
+    // H3.4 — card playedCard removed; cardEffects still reset per round
+    // (populated by applyStrategies with strategy synergies + hero passives).
     cardEffects: [],
     // Pass B: plant state is per-round; prev-visibility wiped so first-sight
     // penalty applies on tick 0 (everyone "first sees" what they see).
@@ -350,49 +348,15 @@ function computeHeroPassiveEffects(
   return out;
 }
 
-// Pass 8 — set each team's played card on the state, then run the card
-// handlers (directive cards override strategy targets, buffs/utility register
-// effects/flags). Called after applyStrategies during Begin Round.
-export function commitCards(
-  state: GameState,
-  playerTeam: Team,
-  playerCard: PlayedCard | null,
-  aiTeam: Team,
-  aiCard: PlayedCard | null,
-  rng: Rng,
-): GameState {
-  const playedCard: Record<Team, PlayedCard | null> = {
-    ...state.playedCard,
-    [playerTeam]: playerCard,
-    [aiTeam]: aiCard,
-  };
-  return applyCards({ ...state, playedCard }, rng);
-}
-
-// Pass 8 — at round end, move each team's played card into discard and draw
-// back up to the hand cap. Deck/hand persist across rounds and halftime.
-export function processCardsAtRoundEnd(state: GameState, seed: number, round: number): GameState {
-  const next = { ...state };
-  for (const team of ['defenders', 'attackers'] as const) {
-    const played = state.playedCard[team];
-    let deck = state.cards[team];
-    if (played) {
-      deck = discardPlayed(deck, { defId: played.defId, contributor: played.contributor });
-    }
-    const drawRng = createRng((seed ^ round ^ (team === 'defenders' ? 0xd00d : 0xa11a)) >>> 0);
-    deck = drawCards(deck, 1, drawRng);
-    next.cards = { ...next.cards, [team]: deck };
-  }
-  return next;
-}
+// H3.4 — commitCards / processCardsAtRoundEnd removed (card system deleted).
+// Strategy + trait + hero synergies set their effects directly in
+// applyStrategies (cardFlags + cardEffects). No deck / hand / discard
+// lifecycle to maintain anymore.
 
 // Convenience used by the loop: which team is the AI?
 export function aiTeamFor(playerTeam: Team): Team {
   return playerTeam === 'defenders' ? 'attackers' : 'defenders';
 }
-
-// Re-export for backward compat (some callers expect a single entry point).
-export type { TeamDeck };
 
 // True when one team has been eliminated (the round-end signal for the loop).
 // Mutual annihilation (both teams at 0 alive on the same tick) awards the round

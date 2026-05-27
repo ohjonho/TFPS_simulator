@@ -3,9 +3,10 @@
 // halftime/next round → match end).
 
 import './style.css';
-import type { GameState, HexCoord, MatchMode, PlayedCard, PlaybackSpeed, Role, Team, Unit } from './game/types.ts';
+import type { GameState, HexCoord, MatchMode, PlaybackSpeed, Team, Unit } from './game/types.ts';
 import { previewPlayerPlan } from './game/planningPreview.ts';
-import { cardById } from './game/cardData.ts';
+// H3.4 — cardData / cardTargeting / commitCards / pickAiCard / processCardsAtRoundEnd
+// all deleted (card system removed).
 import { buildInitialState } from './game/state.ts';
 import { aggregateVisible } from './game/attributes.ts';
 import { availableStrategies, rosterUnlocks, unlockContributors } from './game/traits.ts';
@@ -16,21 +17,19 @@ import { computePerUnitDebug, computeVisibility } from './game/vision.ts';
 import { resolveShot } from './game/combat.ts';
 import type { ShotContextInput } from './game/combat.ts';
 import { createRng } from './game/rng.ts';
-import { cardSanityCheck, determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
+import { determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
 import { ROLE_AGGRESSION, RNG_SEED_DEFAULT } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
 import { DEBUG_KEY, REGION_LABEL_KEY } from './game/config.ts';
 import {
   advanceToNextRound,
   applyStrategies,
-  commitCards,
-  processCardsAtRoundEnd,
   halftimeSwap,
   isHalftime,
   recordStrategyWin,
   startRound,
 } from './game/match.ts';
-import { pickAiCard, pickAiStrategy } from './game/aiOpponent.ts';
+import { pickAiStrategy } from './game/aiOpponent.ts';
 import { defenderTeam, eliminationWinner, endRound as endRoundFn } from './game/match.ts';
 import { ROUND_TICK_LIMIT } from './game/config.ts';
 import { strategiesFor, strategyById } from './game/strategies.ts';
@@ -50,8 +49,6 @@ import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
 import { attachUnitDrag, isValidDropHex } from './ui/unitDrag.ts';
 import { passableAt } from './game/pathfind.ts';
-import { attachCardTargeting, showAdaptRoleModal } from './ui/cardTargeting.ts';
-import type { TargetingMode } from './ui/cardTargeting.ts';
 import { showModal } from './ui/modal.ts';
 import { maybeShowFirstLoadHelp, showHelpModal } from './ui/helpModal.ts';
 import { renderRoundEndStats } from './ui/roundEndPanel.ts';
@@ -76,122 +73,28 @@ const debug: DebugOverlay = { on: false };
 // `true` for build/debug; Pass 9 flips this to `false` as the production default.
 let showEnemiesPlanning = true;
 
-// Pass 8 — planning UI state. `playerCard` is the card the player has chosen
-// (with optional target). `previewRoutes` is the cached preview from
-// previewPlayerPlan; recomputed on every selection change. Both live in UI
-// state (not GameState) and reset to null on Begin Round / round end.
-let playerCard: PlayedCard | null = null;
+// `previewRoutes` is the cached preview from previewPlayerPlan; recomputed
+// on every strategy selection change. Lives in UI state (not GameState) and
+// resets to null on Begin Round / round end.
 let previewRoutes: Record<string, HexCoord[]> | null = null;
 // Pass D — region-name overlay toggle. UI state, not GameState. Mirrors the
 // "Regions" topbar button + the R keybinding.
 let showRegionLabels = false;
-// Pass D — active card-targeting session. Non-null while the player has
-// picked a hex/role-targeted card and hasn't committed a target yet. Begin
-// Round is disabled until this clears.
-let targetingMode: TargetingMode = null;
 // Pass E m5 — Match-mode / seed UI state. matchMode is mirrored on
 // GameState.matchMode after each buildInitialState; matchSeed is kept here so
-// the seed input + Regenerate button can reproduce or step the seed. Map
-// switches preserve both (user choice: same units across maps).
+// the seed input + Regenerate button can reproduce or step the seed.
 // H3.fix2 — Draft is the default; Standard is the debug toggle.
+// H3.4 — card-targeting state removed (card system deleted).
 let matchMode: MatchMode = 'draft';
 let matchSeed: number = RNG_SEED_DEFAULT;
 // F1 — drag state: non-null while the player is dragging a unit during
-// planning. Read by the renderer to draw a "ghost" unit at the cursor pixel
-// (the dragged unit is skipped at its hex). Cleared on commit / Esc.
+// planning. Read by the renderer to draw a "ghost" unit at the cursor pixel.
 let dragState: { unitId: string; pixel: { x: number; y: number } } | null = null;
-
-// Pass D — fallback auto-target used when the player picks a hex/role-targeted
-// card but commits Begin Round without explicitly setting a target (e.g. via
-// __sim.beginRound or by Esc-cancelling targeting mode). Keeps the legacy
-// "playable with one click" path open. For 'none'-targeting cards this is
-// the only path; the explicit targeting UI applies to hex / role cards only.
-function fallbackTargetForCard(played: PlayedCard): PlayedCard {
-  const def = cardById(played.defId);
-  if (!def || def.targeting === 'none') return played;
-  if (played.target !== undefined) return played;
-  const u = state.units.find((unit) => unit.id === played.contributor);
-  if (!u) return played;
-  if (def.targeting === 'hex') {
-    // Default hex = contributor's current position; applyStrategies +
-    // commitCards normalize it (Setup Play/Hold the Line handlers store it as
-    // the anchor on the relevant unit's cardFlags).
-    const out: PlayedCard = { ...played, target: u.pos };
-    if (played.defId === 'setup_play' && played.secondaryTarget === undefined) {
-      const ally = state.units.find((unit) => unit.team === state.playerTeam && unit.id !== u.id);
-      if (ally) out.secondaryTarget = ally.id;
-    }
-    return out;
-  }
-  if (def.targeting === 'role') {
-    // Adapt default: Spearhead (Vanguard) — universally useful effect.
-    return { ...played, target: 'Vanguard' as Role };
-  }
-  return played;
-}
-
-// Pass D — instruction label shown for the targeting banner / topbar tooltip.
-function targetingLabelFor(defId: string): string {
-  const def = cardById(defId);
-  if (!def) return 'Pick a target';
-  if (defId === 'setup_play') return 'Click a destination hex for the Tactician';
-  if (defId === 'hold_the_line') return 'Click an anchor hex for the Warden';
-  if (defId === 'adapt') return 'Pick a role to mimic';
-  return `Pick a target for ${def.name}`;
-}
-
-// Pass 8 + D — pick (or clear with null) a card from the player's hand.
-// For 'none'-targeting cards: commit immediately. For 'hex' cards (Setup
-// Play, Hold the Line): enter canvas click-targeting mode. For 'role' cards
-// (Adapt): open the role-pick modal. Begin Round stays disabled until any
-// targeting mode resolves.
-// Pass E m4 — extracted from inline callback so the new cardPanel can call it.
-function pickCard(defId: string | null): void {
-  // Clearing the pick — also exits any targeting mode.
-  if (defId === null) {
-    playerCard = null;
-    targetingMode = null;
-    recomputePreview();
-    rerenderAll();
-    return;
-  }
-  const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
-  if (!inHand) return;
-  const def = cardById(defId);
-  if (!def) return;
-
-  if (def.targeting === 'none') {
-    playerCard = { defId, contributor: inHand.contributor };
-    targetingMode = null;
-  } else if (def.targeting === 'hex') {
-    playerCard = { defId, contributor: inHand.contributor };
-    targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
-  } else if (def.targeting === 'role') {
-    // For role-pick, the modal is the targeting UI; mark the card picked
-    // but pending and open the modal.
-    playerCard = { defId, contributor: inHand.contributor };
-    targetingMode = { kind: 'hex', cardDefId: defId, label: targetingLabelFor(defId) };
-    showAdaptRoleModal((role: Role) => {
-      if (!playerCard || playerCard.defId !== defId) return;
-      playerCard = { ...playerCard, target: role };
-      targetingMode = null;
-      recomputePreview();
-      rerenderAll();
-    });
-  } else {
-    // Fallback (enemy/ally targeting — not exercised by the current 13 cards).
-    playerCard = { defId, contributor: inHand.contributor };
-    targetingMode = null;
-  }
-  recomputePreview();
-  rerenderAll();
-}
 
 function recomputePreview(): void {
   previewRoutes = previewPlayerPlan(state, {
     strategyId: state.playerStrategy,
-    card: playerCard,
-  }).routes;
+  }).routes ?? null;
 }
 
 // --- Render pipeline -------------------------------------------------------
@@ -207,31 +110,14 @@ function rerenderCanvas() {
   updateCanvasCursor();
 }
 
-// Pass D — small overlay banner above the canvas during card-targeting mode.
-// Persistent until the player commits a target or hits Esc.
+// H3.4 — card targeting removed; banner/cursor helpers always cleared.
 function updateTargetingBanner(): void {
   const existing = document.getElementById('targeting-banner');
-  if (!targetingMode) {
-    if (existing) existing.remove();
-    return;
-  }
-  const text = targetingMode.label;
-  if (existing) {
-    existing.textContent = text;
-    return;
-  }
-  const el = document.createElement('div');
-  el.id = 'targeting-banner';
-  el.textContent = text;
-  shell.canvasArea.appendChild(el);
+  if (existing) existing.remove();
 }
 
 function updateCanvasCursor(): void {
-  if (targetingMode && targetingMode.kind === 'hex') {
-    handle.canvas.classList.add('targeting-hex');
-  } else {
-    handle.canvas.classList.remove('targeting-hex');
-  }
+  handle.canvas.classList.remove('targeting-hex');
 }
 
 function rerenderChrome() {
@@ -265,12 +151,10 @@ function rerenderChrome() {
       rerenderAll();
     },
   });
-  // Pass E m4 / E3 — left "planning actions" panel: strategy menu + card
-  // hand during planning; cards-this-round during resolution.
+  // H3.4 — card hand removed; the left panel now carries the strategy menu
+  // only. cardPanel.ts handles the strategy / variant picks; card-related
+  // callbacks are gone.
   renderCardPanel(shell.cardPanel, state, {
-    onPickCard: pickCard,
-    selectedCardId: playerCard?.defId ?? null,
-    cardTargetingPending: targetingMode !== null,
     onPickStrategy: (id: string) => {
       // Pass C — picking a new strategy clears any prior A/B variant choice
       // so the player has to make the site bet fresh.
@@ -344,8 +228,6 @@ function rerenderChrome() {
     },
     onToggleRegionLabels: () => { showRegionLabels = !showRegionLabels; rerenderAll(); },
     showRegionLabels,
-    cardTargetingPending: targetingMode !== null,
-    pickedCardDefId: playerCard?.defId ?? null,
     onSetMode: (mode: MatchMode) => {
       // Pass G — switching modes rebuilds the match (Draft mode lands in
       // the pre-match draft phase; Standard lands directly in planning).
@@ -379,9 +261,8 @@ function snapshotUnits(units: readonly Unit[]): Record<string, Unit> {
 // match (mode/map/seed change, New Match, Draft toggle). Without this, a
 // half-committed card or strategy choice would leak across rebuilds.
 function clearPlanningUiState(): void {
-  playerCard = null;
+  // H3.4 — card UI state removed (card system deleted).
   previewRoutes = null;
-  targetingMode = null;
   selection.unitId = null;
   hover.unitId = null;
   dragState = null;
@@ -399,11 +280,6 @@ function beginRound(): void {
   // belt-and-suspenders guard for the keyboard / __sim path.
   const playerStrat = strategyById(state.playerStrategy, state.teamSide[state.playerTeam], state.map);
   if (playerStrat && playerStrat.variants.length > 1 && state.playerVariantChoice === null) return;
-  // Pass D — if the player picked a hex/role-targeted card and never
-  // committed a target (e.g. Esc-cancelled), fill in a sensible default so
-  // the card still fires. Keeps __sim.beginRound() callable without first
-  // navigating the targeting UI.
-  if (playerCard) playerCard = fallbackTargetForCard(playerCard);
 
   const aiTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   const aiSide = state.teamSide[aiTeam];
@@ -413,11 +289,8 @@ function beginRound(): void {
     state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng,
     state.playerVariantChoice,
   );
-  // Pass 8 — AI picks its card here (player's card is the UI-held playerCard).
-  const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
-  next = commitCards(next, state.playerTeam, playerCard, aiTeam, aiCard, pickRng);
-  // Pass 9 m1 — round-start summary in the kill feed so the player can see
-  // what the AI picked without devtools.
+  // Pass 9 m1 / H3.4 — round-start summary in the kill feed. Card fields
+  // dropped (card system removed).
   next = {
     ...next,
     events: [
@@ -430,17 +303,13 @@ function beginRound(): void {
         playerTeam: next.playerTeam,
         playerStrategy: next.playerStrategy,
         aiStrategy: next.aiStrategy,
-        playerCardDefId: playerCard?.defId ?? null,
-        aiCardDefId: aiCard?.defId ?? null,
       },
     ],
   };
   initialUnitsById = snapshotUnits(next.units);
   setState(next);
   // Clear UI selection so the next planning phase starts fresh.
-  playerCard = null;
   previewRoutes = null;
-  targetingMode = null;
   loop.start();
 }
 
@@ -451,8 +320,7 @@ function handleRoundEnd(): void {
     const stratId = winner === state.playerTeam ? state.playerStrategy : state.aiStrategy;
     state = recordStrategyWin(state, winner, stratId);
   }
-  // Pass 8 — discard played cards + draw back up to hand cap (deterministic).
-  state = processCardsAtRoundEnd(state, state.seed, state.round);
+  // H3.4 — card discard/draw lifecycle removed.
 
   const scoreLine = `Score: ${state.scores[state.playerTeam]} – ${state.scores[state.playerTeam === 'defenders' ? 'attackers' : 'defenders']}`;
   // Pass B — distinguish plant outcomes from elimination/timeout. Walk the
@@ -620,28 +488,7 @@ attachUnitDrag(handle.canvas, {
   },
 });
 
-// Pass D — canvas click-to-target for hex-targeted cards (Setup Play, Hold
-// the Line). Capture-phase, so a successful target commit short-circuits
-// click-to-select.
-attachCardTargeting(handle.canvas, {
-  getMode: () => targetingMode,
-  getMap: () => state.map,
-  onCommitHex: (cardDefId: string, hex: HexCoord) => {
-    if (!playerCard || playerCard.defId !== cardDefId) return;
-    const updated: PlayedCard = { ...playerCard, target: hex };
-    // Setup Play also needs a bonus-ally; pick the first non-contributor
-    // teammate if the player hasn't specified one via __sim.
-    if (cardDefId === 'setup_play' && !updated.secondaryTarget) {
-      const ally = state.units.find((u) => u.team === state.playerTeam && u.id !== updated.contributor);
-      if (ally) updated.secondaryTarget = ally.id;
-    }
-    playerCard = updated;
-    targetingMode = null;
-    recomputePreview();
-    rerenderAll();
-  },
-  onCancel: () => { targetingMode = null; rerenderAll(); },
-});
+// H3.4 — attachCardTargeting removed (card system + targeting UI deleted).
 
 window.addEventListener('keydown', (ev) => {
   const target = ev.target as HTMLElement | null;
@@ -783,27 +630,22 @@ if (import.meta.env.DEV) {
     runStrategyRound: (seed: number, opts: Parameters<typeof runStrategyRound>[1]) =>
       runStrategyRound(seed, opts),
     runStrategyMatrix: (seeds = 20, map?: 'Foundry' | 'Atoll') => runStrategyMatrix(seeds, map),
-    cardSanityCheck: (seeds = 20, map?: 'Foundry' | 'Atoll') => cardSanityCheck(seeds, map),
+    // H3.4 — cardSanityCheck removed (card system deleted).
     determinismCheck: (seeds = 10, map?: 'Foundry' | 'Atoll') => determinismCheck(seeds, map),
     runValidation: (seeds = 20) => {
       const matrix = runStrategyMatrix(seeds);
-      const cards = cardSanityCheck(seeds);
       const det = determinismCheck(Math.min(seeds, 10));
       // eslint-disable-next-line no-console
       console.log('═══ Strategy matrix (defender win %) ═══');
       // eslint-disable-next-line no-console
       console.table(matrix);
       // eslint-disable-next-line no-console
-      console.log('═══ Card sanity (Δpp defender win rate, Hold vs Execute) ═══');
-      // eslint-disable-next-line no-console
-      console.table(cards);
-      // eslint-disable-next-line no-console
       console.log(`═══ Determinism: ${det.matched}/${det.total} matched ═══`);
       if (det.mismatchedSeeds.length > 0) {
         // eslint-disable-next-line no-console
         console.warn('Mismatched seeds:', det.mismatchedSeeds);
       }
-      return { matrix, cards, det };
+      return { matrix, det };
     },
     // --- Pass 7 match-flow hooks ---
     pickStrategy: (id: string) =>
@@ -830,10 +672,8 @@ if (import.meta.env.DEV) {
         state, state.playerTeam, playerStrategyId, aiTeam, aiId, pickRng,
         state.playerVariantChoice,
       );
-      // Pass 8 — also apply cards (player's pre-committed + AI's pick) so
-      // simulateRound exercises the full Begin-Round pipeline.
-      const aiCard = pickAiCard(state, aiTeam, aiSide, aiId, pickRng);
-      s = commitCards(s, state.playerTeam, state.playedCard[state.playerTeam], aiTeam, aiCard, pickRng);
+      // H3.4 — card commit removed (card system deleted). Strategy synergies
+      // + hero passives are wired in applyStrategies above.
       const startTick = s.tick;
       let winner: Team | null = null;
       for (let i = 0; i < maxTicks; i++) {
@@ -856,10 +696,7 @@ if (import.meta.env.DEV) {
       const ticksUsed = s.tick - startTick;
       s = endRoundFn(s, w);
       s = recordStrategyWin(s, w, w === state.playerTeam ? playerStrategyId : aiId);
-      // Pass E2 — match the live round-end pipeline (discard played cards
-      // + draw back up). Pre-fix simulateRound skipped this, so headless
-      // matches kept the same hand round after round.
-      s = processCardsAtRoundEnd(s, s.seed, s.round);
+      // H3.4 — processCardsAtRoundEnd removed (card system deleted).
       const halftimeTaken = isHalftime(s);
       const matchOver = s.matchOver;
       const scoresAfter = { ...s.scores };
@@ -951,28 +788,11 @@ if (import.meta.env.DEV) {
         },
       }),
     getBuffs: () => state.buffs,
-    // --- Pass 8 card hooks ---
-    getHand: (team: Team) => state.cards[team].hand.map((c) => ({
-      defId: c.defId, contributor: c.contributor, name: cardById(c.defId)?.name ?? c.defId,
-    })),
-    getDeck: (team: Team) => ({
-      deck: state.cards[team].deck.length,
-      hand: state.cards[team].hand.map((c) => c.defId),
-      discard: state.cards[team].discard.length,
-    }),
-    setPlayerCard: (defId: string | null, target?: HexCoord | string, secondaryTarget?: string) => {
-      if (!defId) { playerCard = null; recomputePreview(); rerenderCanvas(); return; }
-      // Find a CardInstance in the player's hand matching the def id.
-      const inHand = state.cards[state.playerTeam].hand.find((c) => c.defId === defId);
-      if (!inHand) { playerCard = null; recomputePreview(); rerenderCanvas(); return; }
-      playerCard = { defId, contributor: inHand.contributor, target, secondaryTarget };
-      recomputePreview();
-      rerenderCanvas();
-    },
-    getPlayerCard: () => playerCard,
+    // H3.4 — card __sim hooks removed (card system deleted). cardEffects
+    // remains accessible via getState().cardEffects since hero passives + a
+    // few strategy synergies still populate it.
     getPreviewRoutes: () => previewRoutes,
     getCardEffects: () => state.cardEffects,
-    getPlayedCard: (team: Team) => state.playedCard[team],
     sampleHits: (shooterId: string, targetId: string, n = 400, ctx: Partial<ShotContextInput> & { seed?: number } = {}) => {
       const shooter = state.units.find((u) => u.id === shooterId)!;
       const target = state.units.find((u) => u.id === targetId)!;

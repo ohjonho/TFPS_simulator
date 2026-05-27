@@ -194,46 +194,17 @@ export type Unit = {
   directives: Directive[];
 };
 
-// --- Pass 8: cards ---------------------------------------------------------
+// --- Pass 8 / H3.4 — card system removed ---------------------------------
+//
+// H3.4 — CardDef / CardInstance / TeamDeck / PlayedCard / CardSource /
+// CardType / TargetingKind all deleted. Strategy + trait + hero synergies
+// (set in match.applyStrategies) now own the effect-flag plumbing
+// (`cardFlags` + `cardEffects`) that the card-play handlers used to.
+// The "card" names on those two state slots are historical; the mechanism
+// is generic. Combat / vision / tick hooks unchanged.
 
-// Card sources span all three attribute unions (1 card per trait, role, hero).
-export type CardSource = BehavioralTrait | Role | Hero;
-export type CardType = 'directive' | 'buff' | 'utility';
-export type TargetingKind = 'none' | 'enemy' | 'ally' | 'hex' | 'role';
-
-export type CardDef = {
-  id: string;
-  name: string;
-  source: CardSource;
-  type: CardType;
-  targeting: TargetingKind;
-  description: string;
-};
-
-// A card in someone's deck/hand/discard — references a CardDef by id and the
-// unit that contributed it (for source labels in the UI).
-export type CardInstance = { defId: string; contributor: string };
-
-export type TeamDeck = {
-  deck: CardInstance[];
-  hand: CardInstance[];
-  discard: CardInstance[];
-};
-
-// A played card snapshot. `target` shape depends on the card's TargetingKind:
-//   'none' → undefined; 'enemy'/'ally' → unit id; 'hex' → HexCoord;
-//   'role' → Role string; Setup Play uses { hex, allyId } in a HexCoord-shaped
-//   target combined with a separate allyId effect (handler reads both).
-export type PlayedCard = {
-  defId: string;
-  contributor: string;
-  target?: HexCoord | string | Role;
-  // Setup Play needs a hex + ally; rather than overload `target`, carry a
-  // second field for the rare two-pick card.
-  secondaryTarget?: string;
-};
-
-// Round-scoped non-buff effects card handlers register. Read by combat/vision/
+// Round-scoped non-buff effects (formerly card handlers, now strategy
+// synergies + hero passives). Read by combat/vision/
 // tick each step; cleared on round start.
 export type ActiveCardEffect =
   // Pass 9 m3 — mark_target gained `revealUntilTick`: while > tick, vision adds
@@ -436,24 +407,9 @@ export type GameEvent =
     }
   | { tick: number; roundIndex: number; type: 'death'; target: string }
   | {
-      tick: number;
-      roundIndex: number;
-      type: 'cardPlay';
-      team: Team;
-      defId: string;
-      contributor: string;
-      target?: HexCoord | string;
-    }
-  | {
-      tick: number;
-      roundIndex: number;
-      type: 'safeWindowBlock';
-      shooter: string;
-      target: string;
-    }
-  | {
       // Pass 9 m1 — round-start summary entry. Surfaces both teams' picks in
       // the kill feed so the player can tell what the AI did each round.
+      // H3.4 — playerCardDefId/aiCardDefId removed (card system deleted).
       tick: number;
       roundIndex: number;
       type: 'strategyPick';
@@ -461,8 +417,6 @@ export type GameEvent =
       playerTeam: Team;
       playerStrategy: string | null;
       aiStrategy: string | null;
-      playerCardDefId: string | null;
-      aiCardDefId: string | null;
     }
   // Pass B — spike plant lifecycle events.
   | { tick: number; roundIndex: number; type: 'plant'; unit: string; site: 'A' | 'B' }
@@ -533,11 +487,9 @@ export type GameState = {
   matchOver: boolean;
   matchWinner: Team | 'draw' | null;
   // --- Pass 8: cards ---
-  cards: Record<Team, TeamDeck>;
-  // Card committed for this round by each team (null until played / if skipped).
-  // Reset to null on startRound.
-  playedCard: Record<Team, PlayedCard | null>;
-  // Round-scoped non-buff card effects; cleared on startRound.
+  // H3.4 — `cards` (TeamDeck) and `playedCard` removed (card system deleted).
+  // Round-scoped effects (formerly populated by card handlers, now by
+  // strategy synergies + hero passives in match.applyStrategies).
   cardEffects: ActiveCardEffect[];
   // --- Pass B ---
   plant: PlantState;

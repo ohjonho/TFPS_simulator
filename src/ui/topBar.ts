@@ -5,7 +5,7 @@
 import type { GameState, MatchMode, Team } from '../game/types.ts';
 import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
 import { strategyById } from '../game/strategies.ts';
-import { cardById } from '../game/cardData.ts';
+// H3.4 — cardData.ts removed; card-targeting tooltip hint dropped along with it.
 
 export type TopBarCallbacks = {
   onBeginRound: () => void;
@@ -18,11 +18,7 @@ export type TopBarCallbacks = {
   // Pass D — region-name overlay toggle (mirrors `R` keybind).
   onToggleRegionLabels: () => void;
   showRegionLabels: boolean;
-  // Pass D — true when the player has picked a card requiring a target but
-  // not yet committed one. Begin Round is disabled.
-  cardTargetingPending: boolean;
-  // The picked card's def id (for the disabled-button tooltip), or null.
-  pickedCardDefId: string | null;
+  // H3.4 — cardTargetingPending / pickedCardDefId removed (card system deleted).
   // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
   // match (preserving seed by default, see main.ts).
   onSetMode: (mode: MatchMode) => void;
@@ -202,18 +198,7 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
         hint = 'Pick A or B';
       }
     }
-    // Pass D — disable Begin Round when the player picked a hex/role-targeted
-    // card but hasn't committed a target. The card-targeting handler clears
-    // `cardTargetingPending` once the click commits.
-    if (!disabled && cb.cardTargetingPending) {
-      disabled = true;
-      const def = cb.pickedCardDefId ? cardById(cb.pickedCardDefId) : null;
-      hint = def?.targeting === 'role'
-        ? `Pick a role for ${def.name}`
-        : def
-          ? `Click a hex for ${def.name}`
-          : 'Pick a target for your card';
-    }
+    // H3.4 — card-targeting gating removed.
     begin.disabled = disabled;
     if (hint) begin.title = hint;
     begin.addEventListener('click', cb.onBeginRound);

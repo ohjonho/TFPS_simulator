@@ -1,10 +1,10 @@
 // Formats the combat event log into spec §18.4-style kill-feed lines.
-// Pure string building; mounted by the side panel. Pass 9 polishes styling.
-// Pass 8: also surfaces cardPlay events so the round-narrative reads cleanly
-// (every played card shows up at the top of the round in the feed).
+// Pure string building; mounted by the side panel overlay.
+//
+// H3.4 — cardPlay / safeWindowBlock event formatters removed (card system
+// deleted). strategyPick lines no longer include card sub-text.
 
 import type { GameEvent, GameState, Weapon } from '../game/types.ts';
-import { cardById } from '../game/cardData.ts';
 
 const WEAPON_NAME: Record<Weapon, string> = {
   shotgun: 'Shotgun',
@@ -26,10 +26,6 @@ export function killFeedLines(state: GameState, max = 14): string[] {
   for (const e of state.events) {
     if (e.type === 'shot') {
       lines.push(formatShot(e, deaths));
-    } else if (e.type === 'cardPlay') {
-      lines.push(formatCardPlay(e));
-    } else if (e.type === 'safeWindowBlock') {
-      lines.push(`T:${e.tick} — ${e.shooter} → ${e.target} [WARDEN BLOCK]`);
     } else if (e.type === 'strategyPick') {
       lines.push(formatStrategyPick(e));
     } else if (e.type === 'plant') {
@@ -47,17 +43,7 @@ function formatStrategyPick(e: Extract<GameEvent, { type: 'strategyPick' }>): st
   const oppTeam = e.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   const youLabel = e.playerTeam === 'defenders' ? 'D' : 'A';
   const oppLabel = oppTeam === 'defenders' ? 'D' : 'A';
-  const youCard = e.playerCardDefId ? cardById(e.playerCardDefId)?.name ?? e.playerCardDefId : null;
-  const oppCard = e.aiCardDefId ? cardById(e.aiCardDefId)?.name ?? e.aiCardDefId : null;
-  const youPart = `${youLabel}: ${e.playerStrategy ?? '—'}${youCard ? ` + «${youCard}»` : ''}`;
-  const oppPart = `${oppLabel}: ${e.aiStrategy ?? '—'}${oppCard ? ` + «${oppCard}»` : ''}`;
-  return `── R${e.round} — ${youPart} | ${oppPart}`;
-}
-
-function formatCardPlay(e: Extract<GameEvent, { type: 'cardPlay' }>): string {
-  const name = cardById(e.defId)?.name ?? e.defId;
-  const teamLabel = e.team === 'defenders' ? 'D' : 'A';
-  return `T:${e.tick} — ${teamLabel} plays «${name}» (${e.contributor})`;
+  return `── R${e.round} — ${youLabel}: ${e.playerStrategy ?? '—'} | ${oppLabel}: ${e.aiStrategy ?? '—'}`;
 }
 
 function formatShot(e: Extract<GameEvent, { type: 'shot' }>, deaths: Set<string>): string {

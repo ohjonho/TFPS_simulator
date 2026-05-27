@@ -140,11 +140,8 @@ export function startDraft(map: MapDefinition, seed: number): GameState {
     aiStrategyWins: { defenders: {}, attackers: {} },
     matchOver: false,
     matchWinner: null,
-    cards: {
-      defenders: { deck: [], hand: [], discard: [] },
-      attackers: { deck: [], hand: [], discard: [] },
-    },
-    playedCard: { defenders: null, attackers: null },
+    // H3.4 — cards / playedCard fields removed; cardEffects starts empty
+    // and is populated by applyStrategies (hero passives + synergies).
     cardEffects: [],
     plant: { planted: null, planting: null, defusing: null },
     prevPerUnitVisible: {},

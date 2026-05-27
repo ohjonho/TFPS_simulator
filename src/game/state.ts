@@ -11,10 +11,8 @@ import type {
   HexCoord,
   MatchMode,
   MoveState,
-  PlayedCard,
   Side,
   Team,
-  TeamDeck,
   TrackEntry,
   Unit,
 } from './types.ts';
@@ -23,7 +21,7 @@ import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
 import { assignAttributes } from './attributes.ts';
 import { createRng } from './rng.ts';
-import { buildDeck, drawCards } from './cards.ts';
+// H3.4 — cards.ts removed; no deck/hand state to initialize.
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
 import type { MapDefinition } from './types.ts';
@@ -97,20 +95,8 @@ export function buildStateFromUnits(
   // defender side; halftime swaps these.
   const teamSide: Record<Team, Side> = { defenders: 'defender', attackers: 'attacker' };
 
-  // Pass 8 — build each team's 9-card deck from their units' trait/role/hero,
-  // then draw the 3-card starting hand. Deck shuffles use the seeded RNG so
-  // hands replay identically.
-  const defenders = units.filter((u) => u.team === 'defenders');
-  const attackers = units.filter((u) => u.team === 'attackers');
-  const defenderDeckRng = createRng((seed ^ 0xdec0de) >>> 0);
-  const attackerDeckRng = createRng((seed ^ 0xa77ac4) >>> 0);
-  const defenderDeck = drawCards(buildDeck(defenders, defenderDeckRng), 3, defenderDeckRng);
-  const attackerDeck = drawCards(buildDeck(attackers, attackerDeckRng), 3, attackerDeckRng);
-  const cards: Record<Team, TeamDeck> = {
-    defenders: defenderDeck,
-    attackers: attackerDeck,
-  };
-  const playedCard: Record<Team, PlayedCard | null> = { defenders: null, attackers: null };
+  // H3.4 — card deck/hand/discard removed. Strategy + trait + hero
+  // synergies populate cardFlags + cardEffects directly in applyStrategies.
 
   const initial: GameState = {
     phase: 'planning',
@@ -140,8 +126,6 @@ export function buildStateFromUnits(
     aiStrategyWins: { defenders: {}, attackers: {} },
     matchOver: false,
     matchWinner: null,
-    cards,
-    playedCard,
     cardEffects: [],
     plant: { planted: null, planting: null, defusing: null },
     prevPerUnitVisible: {},
