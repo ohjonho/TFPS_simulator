@@ -9,6 +9,7 @@ import { cardById } from './game/cardData.ts';
 import { buildInitialState } from './game/state.ts';
 import { aggregateVisible } from './game/attributes.ts';
 import { availableStrategies, rosterUnlocks, unlockContributors } from './game/traits.ts';
+import { compliancePct } from './game/directives.ts';
 import { assignTarget } from './game/movement.ts';
 import { stepTick } from './game/tick.ts';
 import { computePerUnitDebug, computeVisibility } from './game/vision.ts';
@@ -706,7 +707,17 @@ if (import.meta.env.DEV) {
       const side = state.teamSide[t];
       return availableStrategies(units, side, state.map).map((s) => ({
         id: s.id, name: s.name, description: s.description,
+        complianceThreshold: s.complianceThreshold ?? 50,
       }));
+    },
+    // H3.2 — compliance roll inspection: returns the chance (0-100) the
+    // given unit follows its directive this tick given strategy +
+    // situational pressure. Useful for verifying the formula against
+    // hand-crafted rosters.
+    getCompliance: (unitId: string, complianceThreshold = 50, situationalPressure = 0) => {
+      const u = state.units.find((unit) => unit.id === unitId);
+      if (!u) return null;
+      return compliancePct(u, complianceThreshold, situationalPressure);
     },
     setRole: (id: string, role: keyof typeof ROLE_AGGRESSION) =>
       setState({

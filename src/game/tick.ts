@@ -79,6 +79,12 @@ export function stepTick(state: GameState): GameState {
     if (u.state === 'alive') claimed.add(`${u.pos.col},${u.pos.row}`);
   }
 
+  // H3.2 — per-tick RNG dedicated to directive compliance rolls. Separate
+  // seed-hash (0xC0~) from the combat-fire RNG so the two streams don't
+  // interleave; lets compliance behavior change independently of combat
+  // determinism. Consumed in stable unit order below.
+  const complianceRng = createRng(hashSeed(state.seed, tick) ^ 0xC011A11);
+
   // 2. AI decisions + 3. movement (per unit, stable order).
   for (const u of working) {
     prevPos[u.id] = u.pos;
@@ -99,7 +105,11 @@ export function stepTick(state: GameState): GameState {
     // otherwise a directive can override engagement (suppressEngage), supply a
     // movement target, or set facing. Legacy default-behavior tree fires only
     // when the directive returns no useful decision.
-    const directiveDecision = retreat ? null : evaluateDirectives(u, state, prevAi, visibleEnemies);
+    // H3.2 — pass the per-tick compliance RNG so low-Discipline units on
+    // demanding strategies probabilistically break directive and fall
+    // through to the legacy tree (the "freelance" path).
+    const directiveDecision = retreat ? null
+      : evaluateDirectives(u, state, prevAi, visibleEnemies, complianceRng);
     const directiveSuppressesEngage = directiveDecision?.suppressEngage === true;
 
     let mode: AiState['mode'];

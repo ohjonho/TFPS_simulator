@@ -18,20 +18,89 @@ import type {
   Side,
   Unit,
 } from './types.ts';
+import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
-import { regionCentroid } from './strategies.ts';
+import { regionCentroid, strategyById } from './strategies.ts';
+
+// H3.2 — compliance formula tunables. Baseline 85% (most units mostly
+// adhere); ±0.4 per Discipline pt; ±0.2 per Composure pt; demanding
+// strategies (complianceThreshold > 50) penalize 0.5 per threshold pt above
+// 50; enemy-visible situational pressure drops adherence by another 15pp.
+//
+// Clamp [5, 99] — even a maximally-undisciplined roster on a demanding
+// strategy under pressure still has a 5% chance to comply each tick; max
+// stays at 99% so a high-tail roster isn't a perfect strategy executor.
+const COMPLIANCE = {
+  baseline: 85,
+  disciplineWeight: 0.4,
+  composureWeight: 0.2,
+  thresholdWeight: 0.5,
+  enemyVisiblePressure: -15,
+  min: 5,
+  max: 99,
+} as const;
+
+// H3.2 — strategy adherence chance for this tick (0-100). Combat / vision
+// math are unaffected; only directive evaluation gates on this.
+export function compliancePct(
+  unit: Unit,
+  complianceThreshold: number,
+  situationalPressure: number,
+): number {
+  const d = unit.attributes.tenacity;       // Discipline visible-aggregate = Tenacity sub (1:1)
+  const c = unit.attributes.composure;
+  let p = COMPLIANCE.baseline
+    + COMPLIANCE.disciplineWeight * (d - 50)
+    + COMPLIANCE.composureWeight  * (c - 50)
+    - COMPLIANCE.thresholdWeight  * (complianceThreshold - 50)
+    + situationalPressure;
+  if (p < COMPLIANCE.min) p = COMPLIANCE.min;
+  if (p > COMPLIANCE.max) p = COMPLIANCE.max;
+  return p;
+}
+
+// Look up the strategy assigned to the unit's team (player or AI side).
+// Returns null when no strategy is committed yet (e.g. planning preview
+// before Begin Round) — caller treats null as "no compliance gating".
+function strategyForUnit(state: GameState, unit: Unit): { complianceThreshold: number } | null {
+  const stratId = unit.team === state.playerTeam ? state.playerStrategy : state.aiStrategy;
+  if (!stratId) return null;
+  const side = state.teamSide[unit.team];
+  const strat = strategyById(stratId, side, state.map);
+  if (!strat) return null;
+  return { complianceThreshold: strat.complianceThreshold ?? 50 };
+}
 
 // Evaluate the unit's directives in priority order (higher first); the first
 // directive that produces a non-null decision wins. Returns null when no
 // directive applies — caller (tick.ts) falls back to the legacy decision tree.
+// H3.2 — optional `rng` performs a probabilistic compliance roll BEFORE
+// the directive runs. Failure returns null (legacy tree fires), so a
+// low-Discipline roster on a demanding strategy under pressure visibly
+// freelances. Backward-compatible: omit `rng` to skip the roll entirely.
 export function evaluateDirectives(
   unit: Unit,
   state: GameState,
   prevAi: AiState,
   visibleEnemies: readonly Unit[],
+  rng?: Rng,
 ): DirectiveDecision | null {
   if (!unit.directives || unit.directives.length === 0) return null;
+
+  // H3.2 — compliance gate. Only rolls when an rng is supplied AND the unit
+  // has a committed strategy with a known compliance threshold. Caller
+  // (tick.ts) is responsible for threading a seeded rng so the roll is
+  // deterministic.
+  if (rng) {
+    const strat = strategyForUnit(state, unit);
+    if (strat) {
+      const pressure = visibleEnemies.length > 0 ? COMPLIANCE.enemyVisiblePressure : 0;
+      const pct = compliancePct(unit, strat.complianceThreshold, pressure);
+      if (!rng.chance(pct / 100)) return null;
+    }
+  }
+
   // Sort a copy so the field order in unit.directives doesn't change.
   const sorted = [...unit.directives].sort((a, b) => b.priority - a.priority);
   for (const d of sorted) {
