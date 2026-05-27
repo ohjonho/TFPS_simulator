@@ -25,6 +25,7 @@ import type { Directive } from './types.ts';
 import { applyCards } from './cardEffects.ts';
 import { discardPlayed, drawCards } from './cards.ts';
 import {
+  CARD_EFFECTS,
   HALFTIME_AFTER_ROUND,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
@@ -222,9 +223,17 @@ export function applyStrategies(
     // centerline path. Reuses the same `cardFlags.slowFlank` flag the Slow
     // Flank card sets (identical routing behavior; the flag's name is
     // card-historical but the mechanism is generic).
-    const cardFlags = slot?.usePerimeterPath
+    let cardFlags = slot?.usePerimeterPath
       ? { ...u.cardFlags, slowFlank: true }
-      : u.cardFlags;
+      : { ...u.cardFlags };
+
+    // H3.3 — apply trait + strategy synergy flags. These migrate the
+    // 5 surviving card behaviors (Reckless Push, Anchor Position, Slow
+    // Flank, Spearhead, Crossfire, Trade Window) into always-on effects
+    // gated by the team's chosen strategy + each unit's trait. Combat
+    // hooks in combat.ts already read these `cardFlags` keys; we're just
+    // changing what populates them.
+    cardFlags = applyTraitStrategySynergies(cardFlags, u, strat.id);
 
     nextUnits.push({
       ...u,
@@ -237,6 +246,14 @@ export function applyStrategies(
       cardFlags,
     });
   }
+
+  // H3.3 — always-on hero passive effects. Each hero on the roster
+  // contributes one entry to cardEffects regardless of any card being
+  // played (Angelic → guardian aura, Techy → tactical scan at round start,
+  // Cursed → mark-on-first-spot trigger flag set per unit above). Builds a
+  // fresh list per round; H3.4 will drop the cards-on-top layer entirely.
+  const heroEffects = computeHeroPassiveEffects(nextUnits, state.tick);
+
   return {
     ...state,
     phase: 'resolution',
@@ -244,7 +261,93 @@ export function applyStrategies(
     targets: nextTargets,
     playerStrategy: playerStrategyId,
     aiStrategy: aiStrategyId,
+    cardEffects: heroEffects,
   };
+}
+
+// H3.3 — strategy + trait synergy mapping. Each entry: if the unit has the
+// listed trait AND the team's strategy id matches, set the cardFlag. Combat
+// hooks unchanged — they already read these flags via the Pass 8 path; only
+// the source of the flags moved from card handlers to strategy commit.
+function applyTraitStrategySynergies(
+  flags: import('./types.ts').CardFlags,
+  unit: Unit,
+  strategyId: string,
+): import('./types.ts').CardFlags {
+  // Sentinel + Anchor_Hold → doubles Sentinel's stationary bonus (formerly
+  // the Anchor Position card).
+  if (unit.behavioralTrait === 'Sentinel' && strategyId === 'Anchor_Hold') {
+    flags = { ...flags, anchorPosition: true };
+  }
+  // Run-n-Gun + Mobile_Push → +1 speed, no retreat, +15 HR moving
+  // (formerly Reckless Push card). Even non-Run-n-Gun units on Mobile_Push
+  // get a smaller bump via the strategy aggression mod (already applied).
+  if (unit.behavioralTrait === 'Run-n-Gun' && strategyId === 'Mobile_Push') {
+    flags = { ...flags, recklessPush: true };
+  }
+  // Lurker + Patient_Flank → perimeter routing + invisibility-until-fire
+  // (formerly Slow Flank card). slowFlank flag covers both behaviors.
+  if (unit.behavioralTrait === 'Lurker' && strategyId === 'Patient_Flank') {
+    flags = { ...flags, slowFlank: true, invisibleUntilFire: true };
+  }
+  // Entry + Coordinated_Execute → +30 HR/+15 HS first 3 engagement ticks,
+  // no post-penalty (formerly Opening Pick card).
+  if (unit.behavioralTrait === 'Entry' && strategyId === 'Coordinated_Execute') {
+    flags = { ...flags, openingPickActive: true };
+  }
+  // Spearhead synergy — Vanguard role on Coordinated_Execute leads the
+  // commit; allies follow 2 ticks behind (formerly Spearhead card).
+  if (unit.role === 'Vanguard' && strategyId === 'Coordinated_Execute') {
+    flags = { ...flags, spearhead: true };
+  }
+  // Trader + Crossfire_Lockdown → crossfire buff cascade on ally fire
+  // (formerly Crossfire card).
+  if (unit.behavioralTrait === 'Trader' && strategyId === 'Crossfire_Lockdown') {
+    flags = { ...flags, crossfireEligible: true };
+  }
+  // Clutch + Last_Stand_Defense → trade-window mark on teammate death
+  // (formerly Trade Window card).
+  if (unit.behavioralTrait === 'Clutch' && strategyId === 'Last_Stand_Defense') {
+    flags = { ...flags, tradeWindowEnabled: true };
+  }
+  // H3.3 — Cursed hero → mark-target-pending flag. The hero's passive
+  // ability fires when the unit first spots an enemy this round (existing
+  // Mark Target trigger in tick.ts reads this flag).
+  if (unit.hero === 'Cursed') {
+    flags = { ...flags, markTargetPending: true };
+  }
+  return flags;
+}
+
+// H3.3 — hero passives. Always-on effects derived from each unit's hero
+// (no card decision required). Three heroes wired:
+//   Angelic → guardian_aura (radius from CARD_EFFECTS.guardianAura)
+//   Techy   → tactical_scan (lasts tacticalScan.ticks at round start)
+//   Cursed  → handled per-unit via markTargetPending flag (see above)
+function computeHeroPassiveEffects(
+  units: readonly Unit[],
+  currentTick: number,
+): import('./types.ts').ActiveCardEffect[] {
+  const out: import('./types.ts').ActiveCardEffect[] = [];
+  for (const u of units) {
+    if (u.state !== 'alive') continue;
+    if (u.hero === 'Angelic') {
+      out.push({
+        kind: 'guardian_aura',
+        team: u.team,
+        sourceId: u.id,
+        radius: CARD_EFFECTS.guardianAura.radius,
+      });
+    } else if (u.hero === 'Techy') {
+      out.push({
+        kind: 'tactical_scan',
+        team: u.team,
+        expiresAtTick: currentTick + CARD_EFFECTS.tacticalScan.ticks,
+      });
+    }
+    // Cursed → markTargetPending flag on the unit (set in applyTraitStrategySynergies).
+  }
+  return out;
 }
 
 // Pass 8 — set each team's played card on the state, then run the card
