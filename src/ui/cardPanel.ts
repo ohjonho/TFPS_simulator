@@ -10,7 +10,8 @@
 
 import type { ActiveCardEffect, GameState, Side } from '../game/types.ts';
 import { cardById } from '../game/cardData.ts';
-import { strategiesFor, strategyById } from '../game/strategies.ts';
+import { strategyById } from '../game/strategies.ts';
+import { availableStrategies } from '../game/traits.ts';
 
 export type CardPanelCallbacks = {
   // Pick (or clear with null) a card from the player's hand.
@@ -78,7 +79,9 @@ function variantLabel(_strat: ReturnType<typeof strategyById>, idx: number): str
 }
 
 function strategyMenuHtml(state: GameState, side: Side): string {
-  const options = strategiesFor(side, state.map);
+  // H3 — show baseline + roster-unlocked strategies only.
+  const teamUnits = state.units.filter((u) => u.team === state.playerTeam);
+  const options = availableStrategies(teamUnits, side, state.map);
   const sel = state.playerStrategy;
   const variantChoice = state.playerVariantChoice;
   const items = options.map((s) => {

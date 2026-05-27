@@ -799,7 +799,10 @@ if (import.meta.env.DEV) {
     pickVariant: (idx: number) => setState({ ...state, playerVariantChoice: idx }),
     beginRound: () => beginRound(),
     strategies: (side: 'attacker' | 'defender') =>
-      strategiesFor(side, state.map).map((s) => ({ id: s.id, name: s.name, description: s.description })),
+      // H3 — returns the FULL strategy list for the side (baseline + all
+      // unlock variants), regardless of roster. Use getAvailableStrategies
+      // for the roster-filtered view.
+      strategiesFor(side, state.map).map((s) => ({ id: s.id, name: s.name, description: s.description, requiresUnlock: !!s.requiresUnlock })),
     // Run one round headlessly: apply the player's chosen strategy + AI pick,
     // step to elimination, end the round, then advance (with halftime swap).
     // Returns { winner, ticks, scoresAfter, matchOver, halftimeTaken }.

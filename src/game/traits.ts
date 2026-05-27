@@ -34,25 +34,26 @@ export function rosterUnlocks(units: readonly Unit[]): Set<string> {
   return out;
 }
 
-// The team's full strategy menu = baseline (always available for the side)
-// + unlocked variants that match a real strategy id for the side.
-// Returns whatever `strategiesFor` returns for an unlocked id (so H3 can
-// just add new strategy definitions; this helper picks them up).
+// The team's full strategy menu = baseline (strategies where
+// requiresUnlock !== true) + unlock-gated variants whose id is in the
+// roster's unlock set (deduped union of every alive unit's three traits'
+// `unlocks` lists). H3 — strategiesFor() returns ALL strategies for the
+// side (baseline + unlocks); we filter here so the player only sees what
+// their roster can actually run.
 export function availableStrategies(
   units: readonly Unit[],
   side: Side,
   map: MapDefinition,
 ): ReturnType<typeof strategiesFor> {
-  const baseline = strategiesFor(side, map);
-  const baselineIds = new Set(baseline.map((s) => s.id));
+  const all = strategiesFor(side, map);
+  const baseline = all.filter((s) => !s.requiresUnlock);
+  const lockedExtras = all.filter((s) => s.requiresUnlock);
   const unlocks = rosterUnlocks(units);
-  const extras = [];
-  for (const id of unlocks) {
-    if (baselineIds.has(id)) continue;
-    const strat = strategyById(id, side, map);
-    if (strat) extras.push(strat);
-  }
-  return [...baseline, ...extras];
+  const granted = lockedExtras.filter((s) => unlocks.has(s.id));
+  // Strategy lookup uses id-only — strategyById() is preserved as the
+  // direct-lookup escape hatch (AI opponent / __sim drive it that way).
+  void strategyById;
+  return [...baseline, ...granted];
 }
 
 // Diagnostic: for each unlocked strategy id, return the contributor units

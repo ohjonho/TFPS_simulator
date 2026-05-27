@@ -428,13 +428,42 @@ export const AGGRESSION_PUSH_THRESHOLD = 55;
 // Per-strategy aggression and retreat-threshold deltas applied at round start.
 // retreatThreshold is added to AI.retreatHpThreshold (a −1 here means a unit
 // won't retreat until hp <= 0, i.e., effectively no retreat).
-export const STRATEGY_MODS: Record<string, { aggression: number; retreatThreshold: number }> = {
-  Execute:  { aggression:   0, retreatThreshold: 0 },
-  Rush:     { aggression: +10, retreatThreshold: -1 },
-  Control:  { aggression: -10, retreatThreshold: 0 },
-  Hold:     { aggression:   0, retreatThreshold: 0 },
-  Stack:    { aggression:   0, retreatThreshold: 0 },
-  Pressure: { aggression: +10, retreatThreshold: 0 },
+// H3 — `complianceThreshold` (0-100) gates the per-tick directive
+// adherence roll (directives.ts). Higher = more demanding; trait-unlocked
+// variants raise this above 50 so low-Discipline rosters pay a penalty for
+// picking them ("high ceiling, low floor" design).
+export const STRATEGY_MODS: Record<string, {
+  aggression: number;
+  retreatThreshold: number;
+  complianceThreshold?: number;
+}> = {
+  // Baseline (always available) — neutral compliance.
+  Execute:  { aggression:   0, retreatThreshold: 0,  complianceThreshold: 50 },
+  Rush:     { aggression: +10, retreatThreshold: -1, complianceThreshold: 50 },
+  Control:  { aggression: -10, retreatThreshold: 0,  complianceThreshold: 50 },
+  Hold:     { aggression:   0, retreatThreshold: 0,  complianceThreshold: 50 },
+  Stack:    { aggression:   0, retreatThreshold: 0,  complianceThreshold: 50 },
+  Pressure: { aggression: +10, retreatThreshold: 0,  complianceThreshold: 50 },
+
+  // H3 trait-unlocked DEFENDER variants (9). Each unlocked by ≥1 trait on
+  // the roster (see TRAITS_BY_ID.unlocks).
+  Anchor_Hold:          { aggression: -15, retreatThreshold: 0,  complianceThreshold: 75 }, // Sentinel
+  Crossfire_Lockdown:   { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 70 }, // Trader
+  Last_Stand_Defense:   { aggression: -10, retreatThreshold: 0,  complianceThreshold: 65 }, // Clutch
+  Mind_Games:           { aggression:   0, retreatThreshold: 0,  complianceThreshold: 60 }, // Big Brain (D+A)
+  Hold_Composure:       { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 70 }, // Composed
+  Coordinated_Lockdown: { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 75 }, // Leader
+  Rotate_Stack:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 50 }, // Roamer
+  Wide_Watch:           { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 55 }, // Paranoid
+  Slow_Burn:            { aggression: -15, retreatThreshold: 0,  complianceThreshold: 80 }, // Patient
+
+  // H3 trait-unlocked ATTACKER variants (6 + Mind_Games shared with D).
+  Mobile_Push:          { aggression: +20, retreatThreshold: -1, complianceThreshold: 60 }, // Run-n-Gun
+  Patient_Flank:        { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 80 }, // Lurker
+  Coordinated_Execute:  { aggression: +10, retreatThreshold: 0,  complianceThreshold: 75 }, // Entry
+  Solo_Frag:            { aggression: +15, retreatThreshold: -1, complianceThreshold: 30 }, // Ego
+  Scatter_Push:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 40 }, // Lone Wolf
+  Aggressive_Peek:      { aggression: +20, retreatThreshold: 0,  complianceThreshold: 50 }, // Hot Head
 };
 
 // Match length: first team to this many round wins.

@@ -4,7 +4,8 @@
 
 import type { GameState, PlayedCard, Side, Team } from './types.ts';
 import type { Rng } from './rng.ts';
-import { regionCentroid, strategyById, strategiesFor } from './strategies.ts';
+import { regionCentroid, strategyById } from './strategies.ts';
+import { availableStrategies } from './traits.ts';
 import { AI_CARD_PLAY_CHANCE, AI_STRATEGY_EXPLORATION, STRATEGY_CARD_THEMES } from './config.ts';
 import { cardById } from './cardData.ts';
 
@@ -14,7 +15,10 @@ export function pickAiStrategy(
   side: Side,
   rng: Rng,
 ): string {
-  const options = strategiesFor(side, state.map);
+  // H3 — AI picks from the strategies its roster can actually run
+  // (baseline + trait-unlocked variants on the AI team's units).
+  const aiUnits = state.units.filter((u) => u.team === team);
+  const options = availableStrategies(aiUnits, side, state.map);
   const wins = state.aiStrategyWins[team] ?? {};
   // Pass 7.8 — base weight `1 + wins` (win-rate bias) plus a per-pick uniform
   // exploration noise so an early single win can't dominate the rest of the
