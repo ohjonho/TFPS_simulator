@@ -93,7 +93,8 @@ let targetingMode: TargetingMode = null;
 // GameState.matchMode after each buildInitialState; matchSeed is kept here so
 // the seed input + Regenerate button can reproduce or step the seed. Map
 // switches preserve both (user choice: same units across maps).
-let matchMode: MatchMode = 'standard';
+// H3.fix2 — Draft is the default; Standard is the debug toggle.
+let matchMode: MatchMode = 'draft';
 let matchSeed: number = RNG_SEED_DEFAULT;
 // F1 — drag state: non-null while the player is dragging a unit during
 // planning. Read by the renderer to draw a "ghost" unit at the cursor pixel
@@ -837,6 +838,13 @@ if (import.meta.env.DEV) {
       let winner: Team | null = null;
       for (let i = 0; i < maxTicks; i++) {
         s = stepTick(s);
+        // H3.fix1 — honor plant detonation/defuse outcomes (set by stepTick
+        // into roundResult). Then check elimination (now handles post-plant
+        // mutual annihilation correctly via match.eliminationWinner).
+        if (s.roundResult && s.roundResult.winner !== 'draw') {
+          winner = s.roundResult.winner;
+          break;
+        }
         winner = eliminationWinner(s);
         if (winner) break;
       }

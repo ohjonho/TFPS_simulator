@@ -39,9 +39,13 @@ import { startDraft } from './draft.ts';
 // returns a state with `phase: 'draft'` and units not yet assigned to spawns.
 // The draft UI handles the pick flow and calls `finalizeDraft` (which uses
 // buildStateFromUnits) to land in planning.
+// H3.fix2 — Draft is the default mode now (Standard is kept as a debug
+// option for forcing flat-50 attributes + fixed 2r+1s loadouts). The flip
+// makes the first-load experience match the design thesis: roster
+// composition matters from match 1.
 export function buildInitialState(
   mapName: MapDefinition['name'] = 'Foundry',
-  mode: MatchMode = 'standard',
+  mode: MatchMode = 'draft',
   seed: number = RNG_SEED_DEFAULT,
 ): GameState {
   const map = mapName === 'Atoll' ? atoll : foundry;

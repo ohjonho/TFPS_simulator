@@ -167,15 +167,17 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
       winner = state.roundResult.winner === 'draw' ? null : state.roundResult.winner;
       if (winner) break;
     }
-    // Elimination only ends the round when the spike is NOT down.
-    if (state.plant.planted === null) {
-      winner = eliminationWinner(state);
-      if (winner) break;
-      // Timeout (only meaningful when no plant down — mirrors loop.fire()):
-      // defender wins on timeout. With plant down we keep ticking until
-      // detonation/defuse fires above.
-      if (state.tick >= cap) break;
-    }
+    // H3.fix1 — elimination is now decisive regardless of plant state
+    // (eliminationWinner internally handles the mutual-annihilation
+    // post-plant tiebreaker → attackers win). Pre-fix: a planted+wipe
+    // round looped to the tick cap and silently fell into the defender
+    // fallback below.
+    winner = eliminationWinner(state);
+    if (winner) break;
+    // Timeout — defender wins on timeout when no plant is down. With plant
+    // down we keep ticking until detonation/defuse fires above (or the
+    // tick cap eventually breaks us out via the for-loop bound).
+    if (state.plant.planted === null && state.tick >= cap) break;
   }
   // Fallback: if we exited without a winner, defender wins (timeout, plant
   // still up edge case, or stalemate hitting hardCap).

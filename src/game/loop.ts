@@ -159,10 +159,14 @@ export class PlaybackLoop {
       return;
     }
     // Pass 7: a team eliminated → end of round.
-    // Pass B: when the spike is down, eliminating attackers does NOT end the
-    // round — the plant still detonates. Same rule for mutual annihilation.
+    // H3.fix1 — post-plant elimination is now decisive: attackers wipe defenders
+    // = ATK wins (no defuser possible); defenders wipe attackers = DEF wins
+    // (uncontested defuse — the sim doesn't need to play out the defuse ticks);
+    // mutual annihilation post-plant = ATK wins (spike detonates uninterrupted).
+    // eliminationWinner now handles the plant tiebreaker internally; loop just
+    // honors whatever it returns.
     const winner = eliminationWinner(after);
-    if (winner && after.plant.planted === null) {
+    if (winner) {
       this.clearTimer();
       const ended = endRound(after, winner);
       this.cb.setState(ended);

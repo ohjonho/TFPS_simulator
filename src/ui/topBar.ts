@@ -65,8 +65,8 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     b.textContent = m === 'standard' ? 'Standard' : 'Draft';
     if (state.matchMode === m) b.classList.add('selected');
     b.title = m === 'standard'
-      ? 'Fixed 2 rifles + 1 sniper, flat-50 attributes.'
-      : 'Pool of 8 random units — you and the AI snake-pick 3 each (P-A-A-P-P-A).';
+      ? 'Debug — fixed 2 rifles + 1 sniper, flat-50 attributes. Use to test combat math without RNG variance.'
+      : 'Pool of 8 random units — you and the AI snake-pick 3 each (P-A-A-P-P-A). Default for normal play.';
     b.addEventListener('click', () => cb.onSetMode(m));
     modeGroup.appendChild(b);
   }

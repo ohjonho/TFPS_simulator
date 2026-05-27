@@ -406,9 +406,20 @@ export function eliminationWinner(state: GameState): Team | null {
     if (u.team === 'defenders') aliveDef++;
     else aliveAtk++;
   }
-  if (aliveDef === 0 && aliveAtk === 0) return defenderTeam(state);
-  if (aliveDef === 0 && aliveAtk > 0) return 'attackers';
-  if (aliveAtk === 0 && aliveDef > 0) return 'defenders';
+  // Mutual annihilation: post-plant the spike still detonates with no
+  // defuser → attackers win. Pre-plant: defender side wins the tiebreaker
+  // (Pass 7.5 rule — "ran out of time" semantics).
+  if (aliveDef === 0 && aliveAtk === 0) {
+    return state.plant.planted ? attackerTeam(state) : defenderTeam(state);
+  }
+  // H3.fix1 — these elimination outcomes are decisive regardless of plant
+  // state: all defenders dead → attackers win (no defuser possible, even if
+  // spike isn't planted yet); all attackers dead → defenders win
+  // (post-plant: defenders will walk to the spike and defuse uncontested;
+  // pre-plant: standard elim). Loop.ts used to gate the entire branch on
+  // `plant.planted === null`, which left planted+team-dead rounds frozen.
+  if (aliveDef === 0) return 'attackers';
+  if (aliveAtk === 0) return 'defenders';
   return null;
 }
 
@@ -416,6 +427,12 @@ export function eliminationWinner(state: GameState): Team | null {
 // and 0v0 tie-break rules.
 export function defenderTeam(state: GameState): Team {
   return state.teamSide.defenders === 'defender' ? 'defenders' : 'attackers';
+}
+
+// The team currently playing the attacker side this half. Mirror of
+// defenderTeam; used by the post-plant mutual-annihilation tiebreaker.
+export function attackerTeam(state: GameState): Team {
+  return state.teamSide.defenders === 'defender' ? 'attackers' : 'defenders';
 }
 
 // Award the round to a winner team and decide the next match state: another
