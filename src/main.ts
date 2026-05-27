@@ -17,7 +17,7 @@ import { computePerUnitDebug, computeVisibility } from './game/vision.ts';
 import { resolveShot } from './game/combat.ts';
 import type { ShotContextInput } from './game/combat.ts';
 import { createRng } from './game/rng.ts';
-import { determinismCheck, runBatch, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
+import { determinismCheck, runBatch, runComplianceTest, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
 import { ROLE_AGGRESSION, RNG_SEED_DEFAULT } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
 import { DEBUG_KEY, REGION_LABEL_KEY } from './game/config.ts';
@@ -629,23 +629,32 @@ if (import.meta.env.DEV) {
     // determinism). All deterministic; ~30s total at default seeds=20.
     runStrategyRound: (seed: number, opts: Parameters<typeof runStrategyRound>[1]) =>
       runStrategyRound(seed, opts),
-    runStrategyMatrix: (seeds = 20, map?: 'Foundry' | 'Atoll') => runStrategyMatrix(seeds, map),
-    // H3.4 — cardSanityCheck removed (card system deleted).
+    runStrategyMatrix: (seeds = 20, map?: 'Foundry' | 'Atoll', includeUnlocks = false) =>
+      runStrategyMatrix(seeds, map, includeUnlocks),
+    // H3.5 — replaces cardSanityCheck. Empirical check that high-Tenacity
+    // rosters outperform low-Tenacity on demanding strategies (compliance
+    // roll biting). See batch.runComplianceTest.
+    runComplianceTest: (seeds = 20, map?: 'Foundry' | 'Atoll') => runComplianceTest(seeds, map),
     determinismCheck: (seeds = 10, map?: 'Foundry' | 'Atoll') => determinismCheck(seeds, map),
     runValidation: (seeds = 20) => {
       const matrix = runStrategyMatrix(seeds);
+      const compliance = runComplianceTest(seeds);
       const det = determinismCheck(Math.min(seeds, 10));
       // eslint-disable-next-line no-console
-      console.log('═══ Strategy matrix (defender win %) ═══');
+      console.log('═══ Strategy matrix (baseline 3×3, defender win %) ═══');
       // eslint-disable-next-line no-console
       console.table(matrix);
+      // eslint-disable-next-line no-console
+      console.log('═══ Compliance test (high vs low Tenacity, defender win %) ═══');
+      // eslint-disable-next-line no-console
+      console.table(compliance);
       // eslint-disable-next-line no-console
       console.log(`═══ Determinism: ${det.matched}/${det.total} matched ═══`);
       if (det.mismatchedSeeds.length > 0) {
         // eslint-disable-next-line no-console
         console.warn('Mismatched seeds:', det.mismatchedSeeds);
       }
-      return { matrix, det };
+      return { matrix, compliance, det };
     },
     // --- Pass 7 match-flow hooks ---
     pickStrategy: (id: string) =>
