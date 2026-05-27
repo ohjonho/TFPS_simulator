@@ -18,13 +18,18 @@ import type { Rng } from './rng.ts';
 export function buildDeck(units: readonly Unit[], rng: Rng): TeamDeck {
   const deck: CardInstance[] = [];
   for (const u of units) {
-    // Each unit contributes 3 cards. Behavioral trait is assumed non-null after
-    // assignAttributes (Pass 6 always assigns); falls back to skipping if null.
+    // Each unit contributes up to 3 cards. Pass H2 — added Roamer / Hot Head
+    // behavioral traits don't have card defs (the card system is being
+    // dismantled in H3 entirely). Skip missing cards so deck-build doesn't
+    // crash on those traits in the meantime.
     if (u.behavioralTrait) {
-      deck.push({ defId: cardFromTrait(u.behavioralTrait).id, contributor: u.id });
+      const traitCard = cardFromTrait(u.behavioralTrait);
+      if (traitCard) deck.push({ defId: traitCard.id, contributor: u.id });
     }
-    deck.push({ defId: cardFromRole(u.role).id, contributor: u.id });
-    deck.push({ defId: cardFromHero(u.hero).id, contributor: u.id });
+    const roleCard = cardFromRole(u.role);
+    if (roleCard) deck.push({ defId: roleCard.id, contributor: u.id });
+    const heroCard = cardFromHero(u.hero);
+    if (heroCard) deck.push({ defId: heroCard.id, contributor: u.id });
   }
   return { deck: shuffle(deck, rng), hand: [], discard: [] };
 }

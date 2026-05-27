@@ -84,7 +84,7 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   const rows = teamUnits.map((u) => {
     const off = u.modifiers.offPosition ? ' <span class="warn">⚠off-pos</span>' : '';
     const dead = u.state === 'dead' ? ' DEAD' : '';
-    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
+    return `<li data-roster-unit="${u.id}"><strong>${u.id}</strong> ${u.weapon} · ${u.role}${off} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'}/${u.personalityTrait ?? '—'} · HP ${u.hp}/${UNIT_DEFAULTS.maxHp}${dead}</li>`;
   }).join('');
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
@@ -129,6 +129,7 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>Hero</dt><dd>${unit.hero}</dd>
       <dt>Skill trait</dt><dd>${unit.skillTrait ?? '—'}</dd>
       <dt>Behavioral</dt><dd>${unit.behavioralTrait ?? '—'}</dd>
+      <dt>Personality</dt><dd>${unit.personalityTrait ?? '—'}</dd>
       <dt>Aggr</dt><dd>${unit.modifiers.aggression}</dd>
       <dt>Hex</dt><dd>(${col}, ${row})</dd>
     </dl>

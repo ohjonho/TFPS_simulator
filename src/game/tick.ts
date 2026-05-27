@@ -254,14 +254,14 @@ export function stepTick(state: GameState): GameState {
     // any wall-adjacent — which leaves units hugging walls facing nothing).
     if (mode === 'holding') {
       const threat = enemySpawnForSide(u, state) ?? undefined;
-      // F2 — Positioning attribute widens the cover-seek search. Very low
-      // (≤30) → no shuffle (the unit holds wherever it landed); default
-      // (~50) → radius 1 (adjacent neighbors only, pre-F2 behavior); high
-      // (≥70) → radius 2 (BFS, can find a great cover spot 2 hexes away).
-      const pos = u.attributes.positioning;
+      // F2 / H1 — Map IQ (formerly Positioning) widens the cover-seek search.
+      // Very low (≤30) → no shuffle (hold wherever you landed); default (~50)
+      // → radius 1 (pre-F2 behavior); high (≥70) → radius 2 (find a great
+      // cover spot 2 hexes away). H1 collapsed Positioning into Map IQ.
+      const pos = u.attributes.mapIQ;
       const searchRadius =
-        pos >= ATTRIBUTES.formulas.positioning.highThreshold ? 2 :
-        pos <= ATTRIBUTES.formulas.positioning.lowThreshold ? 0 :
+        pos >= ATTRIBUTES.formulas.mapIQ.highThreshold ? 2 :
+        pos <= ATTRIBUTES.formulas.mapIQ.lowThreshold ? 0 :
         1;
       const cover = findCoverHoldHex(u, state.map, claimed, threat, searchRadius);
       if (!sameHex(cover, u.pos)) {

@@ -42,6 +42,7 @@ function buildPoolUnit(slot: number, weapon: Weapon, rng: Rng): Unit {
     state: 'alive',
     skillTrait: null,
     behavioralTrait: null,
+    personalityTrait: null,
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',

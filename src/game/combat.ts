@@ -135,6 +135,19 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
         pp += TRAITS.firstShotHitPp * reflexScale;
       }
       break;
+    // H2 expansion — opposite-half of First Shot: sustained-fire retention
+    // after the early-engagement window closes (ticks > 3). Pairs naturally
+    // with Entry / opposes First Shot for "frame-1 reflex" specialists.
+    case 'Spray Down':
+      if (ctx.engagementTicks > TRAITS.sprayDown.afterTicks) pp += TRAITS.sprayDown.hitPp;
+      break;
+    // Range specialists: read shot's resolved range band directly.
+    case 'Deadeye':
+      if (ctx.band === 'long') pp += TRAITS.deadeyeLongHitPp;
+      break;
+    case 'Close Quarters':
+      if (ctx.band === 'short') pp += TRAITS.closeQuartersShortHitPp;
+      break;
     default: break; // Headhunter (HS only), Eagle Eye (vision) — no HR effect
   }
   switch (unit.behavioralTrait) {
@@ -150,13 +163,24 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
     case 'Clutch':
       // Pass 9 m4 — Last Stand removed (replaced by Trade Window); Clutch
       // trait reverts to its base lastAlive bonus.
-      // Pass A4 — Clutch attribute scales the magnitude on top of the trait
-      // flat: high-Clutch trait holders are extra-dangerous when alone, low
-      // ones underperform their own trait.
+      // Pass H1 — Composure attribute (was Clutch attribute) scales the
+      // magnitude on top of the trait flat: high-Composure trait holders are
+      // extra-dangerous when alone, low ones underperform their own trait.
       if (ctx.lastAlive) {
         pp += TRAITS.clutch.hitPp
-            + (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withTraitMultiplier;
+            + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
       }
+      break;
+    // H2 expansion — Roamer / Hot Head are pure-stat traits (their entire
+    // effect lives in TRAITS_BY_ID.attrBonuses). No combat hook needed.
+    default: break;
+  }
+  // H2 expansion — personality trait combat hooks (only Patient is
+  // round-time-conditional; Big Brain / Ego / Composed / Leader / Lone Wolf /
+  // Paranoid / Old Pro are pure-stat traits via attrBonuses).
+  switch (unit.personalityTrait) {
+    case 'Patient':
+      if (ctx.ticksIntoRound > TRAITS.patient.afterTick) pp += TRAITS.patient.hitPp;
       break;
     default: break;
   }
@@ -175,10 +199,10 @@ function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
       break;
     case 'Clutch':
       // Pass 9 m4 — Last Stand removed; Clutch trait reverts to base.
-      // Pass A4 — attribute scales the trait HS bonus, same shape as HR.
+      // Pass H1 — Composure attribute scales the trait HS bonus, same shape as HR.
       if (ctx.lastAlive) {
         pp += TRAITS.clutch.hsPp
-            + (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withTraitMultiplier;
+            + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
       }
       break;
     default: break;
@@ -260,15 +284,15 @@ function modifierHitPp(unit: Unit, ctx: ShotContext): number {
   // alive takes a *penalty*; a high-Clutch one gets a small bonus. Trait
   // holders pick up their own attribute-scaled bonus in traitHitPp.
   if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
-    pp += (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withoutTraitMultiplier;
+    pp += (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withoutTraitMultiplier;
   }
   return pp;
 }
 
 function modifierHeadshotPp(unit: Unit, ctx: ShotContext): number {
-  // Pass A4 — same shape on the HS side; flat clutchDefault.hsPp removed.
+  // Pass H1 — same shape on the HS side; reads Composure (was Clutch attr).
   if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
-    return (unit.attributes.clutch - 50) * ATTRIBUTES.formulas.clutch.withoutTraitMultiplier;
+    return (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withoutTraitMultiplier;
   }
   return 0;
 }
@@ -277,32 +301,23 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-// Per-weapon handling sub-rating selector (Pass A3). The current loadout picks
-// which of the three attributes contributes — a unit with high rifleHandling
-// but low sniperHandling performs very differently depending on what they
-// have equipped, which is the point of splitting the old flat modifier.
-function weaponHandlingRating(unit: Unit): number {
-  switch (unit.weapon) {
-    case 'rifle':   return unit.attributes.rifleHandling;
-    case 'shotgun': return unit.attributes.shotgunHandling;
-    case 'sniper':  return unit.attributes.sniperHandling;
-  }
-}
-
 // Pass A2 — per-unit attribute contribution to the hit roll. Continuous-rating
 // counterpart to the categorical trait/role bonuses; sits in the same
-// effective-stat seam. v0 wires in Aim (A2) and per-weapon handling (A3);
-// future attributes (Headshot, Reflexes, etc.) plug in alongside as A2+
-// progresses.
+// effective-stat seam.
+// Pass H1 — replaces the three per-weapon handling sub-attributes
+// (rifle/shotgun/sniperHandling) with a single weaponAffinity sub-attribute
+// that reads against whatever weapon the unit currently holds. A unit's
+// affinity carries across loadout swaps; per-weapon specialization is now
+// expressed via traits (e.g. Headhunter is rifle-only).
 function attributeHitPp(unit: Unit): number {
   // Aim: (rating - 50) × multiplier pp. Neutral at 50, ±8pp at the
   // generation tails (10, 90) with the default 0.2 multiplier.
   const aim = (unit.attributes.aim - 50) * ATTRIBUTES.formulas.aim.multiplier;
-  // Per-weapon handling (Pass A3): same (rating - 50) × multiplier shape, but
-  // reads the sub-rating matching the unit's current weapon. ±4pp at the
-  // tails with the default 0.1 multiplier.
-  const handling = (weaponHandlingRating(unit) - 50)
-                 * ATTRIBUTES.formulas.weaponHandling.multiplier;
+  // Weapon Affinity (Pass H1): same shape as Aim but with a smaller weight
+  // (default 0.1 multiplier → ±4pp at the tails). The contribution is
+  // weapon-agnostic; the unit either has a feel for their gear or doesn't.
+  const handling = (unit.attributes.weaponAffinity - 50)
+                 * ATTRIBUTES.formulas.weaponAffinity.multiplier;
   return aim + handling;
 }
 

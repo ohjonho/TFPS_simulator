@@ -189,6 +189,8 @@ export const HIT_CLAMP = { minPct: 5, maxPct: 95 } as const;
 // --- Pass 6: traits / roles / modifiers (spec §12–13) --------------------
 // Trait hit/headshot bonuses in percentage points. Conditions are evaluated in
 // combat.ts against the per-shot context.
+// (Combat-condition values — Pass 6 originals. Pass H2 added the TRAITS_BY_ID
+// metadata registry below for sub-attr bonuses + strategy unlocks.)
 export const TRAITS = {
   sharpAimHitPp: 10,
   headhunterHsPp: 10,
@@ -199,7 +201,137 @@ export const TRAITS = {
   entry: { hitPp: 20, hsPp: 15, postPenaltyHitPp: -10, windowTicks: 3 },
   trader: { hitPp: 15, windowTicks: 3 },
   clutch: { hitPp: 20, hsPp: 15 },
+  // H2 expansion — combat hooks for the new traits with conditional bonuses.
+  // Pure-stat traits (Roamer, Hot Head, Paranoid, Old Pro) have no entry here
+  // since their entire effect is the sub-attribute bonus in TRAITS_BY_ID.
+  // Spray Down keys off engagementTicks (after Entry's 3-tick window closes)
+  // — it's the opposite-half of First Shot / Entry's early-engagement bonus.
+  sprayDown: { hitPp: 15, afterTicks: 3 },               // post-first-3-engagement-ticks HR retention
+  deadeyeLongHitPp: 15,                                  // +HR at the 'long' range band
+  closeQuartersShortHitPp: 15,                           // +HR at the 'short' range band
+  patient: { hitPp: 15, afterTick: 30 },                 // late-round HR bonus (Patient personality)
 } as const;
+
+// Pass H2 — trait metadata registry. Every trait id maps to its category,
+// rarity tier, sub-attribute bonus deltas, and a forward-data list of
+// strategy ids it unlocks (H3 builds those strategies).
+//
+// Strategy unlock ids referenced here: Anchor_Hold / Mobile_Push /
+// Patient_Flank / Coordinated_Execute / Crossfire_Lockdown /
+// Last_Stand_Defense / Mind_Games / Solo_Frag / Hold_Composure /
+// Coordinated_Lockdown / Scatter_Push / Rotate_Stack / Aggressive_Peek /
+// Wide_Watch / Slow_Burn. Unknown ids are silently skipped by
+// availableStrategies(), keeping the system forward-compatible.
+//
+// 3 trait pools (skill / behavioral / personality), each unit picks one
+// trait per pool via rollUnitMeta. Pool sizes after H2 expansion:
+// Skill 7 / Behavioral 8 / Personality 8 = 23 trait defs total. With 6
+// drafted units × 3 traits = 18 trait picks per match (heavily deduped on
+// small rosters).
+//
+// `tier` — 'starter' / 'earned' / 'event'. v0 sim treats all uniformly;
+// v1's progression layer reads this to gate scouting + XP-earned trait
+// unlocks (e.g. fresh recruits roll only starters; earned + event come
+// from training / in-match triggers).
+export const TRAITS_BY_ID: Record<string, {
+  category: 'skill' | 'behavioral' | 'personality';
+  tier: 'starter' | 'earned' | 'event';
+  attrBonuses: Record<string, number>;
+  unlocks: readonly string[];
+  description: string;
+}> = {
+  // --- Skill (mechanical) — pure stat, no strategy unlocks ---
+  'Sharp Aim':      { category: 'skill', tier: 'starter',
+    attrBonuses: { aim: 15 }, unlocks: [],
+    description: 'Wide HR bonus across all weapons.' },
+  'Headhunter':     { category: 'skill', tier: 'starter',
+    attrBonuses: { headshot: 15 }, unlocks: [],
+    description: 'Extra HS chance on every hit (rifle-only combat bonus).' },
+  'Eagle Eye':      { category: 'skill', tier: 'earned',
+    attrBonuses: { vision: 10 }, unlocks: [],
+    description: 'Wider vision cone; spots threats earlier.' },
+  'First Shot':     { category: 'skill', tier: 'starter',
+    attrBonuses: { reflexes: 10 }, unlocks: [],
+    description: 'First shot of any engagement gets a big HR bump.' },
+  'Spray Down':     { category: 'skill', tier: 'earned',
+    attrBonuses: { reflexes: 10 }, unlocks: [],
+    description: 'Post-first-3-shots HR bonus; complements First Shot.' },
+  'Deadeye':        { category: 'skill', tier: 'earned',
+    attrBonuses: { aim: 10 }, unlocks: [],
+    description: 'Long-range HR specialist (+HR at long band).' },
+  'Close Quarters': { category: 'skill', tier: 'earned',
+    attrBonuses: { weaponAffinity: 10 }, unlocks: [],
+    description: 'Short-range HR specialist (+HR at short band).' },
+
+  // --- Behavioral — engagement style; each unlocks one strategy variant ---
+  'Sentinel':   { category: 'behavioral', tier: 'starter',
+    attrBonuses: { tenacity: 10, composure: 5 }, unlocks: ['Anchor_Hold'],
+    description: 'Stationary hold; +HR after 3 ticks of stillness.' },
+  'Run-n-Gun':  { category: 'behavioral', tier: 'starter',
+    attrBonuses: { weaponAffinity: 10, reflexes: 5 }, unlocks: ['Mobile_Push'],
+    description: 'No retreat; faster move; HR bonus while moving.' },
+  'Lurker':     { category: 'behavioral', tier: 'starter',
+    attrBonuses: { mapIQ: 10, composure: 5 }, unlocks: ['Patient_Flank'],
+    description: 'Hugs walls + map edges; bonus when wall-adjacent.' },
+  'Entry':      { category: 'behavioral', tier: 'starter',
+    attrBonuses: { aim: 10, composure: -5 }, unlocks: ['Coordinated_Execute'],
+    description: 'First-3-ticks engagement bonus; small penalty after.' },
+  'Trader':     { category: 'behavioral', tier: 'starter',
+    attrBonuses: { comms: 10, aim: 5 }, unlocks: ['Crossfire_Lockdown'],
+    description: 'HR bonus when an ally has fired in the last 3 ticks.' },
+  'Clutch':     { category: 'behavioral', tier: 'earned',
+    attrBonuses: { composure: 15 }, unlocks: ['Last_Stand_Defense'],
+    description: 'Big HR/HS bonus when last alive on the team.' },
+  'Roamer':     { category: 'behavioral', tier: 'starter',
+    attrBonuses: { reflexes: 10, mapIQ: 10, tenacity: -10 },
+    unlocks: ['Rotate_Stack'],
+    description: 'Mobile defender; rotates between angles instead of holding.' },
+  'Hot Head':   { category: 'behavioral', tier: 'starter',
+    attrBonuses: { aim: 15, tenacity: -15 }, unlocks: ['Aggressive_Peek'],
+    description: 'Engages on sight; ignores hold orders.' },
+
+  // --- Personality (mental + social) — risky / tricky / veteran flavors ---
+  'Big Brain':  { category: 'personality', tier: 'earned',
+    attrBonuses: { mapIQ: 10, tenacity: 10, adaptability: 5 }, unlocks: ['Mind_Games'],
+    description: 'Sets up fakes / feints; reads enemy rotations.' },
+  'Ego':        { category: 'personality', tier: 'event',
+    attrBonuses: { aim: 15, tenacity: -15 }, unlocks: ['Solo_Frag'],
+    description: 'High Aim, low compliance — freelances even off-plan.' },
+  'Composed':   { category: 'personality', tier: 'starter',
+    attrBonuses: { composure: 15 }, unlocks: ['Hold_Composure'],
+    description: 'Performance under fire stays consistent.' },
+  'Leader':     { category: 'personality', tier: 'earned',
+    attrBonuses: { comms: 20, tenacity: 5 }, unlocks: ['Coordinated_Lockdown'],
+    description: 'Buffs ally aura radius + magnitude (wires fully in H3).' },
+  'Lone Wolf':  { category: 'personality', tier: 'event',
+    attrBonuses: { aim: 10, comms: -10 }, unlocks: ['Scatter_Push'],
+    description: 'Solo plays; weak ally synergy but high individual ceiling.' },
+  'Paranoid':   { category: 'personality', tier: 'starter',
+    attrBonuses: { vision: 10, reflexes: 5, tenacity: -10 }, unlocks: ['Wide_Watch'],
+    description: 'Over-rotates, sees ghosts; wide cone coverage, low patience.' },
+  'Patient':    { category: 'personality', tier: 'earned',
+    attrBonuses: { composure: 10, mapIQ: 5 }, unlocks: ['Slow_Burn'],
+    description: 'Rewards long rounds; +HR after tick 30.' },
+  'Old Pro':    { category: 'personality', tier: 'event',
+    attrBonuses: { aim: 5, composure: 5, mapIQ: 5, tenacity: 5 }, unlocks: [],
+    description: 'Veteran feel; small bonus to multiple sub-attributes.' },
+} as const;
+
+// Pass H2 — trait pools by category. rollUnitMeta picks one from each pool
+// per unit. v0 sim picks uniformly across tiers; v1 progression can filter
+// to starters-only for fresh scouts and surface earned/event via XP.
+export const SKILL_TRAIT_IDS = [
+  'Sharp Aim', 'Headhunter', 'Eagle Eye', 'First Shot',
+  'Spray Down', 'Deadeye', 'Close Quarters',
+] as const;
+export const BEHAVIORAL_TRAIT_IDS = [
+  'Sentinel', 'Run-n-Gun', 'Lurker', 'Entry', 'Trader', 'Clutch',
+  'Roamer', 'Hot Head',
+] as const;
+export const PERSONALITY_TRAIT_IDS = [
+  'Big Brain', 'Ego', 'Composed', 'Leader', 'Lone Wolf',
+  'Paranoid', 'Patient', 'Old Pro',
+] as const;
 
 // Per-role base aggression rating (0–100), spec §13.1.
 export const ROLE_AGGRESSION = {
@@ -219,9 +351,10 @@ export const MODIFIERS = {
   offPositionHitPp: -10,
 } as const;
 
-// --- Pass A1: per-unit attributes (docs/attributes-design.md §6.7) -------
-// All numbers tunable. Pass A1 only consumes `generation`; combat/vision
-// formulas come online in A2-A4; performance-stats config in A5.
+// --- Pass H1: per-unit attributes -----------------------------------------
+// 10 hidden sub-attributes feed combat / vision math directly. 5 visible
+// aggregates surface in the UI via the weighted-sum `aggregation` table.
+// All numbers tunable from this one place.
 export const ATTRIBUTES = {
   generation: {
     // 'flat': every attribute = 50 (deterministic, removes attribute RNG as
@@ -229,9 +362,6 @@ export const ATTRIBUTES = {
     // 'normal': truncated-normal sample, the design-doc default — used for
     //   variety once the rest of the sim is balanced.
     // 'uniform': uniform in [min, max].
-    // v1 plan: per-unit base attributes will live on the roster (35-45 range
-    //   for rookies with a standout, training raises individuals into the
-    //   60s-80s over time). Generation here will then only fill missing slots.
     distribution: 'flat' as 'flat' | 'normal' | 'uniform',
     mean: 50,
     stdDev: 12,
@@ -239,34 +369,43 @@ export const ATTRIBUTES = {
     max: 90,
   },
   formulas: {
-    aim: { multiplier: 0.2 },                                   // pp per (rating-50); A2
-    weaponHandling: { multiplier: 0.1 },                        // pp per (rating-50); A3
-    awareness: {
-      coneMultiplier: 0.4,                                      // deg per (rating-50); A4
+    aim: { multiplier: 0.2 },                                   // pp per (rating-50); contributes to HR
+    weaponAffinity: { multiplier: 0.1 },                        // pp per (rating-50); H1 — replaces per-weapon handling
+    vision: {                                                   // H1 (was awareness)
+      coneMultiplier: 0.4,                                      // deg per (rating-50); cone widens with vision
       coneCap: 20,                                              // ±deg cap
       ghostHighThreshold: 70,                                   // +1 ghost tick above
       ghostLowThreshold: 30,                                    // -1 ghost tick below
     },
-    clutch: {
-      withTraitMultiplier: 0.15,                                // stacks on Clutch trait; A4
-      withoutTraitMultiplier: 0.15,                             // default last-alive bonus; A4
+    composure: {                                                // H1 — absorbs old `clutch` formula
+      withTraitMultiplier: 0.15,                                // stacks on Clutch trait
+      withoutTraitMultiplier: 0.15,                             // default last-alive bonus
     },
-    // F2 — Headshot attribute: linear pp contribution to headshotPct on every
-    // hit. Neutral at 50, ±8pp at the [10, 90] generation tails.
-    headshot: { multiplier: 0.2 },
-    // F2 — Reflexes attribute: scales the First Shot trait magnitude (and
-    // the firstShot card-derived bonuses) by a multiplicative factor. At
-    // rating 50: 1.0× (no change). At 90: 1.4× (~+8pp on top of trait's
-    // 20pp = +28pp total). At 10: 0.6× (12pp). The Aim/handling additive
-    // shape doesn't fit here because First Shot is already gated to "first
-    // shot of an engagement" — we're tuning the magnitude, not adding a
-    // separate slot.
-    reflexes: { firstShotMultiplier: 0.01 },                    // per (rating-50)
-    // F2 — Positioning attribute: expands the cover-seek search radius
-    // when settling into hold. Default radius 1 hex (current behavior);
-    // high-positioning (>= highThreshold) widens to 2; very low (<=
-    // lowThreshold) collapses to 0 (no shuffle, just hold where they are).
-    positioning: { highThreshold: 70, lowThreshold: 30 },
+    headshot: { multiplier: 0.2 },                              // pp per (rating-50); linear HS contribution
+    reflexes: { firstShotMultiplier: 0.01 },                    // per (rating-50); scales First Shot trait magnitude
+    mapIQ: { highThreshold: 70, lowThreshold: 30 },             // H1 — absorbs old `positioning`; widens cover-seek radius
+  },
+  // H1 — weighted aggregation of the 10 hidden subs into the 5 visible
+  // aggregates the UI displays. Per-visible weights must sum to 1.0 so the
+  // aggregate stays on the same 0-100 scale. The aggregation is for DISPLAY
+  // ONLY — combat / vision math reads sub-attributes directly so per-shot
+  // precision is preserved.
+  aggregation: {
+    mechanics: {
+      aim: 0.30, headshot: 0.20, reflexes: 0.20, weaponAffinity: 0.30,
+    },
+    gameSense: {
+      vision: 0.55, mapIQ: 0.45,
+    },
+    discipline: {
+      tenacity: 1.0,
+    },
+    improvisation: {
+      composure: 0.55, adaptability: 0.45,
+    },
+    leadership: {
+      comms: 1.0,
+    },
   },
   performanceStats: {
     acs: {

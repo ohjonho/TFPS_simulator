@@ -8,24 +8,50 @@
 // consumes 6 of them (Aim, Rifle/Shotgun/Sniper Handling, Awareness, Clutch);
 // the others are generated, displayed in the UI, and inert until v1.
 
-import type { Attributes, BehavioralTrait, Hero, Role, SkillTrait, Unit, Weapon } from './types.ts';
+import type {
+  Attributes, BehavioralTrait, Hero, PersonalityTrait, Role, SkillTrait, Unit,
+  VisibleAttributes, Weapon,
+} from './types.ts';
 import type { Rng } from './rng.ts';
-import { ATTRIBUTES, LOADOUT_POOL, ROLE_AGGRESSION } from './config.ts';
+import {
+  ATTRIBUTES, BEHAVIORAL_TRAIT_IDS, LOADOUT_POOL,
+  PERSONALITY_TRAIT_IDS, ROLE_AGGRESSION, SKILL_TRAIT_IDS, TRAITS_BY_ID,
+} from './config.ts';
 
-const SKILL_TRAITS: readonly SkillTrait[] = ['Sharp Aim', 'Headhunter', 'Eagle Eye', 'First Shot'];
-const BEHAVIORAL_TRAITS: readonly BehavioralTrait[] = [
-  'Sentinel', 'Run-n-Gun', 'Lurker', 'Entry', 'Trader', 'Clutch',
-];
+const SKILL_TRAITS: readonly SkillTrait[] = SKILL_TRAIT_IDS as readonly SkillTrait[];
+const BEHAVIORAL_TRAITS: readonly BehavioralTrait[] = BEHAVIORAL_TRAIT_IDS as readonly BehavioralTrait[];
+const PERSONALITY_TRAITS: readonly PersonalityTrait[] = PERSONALITY_TRAIT_IDS as readonly PersonalityTrait[];
 const ROLES: readonly Role[] = ['Vanguard', 'Tactician', 'Warden', 'Specialist'];
 const HEROES: readonly Hero[] = ['Angelic', 'Techy', 'Cursed'];
 
+// Pass H2 — clamp a number to [0, 100] for attribute deltas.
+function clamp100(v: number): number {
+  return Math.max(0, Math.min(100, v));
+}
+
+// Pass H2 — apply a trait's sub-attribute bonus deltas to a unit's
+// attributes record. Each trait's `attrBonuses` is a partial map keyed by
+// attribute name; we add the delta and clamp back into [0, 100] so a
+// stacked bonus never escapes the rating scale (e.g. Aim 90 + Sharp Aim
+// +15 = 100, not 105).
+function applyTraitBonuses(u: Unit, traitId: string | null): void {
+  if (!traitId) return;
+  const def = TRAITS_BY_ID[traitId];
+  if (!def) return;
+  const attrs = u.attributes as unknown as Record<string, number>;
+  for (const [key, delta] of Object.entries(def.attrBonuses)) {
+    if (typeof attrs[key] === 'number') {
+      attrs[key] = clamp100(attrs[key] + (delta as number));
+    }
+  }
+}
+
 export type AttributeOverride = Partial<
-  Pick<Unit, 'skillTrait' | 'behavioralTrait' | 'role' | 'preferredRole' | 'hero'>
+  Pick<Unit, 'skillTrait' | 'behavioralTrait' | 'personalityTrait' | 'role' | 'preferredRole' | 'hero'>
 > & {
-  // Pass A1: pin individual attribute ratings for batch/A-B tests. Any key
-  // present here is honored literally; absent keys are random-generated.
-  // F2 — mapIQ is now a single number (was { foundry, atoll }); overrides
-  // accept a flat partial of all attribute keys.
+  // Pass A1 / H1 — pin individual attribute ratings for batch/A-B tests.
+  // Any key present here is honored literally (post-trait-bonus application);
+  // absent keys are random-generated then trait-modified.
   attributes?: Partial<Attributes>;
 };
 
@@ -58,26 +84,46 @@ function sampleAttribute(rng: Rng, rangeOverride?: { min: number; max: number })
 
 // Pure: returns a fresh Attributes record. Deterministic given the RNG.
 // Pass E m5 — accepts an optional `rangeOverride` (e.g. [40, 60]) used by
-// Randomize Units mode to pin every attribute into a single uniform window.
-// F2 — mapIQ collapsed from { foundry, atoll } to a single rating.
+// Randomize / Draft mode to pin every attribute into a single uniform window.
+// Pass H1 — 14 attributes collapsed to 10 hidden subs; the player UI shows
+// 5 aggregates instead. Draw order is fixed so determinism holds.
 export function generateAttributes(rng: Rng, rangeOverride?: { min: number; max: number }): Attributes {
   return {
-    aim:             sampleAttribute(rng, rangeOverride),
-    headshot:        sampleAttribute(rng, rangeOverride),
-    reflexes:        sampleAttribute(rng, rangeOverride),
-    sprayControl:    sampleAttribute(rng, rangeOverride),
-    rifleHandling:   sampleAttribute(rng, rangeOverride),
-    shotgunHandling: sampleAttribute(rng, rangeOverride),
-    sniperHandling:  sampleAttribute(rng, rangeOverride),
-    awareness:       sampleAttribute(rng, rangeOverride),
-    positioning:     sampleAttribute(rng, rangeOverride),
-    mapIQ:           sampleAttribute(rng, rangeOverride),
-    clutch:          sampleAttribute(rng, rangeOverride),
-    composure:       sampleAttribute(rng, rangeOverride),
-    confidence:      sampleAttribute(rng, rangeOverride),
-    teamwork:        sampleAttribute(rng, rangeOverride),
-    discipline:      sampleAttribute(rng, rangeOverride),
-    communication:   sampleAttribute(rng, rangeOverride),
+    // Mechanics block (4 subs)
+    aim:            sampleAttribute(rng, rangeOverride),
+    headshot:       sampleAttribute(rng, rangeOverride),
+    reflexes:       sampleAttribute(rng, rangeOverride),
+    weaponAffinity: sampleAttribute(rng, rangeOverride),
+    // Game Sense block (2 subs)
+    vision:         sampleAttribute(rng, rangeOverride),
+    mapIQ:          sampleAttribute(rng, rangeOverride),
+    // Discipline block (1 sub; visible aggregate is 1:1)
+    tenacity:       sampleAttribute(rng, rangeOverride),
+    // Improvisation block (2 subs)
+    composure:      sampleAttribute(rng, rangeOverride),
+    adaptability:   sampleAttribute(rng, rangeOverride),
+    // Leadership block (1 sub; visible aggregate is 1:1)
+    comms:          sampleAttribute(rng, rangeOverride),
+  };
+}
+
+// Pass H1 — display-only aggregation. Combat / vision read raw sub-attrs;
+// only the UI calls this. Pure function of (attrs, weights).
+export function aggregateVisible(attrs: Attributes): VisibleAttributes {
+  const w = ATTRIBUTES.aggregation;
+  const sum = (entries: Record<string, number>): number => {
+    let acc = 0;
+    for (const [key, weight] of Object.entries(entries)) {
+      acc += (attrs as unknown as Record<string, number>)[key] * weight;
+    }
+    return Math.round(acc);
+  };
+  return {
+    mechanics:     sum(w.mechanics),
+    gameSense:     sum(w.gameSense),
+    discipline:    sum(w.discipline),
+    improvisation: sum(w.improvisation),
+    leadership:    sum(w.leadership),
   };
 }
 
@@ -103,6 +149,10 @@ export function pickRandomLoadout(rng: Rng, n: number): Weapon[] {
 // (draft.generatePool) can populate freshly-built pool units with the same
 // trait/role/hero/modifiers + attribute logic. Pure: mutates `u` in place.
 // Returns nothing.
+// Pass H2 — adds a third trait (personality) per unit, and applies each
+// trait's sub-attribute bonus deltas on top of the random attribute roll.
+// Bonuses are clamped to [0, 100]; explicit override attribute values still
+// trump (applied LAST in the merge below).
 export function rollUnitMeta(
   u: Unit,
   rng: Rng,
@@ -116,6 +166,13 @@ export function rollUnitMeta(
   u.behavioralTrait = 'behavioralTrait' in override
     ? override.behavioralTrait!
     : rng.pick(BEHAVIORAL_TRAITS);
+  // Pass H2 — personality (mental + social) trait. Inert combat-wise in H2
+  // but its attrBonuses apply now + its `unlocks` list expands the team's
+  // strategy menu in H3.
+  u.personalityTrait = 'personalityTrait' in override
+    ? override.personalityTrait!
+    : rng.pick(PERSONALITY_TRAITS);
+
   // Default: assigned role == preferred role (no off-position in normal play;
   // off-position is set when a player assigns an off-role — Pass 7 — or via
   // an explicit override here).
@@ -131,13 +188,22 @@ export function rollUnitMeta(
     retreatThresholdMod: 0,
   };
 
-  // Pass A1: roll the full 14-attribute record. Order of RNG draws is fixed
-  // by generateAttributes() so determinism holds across A2+ even after
-  // partial-override merges.
-  // Pass E m5: rangeOverride flattens generation to a uniform window.
+  // Pass A1 / H1 — roll the 10 sub-attributes. Pass E m5: rangeOverride
+  // flattens generation to a uniform window for randomize/draft modes.
   const generated = generateAttributes(rng, rangeOverride);
+  u.attributes = { ...generated };
+
+  // Pass H2 — apply trait sub-attribute bonuses on top of the random roll.
+  // Order: skill → behavioral → personality (stacks compose). Each clamps
+  // to [0, 100] so a stacked bonus can never escape the rating scale.
+  applyTraitBonuses(u, u.skillTrait);
+  applyTraitBonuses(u, u.behavioralTrait);
+  applyTraitBonuses(u, u.personalityTrait);
+
+  // Explicit attribute overrides land LAST so A/B tests can pin a final
+  // value regardless of trait bonus interactions.
   const ao = override.attributes;
-  u.attributes = ao ? { ...generated, ...ao } : generated;
+  if (ao) u.attributes = { ...u.attributes, ...ao };
 }
 
 // Assign attributes to every unit. `overrides` (keyed by unit id) lets callers

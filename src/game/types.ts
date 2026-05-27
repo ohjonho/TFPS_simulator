@@ -47,47 +47,114 @@ export type Buff = {
 };
 
 // Trait unions (spec §12), role (§10), hero (§11).
-export type SkillTrait = 'Sharp Aim' | 'Headhunter' | 'Eagle Eye' | 'First Shot';
+// Pass H2 — added the Personality category (Mental + Social fused into one
+// pool). Each unit now carries one trait per category (skill / behavioral /
+// personality), up from 2-per-unit. Each trait can declare a `unlocks`
+// list of strategy ids that H3 surfaces on the strategy menu.
+export type SkillTrait =
+  | 'Sharp Aim'
+  | 'Headhunter'
+  | 'Eagle Eye'
+  | 'First Shot'
+  // H2 expansion — combat-flavored specialists
+  | 'Spray Down'      // post-first-3-shots HR bonus (opposite of First Shot)
+  | 'Deadeye'         // long-range HR specialist
+  | 'Close Quarters'; // short-range HR specialist
 export type BehavioralTrait =
   | 'Sentinel'
   | 'Run-n-Gun'
   | 'Lurker'
   | 'Entry'
   | 'Trader'
-  | 'Clutch';
+  | 'Clutch'
+  // H2 expansion — engagement-style flavors
+  | 'Roamer'          // mobile defender (rotates, doesn't hold one angle)
+  | 'Hot Head';       // first to engage, low Discipline / Tenacity
+export type PersonalityTrait =
+  | 'Big Brain'   // mental — analytical, reads the map
+  | 'Ego'         // mental — high-confidence freelancer
+  | 'Composed'    // mental — steady under pressure
+  | 'Leader'      // social — coordinates + buffs allies
+  | 'Lone Wolf'   // social — works alone, weak comms
+  // H2 expansion — round-pressure / vigilance / veteran flavors
+  | 'Paranoid'    // mental — over-rotates, sees ghosts
+  | 'Patient'     // mental — late-round HR bonus
+  | 'Old Pro';    // veteran — small all-around boost; v1 "earned via XP"
+export type TraitId = SkillTrait | BehavioralTrait | PersonalityTrait;
+
+// Pass H2 — generic trait shape. Each trait declares sub-attribute deltas
+// (consumed by rollUnitMeta) and an unlocks list (consumed by traits.ts'
+// availableStrategies to expand the strategy menu beyond the baseline 3).
+// `category` lets the UI group traits in the panel; H3 may also read it
+// for compliance-roll modifiers (e.g. Ego personality lowers Discipline
+// adherence).
+// H2 — trait rarity tier. v0 sim treats all tiers as uniform-pickable from
+// the trait pool; v1's progression layer reads this to gate scouting +
+// match-XP-earned trait unlocks (starters appear on scouted units; earned
+// traits require XP / training; event traits require specific in-match
+// triggers like ace-1v3-survival).
+export type TraitTier = 'starter' | 'earned' | 'event';
+
+export type TraitDef = {
+  id: TraitId;
+  category: 'skill' | 'behavioral' | 'personality';
+  tier: TraitTier;
+  attrBonuses: Partial<Attributes>;
+  unlocks: string[];                // strategy ids; forward-ref'd from H3
+  description: string;
+};
+
 export type Role = 'Vanguard' | 'Tactician' | 'Warden' | 'Specialist';
 export type Hero = 'Angelic' | 'Techy' | 'Cursed';
 
-// --- Pass A1: per-unit attributes (0-100 ratings, 50 = baseline) ----------
-// Full 14-attribute schema from docs/attributes-design.md §6.4. In Pass A1
-// all 14 are generated and stored, but only the v0 subset (aim, the three
-// weapon-handling sub-ratings, awareness, clutch) will be read by combat/
-// vision in later sub-passes (A2-A4). The remaining 8 are inert until v1.
+// --- Pass H1: per-unit attributes (0-100 ratings, 50 = baseline) ----------
+// 10 hidden sub-attributes that combat / vision math reads directly. The UI
+// surfaces 5 aggregate visible attributes (see `VisibleAttributes` +
+// `aggregateVisible` in attributes.ts) so the manager-game player isn't
+// looking at a 14-row spreadsheet. Each sub maps cleanly into one visible
+// via the weighted `ATTRIBUTES.aggregation` table in config.
 export type Attributes = {
-  // Mechanical
-  aim: number;              // v0 (A2)
-  headshot: number;         // v0 (F2 — wired into HS roll)
-  reflexes: number;         // v0 (F2 — scales First Shot trait magnitude)
-  sprayControl: number;     // v1+
-  rifleHandling: number;    // v0 (A3)
-  shotgunHandling: number;  // v0 (A3)
-  sniperHandling: number;   // v0 (A3)
-  // Game Sense
-  awareness: number;        // v0 (A4)
-  positioning: number;      // v0 (F2 — widens cover-seek search radius)
-  // F2 — consolidated from { foundry, atoll }. The previous split was
-  // anticipated for v1 per-map familiarity training; collapsing it
-  // simplifies the UI for v0 playtest and matches "Map IQ" as a single
-  // attribute that broadly captures map awareness. v1 can split back.
-  mapIQ: number;            // v1
-  // Mental
-  clutch: number;           // v0 (A4)
-  composure: number;        // v1
-  confidence: number;       // v1
-  // Team
-  teamwork: number;         // v1
-  discipline: number;       // v1
-  communication: number;    // v1
+  // --- Mechanics (visible aggregate) ---
+  aim: number;              // HR pp contribution (Pass A2)
+  headshot: number;         // HS roll pp (F2)
+  reflexes: number;         // scales First Shot trait magnitude (F2)
+  weaponAffinity: number;   // H1 — single per-unit modifier; replaces
+                            // rifleHandling/shotgunHandling/sniperHandling.
+                            // Reads against whatever weapon the unit holds.
+  // --- Game Sense (visible aggregate) ---
+  vision: number;           // cone width + tracking acquisition (was awareness)
+  mapIQ: number;            // path quality + cover-seek radius (absorbs old
+                            // positioning attribute).
+  // --- Discipline (visible aggregate, 1:1 with this sub) ---
+  tenacity: number;         // H1 — generated, INERT until H3 (gates the
+                            // per-tick compliance roll once strategies have
+                            // complianceThreshold).
+  // --- Improvisation (visible aggregate) ---
+  composure: number;        // post-damage / last-alive HR retention; absorbs
+                            // old clutch + composure (was duplicative).
+  adaptability: number;     // H1 — generated, INERT until H3 (quality of
+                            // fallback-tree decision when compliance fails).
+  // --- Leadership (visible aggregate, 1:1 with this sub) ---
+  comms: number;            // H1 — generated, INERT until H3 (aura radius +
+                            // ally buff magnitude; replaces teamwork +
+                            // communication).
+  // Cut from the pre-H1 schema: sprayControl (inert), confidence (≈ composure),
+  // positioning (folded into mapIQ), discipline-as-sub (becomes the visible
+  // primary, derived from tenacity), teamwork + communication (→ comms),
+  // rifle/shotgun/sniperHandling (→ weaponAffinity), clutch (→ composure).
+};
+
+// Pass H1 — the 5 visible aggregate attributes the player sees in the UI.
+// Computed from the 10 hidden subs via the weighted-sum table in
+// config.ATTRIBUTES.aggregation; consumed by attributesPanel and the
+// draft pool cards. Combat / vision math never reads these — they read the
+// hidden subs directly so the formulas stay precise.
+export type VisibleAttributes = {
+  mechanics: number;     // aim + headshot + reflexes + weaponAffinity
+  gameSense: number;     // vision + mapIQ
+  discipline: number;    // tenacity (1:1)
+  improvisation: number; // composure + adaptability
+  leadership: number;    // comms (1:1)
 };
 
 export type Unit = {
@@ -104,6 +171,10 @@ export type Unit = {
   // Attributes assigned at match start (Pass 6).
   skillTrait: SkillTrait | null;
   behavioralTrait: BehavioralTrait | null;
+  // Pass H2 — third trait dimension (mental + social fused). Each unit
+  // contributes its three traits' `unlocks` lists to the team's available
+  // strategies; cumulative composition decides the strategy menu (H3).
+  personalityTrait: PersonalityTrait | null;
   role: Role;
   preferredRole: Role;
   hero: Hero;

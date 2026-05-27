@@ -170,12 +170,15 @@ export function cardFromSource(source: CardSource): CardDef | null {
 }
 
 // Strongly-typed helpers (for callers that already have the narrower type).
-export function cardFromTrait(trait: BehavioralTrait): CardDef {
-  return BY_SOURCE[trait]; // present for every behavioral trait
+// Pass H2 — may return undefined for newly-added behavioral traits (Roamer,
+// Hot Head) that don't have card defs. Card system is being removed in H3;
+// callers (cards.buildDeck) defensively skip missing entries.
+export function cardFromTrait(trait: BehavioralTrait): CardDef | undefined {
+  return BY_SOURCE[trait];
 }
-export function cardFromRole(role: Role): CardDef {
+export function cardFromRole(role: Role): CardDef | undefined {
   return BY_SOURCE[role];
 }
-export function cardFromHero(hero: Hero): CardDef {
+export function cardFromHero(hero: Hero): CardDef | undefined {
   return BY_SOURCE[hero];
 }

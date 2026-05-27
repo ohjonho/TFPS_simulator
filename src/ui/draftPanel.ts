@@ -7,7 +7,7 @@
 
 import type { DraftState, GameState, Team, Unit } from '../game/types.ts';
 import { WEAPON_GLYPH } from '../game/config.ts';
-import { renderAttributesPanel } from './attributesPanel.ts';
+import { visibleAttributeBlockHtml } from './attributesPanel.ts';
 
 export type DraftPanelCallbacks = {
   onPick: (unitId: string) => void;
@@ -139,15 +139,12 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
   const cls = ['pool-card', picked ? 'picked' : 'available'].join(' ');
   const skill = u.skillTrait ?? '—';
   const beh = u.behavioralTrait ?? '—';
-  // Attribute bars: reuse the floating panel's renderer by injecting a
-  // throwaway host. Cheap; pool is 8 cards.
-  const attrHost = document.createElement('div');
-  attrHost.className = 'pool-attrs';
-  renderAttributesPanel(attrHost, u, false);
-  // attributesPanel writes a header + attributes section; we only want the
-  // attribute bars (the header redundantly says the pool unit's id). Strip
-  // the header by replacing it. Simplest: just take the attributes inner.
-  const inner = attrHost.querySelector('.attributes')?.innerHTML ?? '';
+  const personality = u.personalityTrait ?? '—';
+  // Attribute bars: Pass H1 — pool cards show the 5 visible aggregates only,
+  // matching the H1 thesis (manager sees the legible scout card, not the
+  // sub-attribute breakdown). The floating attributes panel still exposes
+  // the 10 hidden subs via its Details toggle.
+  const inner = visibleAttributeBlockHtml(u.attributes).replace(/^<div class="attributes visible-attrs">|<\/div>$/g, '');
   return `
     <div class="${cls}" data-unit-id="${u.id}">
       <div class="pool-card-head">
@@ -160,6 +157,7 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
       <div class="pool-card-traits">
         <span class="trait skill">${skill}</span>
         <span class="trait beh">${beh}</span>
+        <span class="trait personality">${personality}</span>
       </div>
       <div class="pool-card-attrs">${inner}</div>
     </div>
@@ -173,7 +171,7 @@ function rosterHtml(draft: DraftState, team: Team, _label: 'You' | 'Opp'): strin
       const u = draft.pool.find((x) => x.id === p.unitId);
       if (!u) return '';
       const glyph = WEAPON_GLYPH[u.weapon];
-      return `<li>${i + 1}. <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span> ${u.role} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'}</li>`;
+      return `<li>${i + 1}. <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span> ${u.role} · ${u.skillTrait ?? '—'}/${u.behavioralTrait ?? '—'}/${u.personalityTrait ?? '—'}</li>`;
     })
     .join('');
   return `<ul>${rows || '<li class="empty">—</li>'}</ul>`;

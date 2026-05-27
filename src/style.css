@@ -1289,3 +1289,52 @@ button.selected:not(:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --- Pass H1: attributes panel — visible 5 + sub-attr details ---------- */
+
+/* The 5 visible aggregate bars get a slightly heavier label + fill so they
+   read as the primary axis; sub-attributes (inside <details>) are smaller. */
+#attributes-panel .visible-attrs .attr-row {
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+#attributes-panel .visible-attrs .attr-label {
+  font-weight: 600;
+}
+#attributes-panel .visible-attrs .attr-fill {
+  height: 8px;
+}
+
+/* Sub-attribute details disclosure. */
+#attributes-panel .attr-details {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#attributes-panel .attr-details summary {
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+  user-select: none;
+}
+#attributes-panel .attr-details summary:hover {
+  color: var(--text);
+}
+#attributes-panel .sub-attrs .attr-row {
+  font-size: 10.5px;
+  margin-bottom: 2px;
+  opacity: 0.9;
+}
+
+/* Pool cards reuse `.visible-attrs` rendering — slightly tighter for the
+   draft grid context. */
+.pool-card .visible-attrs .attr-row {
+  font-size: 10px;
+  margin-bottom: 2px;
+}
+.pool-card .visible-attrs .attr-label {
+  font-weight: 600;
+}

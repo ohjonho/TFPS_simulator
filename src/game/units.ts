@@ -5,16 +5,15 @@ import type { Attributes, Facing, HexCoord, Team, Unit, Weapon } from './types.t
 import { LOADOUTS, UNIT_DEFAULTS } from './config.ts';
 
 // Neutral baseline used at construction; overwritten by assignAttributes at
-// match start. All 50s = zero effect once attributes are wired into combat
-// (Pass A2+), so a unit that somehow skips assignment behaves identically to
-// the pre-attribute baseline.
+// match start. All 50s = zero effect once attributes are wired into combat,
+// so a unit that somehow skips assignment behaves identically to the
+// pre-attribute baseline. Pass H1: 14 attributes → 10 hidden sub-attributes.
 const NEUTRAL_ATTRIBUTES: Attributes = {
-  aim: 50, headshot: 50, reflexes: 50, sprayControl: 50,
-  rifleHandling: 50, shotgunHandling: 50, sniperHandling: 50,
-  awareness: 50, positioning: 50,
-  mapIQ: 50,
-  clutch: 50, composure: 50, confidence: 50,
-  teamwork: 50, discipline: 50, communication: 50,
+  aim: 50, headshot: 50, reflexes: 50, weaponAffinity: 50,
+  vision: 50, mapIQ: 50,
+  tenacity: 50,
+  composure: 50, adaptability: 50,
+  comms: 50,
 };
 
 // Pointy-top facing index (canonical neighbor order): 0=E, 1=NE, 2=NW, 3=W,
@@ -55,6 +54,8 @@ export function createTeam(
     // placeholder defaults.
     skillTrait: null,
     behavioralTrait: null,
+    // Pass H2 — third trait dimension; assignAttributes/rollUnitMeta picks it.
+    personalityTrait: null,
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',

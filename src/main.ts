@@ -7,6 +7,8 @@ import type { GameState, HexCoord, MatchMode, PlayedCard, PlaybackSpeed, Role, T
 import { previewPlayerPlan } from './game/planningPreview.ts';
 import { cardById } from './game/cardData.ts';
 import { buildInitialState } from './game/state.ts';
+import { aggregateVisible } from './game/attributes.ts';
+import { availableStrategies, rosterUnlocks, unlockContributors } from './game/traits.ts';
 import { assignTarget } from './game/movement.ts';
 import { stepTick } from './game/tick.ts';
 import { computePerUnitDebug, computeVisibility } from './game/vision.ts';
@@ -685,6 +687,27 @@ if (import.meta.env.DEV) {
       setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, skillTrait: skill as Unit['skillTrait'] } : u)) }),
     setBehavioral: (id: string, t: string | null) =>
       setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, behavioralTrait: t as Unit['behavioralTrait'] } : u)) }),
+    // Pass H2 — personality trait + roster-unlock diagnostics.
+    setPersonality: (id: string, t: string | null) =>
+      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, personalityTrait: t as Unit['personalityTrait'] } : u)) }),
+    getRosterUnlocks: (team?: Team) => {
+      const t = team ?? state.playerTeam;
+      const units = state.units.filter((u) => u.team === t);
+      return [...rosterUnlocks(units)];
+    },
+    getUnlockContributors: (team?: Team) => {
+      const t = team ?? state.playerTeam;
+      const units = state.units.filter((u) => u.team === t);
+      return unlockContributors(units);
+    },
+    getAvailableStrategies: (team?: Team) => {
+      const t = team ?? state.playerTeam;
+      const units = state.units.filter((u) => u.team === t);
+      const side = state.teamSide[t];
+      return availableStrategies(units, side, state.map).map((s) => ({
+        id: s.id, name: s.name, description: s.description,
+      }));
+    },
     setRole: (id: string, role: keyof typeof ROLE_AGGRESSION) =>
       setState({
         ...state,
@@ -695,27 +718,34 @@ if (import.meta.env.DEV) {
         ),
       }),
     getAttributes: () =>
-      state.units.map((u) => {
-        // Pass A3 — `handling` now reads the per-weapon attribute matching
-        // the unit's current loadout (was a flat modifier pre-A3).
-        const handling =
-          u.weapon === 'rifle'   ? u.attributes.rifleHandling :
-          u.weapon === 'shotgun' ? u.attributes.shotgunHandling :
-                                   u.attributes.sniperHandling;
-        return {
-          id: u.id, team: u.team, weapon: u.weapon, role: u.role, preferredRole: u.preferredRole,
-          hero: u.hero, skill: u.skillTrait, behavioral: u.behavioralTrait,
-          aggression: u.modifiers.aggression, handling, offPos: u.modifiers.offPosition,
-        };
-      }),
-    // --- Pass A1: 14-attribute ratings (0-100) ---
-    // getRatings() returns every unit's full Attributes record; getRatings(id)
-    // returns one. Use for sim verification + headless A/B tests.
+      state.units.map((u) => ({
+        id: u.id, team: u.team, weapon: u.weapon, role: u.role, preferredRole: u.preferredRole,
+        hero: u.hero,
+        skill: u.skillTrait, behavioral: u.behavioralTrait,
+        // Pass H2 — third trait dimension.
+        personality: u.personalityTrait,
+        // Pass H1 — `handling` (legacy per-weapon view) is just weaponAffinity now;
+        // the per-weapon split collapsed into one sub-attribute.
+        aggression: u.modifiers.aggression,
+        handling: u.attributes.weaponAffinity,
+        offPos: u.modifiers.offPosition,
+      })),
+    // --- Pass A1 / H1: per-unit attribute ratings ---
+    // getRatings() returns the 10 hidden sub-attributes per unit; getRatings(id)
+    // returns one. getVisible(id?) returns the 5 visible aggregates instead.
+    // Used for sim verification + headless A/B tests.
     getRatings: (id?: string) => {
       if (id === undefined) {
         return Object.fromEntries(state.units.map((u) => [u.id, u.attributes]));
       }
       return state.units.find((u) => u.id === id)?.attributes ?? null;
+    },
+    getVisible: (id?: string) => {
+      if (id === undefined) {
+        return Object.fromEntries(state.units.map((u) => [u.id, aggregateVisible(u.attributes)]));
+      }
+      const u = state.units.find((unit) => unit.id === id);
+      return u ? aggregateVisible(u.attributes) : null;
     },
     // setRating(id, 'aim', 90) or setRating(id, 'mapIQ', 80). F2 — mapIQ
     // collapsed to a single number; pre-fix nested-key forms removed.
