@@ -25,6 +25,13 @@ export function renderSidePanel(
   state: GameState,
   cb: SidePanelCallbacks,
 ): void {
+  // Pass G — the right sidebar stays empty during the draft phase; the draft
+  // panel overlay covers the canvas area and surfaces its own roster preview.
+  if (state.phase === 'draft') {
+    host.innerHTML = '<h2>Draft</h2><p class="hint">Pool of 8 — pick 3 to build your team.</p>';
+    return;
+  }
+
   host.innerHTML =
     state.phase === 'planning'
       ? planningHtml(state)
@@ -82,12 +89,12 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   return `<div class="roster"><h3>${label} (${side})</h3><ul>${rows}</ul></div>`;
 }
 
-// Pass E m5 — discreet seed display + input + Regenerate, only visible in
-// Randomize Units mode. The text input is pre-filled with the current seed
+// Pass E m5 / Pass G — discreet seed display + input + Regenerate, only
+// visible in Draft mode. The text input is pre-filled with the current seed
 // so the player can copy/paste it; submitting (Enter or Regenerate) rebuilds
-// the match with that exact seed for reproducibility.
+// the match (and re-rolls the pool) with that exact seed for reproducibility.
 function seedRowHtml(state: GameState): string {
-  if (state.matchMode !== 'randomize') return '';
+  if (state.matchMode !== 'draft') return '';
   return `
     <div class="seed-row">
       <label>Seed:

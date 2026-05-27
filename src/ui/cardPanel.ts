@@ -30,6 +30,14 @@ export function renderCardPanel(
   state: GameState,
   cb: CardPanelCallbacks,
 ): void {
+  // Pass G — no card UI during the pre-match draft. The cards are dealt by
+  // buildStateFromUnits at finalizeDraft, so the hand only exists once we
+  // enter planning.
+  if (state.phase === 'draft') {
+    host.innerHTML = '';
+    return;
+  }
+
   if (state.phase === 'planning') {
     const playerSide = state.teamSide[state.playerTeam];
     host.innerHTML =

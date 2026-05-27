@@ -248,14 +248,31 @@ export type CardFlags = {
 
 // --- Match flow -------------------------------------------------------------
 
-export type Phase = 'planning' | 'resolution';
+// Pass G — `'draft'` is the pre-planning phase where player and AI take
+// turns picking from a generated 8-unit pool. Active only when matchMode
+// is 'draft' and only at match start (before round 1). Transitions to
+// 'planning' on `finalizeDraft`.
+export type Phase = 'planning' | 'resolution' | 'draft';
 
-// Pass E m5 — match generation mode. 'standard' = today's fixed loadouts +
-// flat-50 attributes (existing behavior; preserved as the v0 default).
-// 'randomize' = seeded random loadouts (at least one rifle per team) +
-// uniform-[40, 60] attributes + random traits/skills/role/hero. Exposed via
-// the top-bar toggle + a seed input in the planning panel.
-export type MatchMode = 'standard' | 'randomize';
+// Pass G — match generation mode (renamed from 'randomize' in Pass E m5).
+// 'standard' = fixed 2r+1s loadouts + flat-50 attributes (the v0 default).
+// 'draft'    = generate a shared 8-unit pool, player and AI snake-pick 3
+//              each (P-A-A-P-P-A). Drafted units get full random attributes
+//              ([40, 60] uniform) + random traits/skills/role/hero. Replaces
+//              the old 'randomize' mode — the auto-draft sub-toggle within
+//              the draft UI recovers the "just RNG it" feel.
+export type MatchMode = 'standard' | 'draft';
+
+// Pass G — pre-planning draft state. Present on GameState only while
+// phase === 'draft'; cleared on finalizeDraft. `pool` units carry pool-
+// scoped ids (P1..P8); finalizeDraft re-IDs picked units to D1/A1/...
+export type DraftState = {
+  pool: Unit[];                                              // 8 fully-generated units
+  pickOrder: Team[];                                         // length 6, e.g. [P,A,A,P,P,A] resolved to teams
+  picks: Array<{ pickerTeam: Team; unitId: string }>;        // appended on each commit
+  currentPickIdx: number;                                    // 0..6 (6 = ready to finalize)
+  autoMode: boolean;                                         // true → player picks auto-resolve via heuristic
+};
 
 export type PlaybackSpeed = 1 | 2 | 4;
 export type Playback = {
@@ -463,4 +480,7 @@ export type GameState = {
   // buildInitialState arg so the UI can show mode-relevant chrome (seed
   // input + Regenerate button) and __sim can introspect.
   matchMode: MatchMode;
+  // Pass G — draft state, present only while phase === 'draft'. Cleared on
+  // finalizeDraft. Optional so non-draft modes carry no extra payload.
+  draft?: DraftState;
 };

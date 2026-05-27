@@ -43,6 +43,12 @@ export function render(
 ): void {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
+  // Pass G — during the pre-match draft phase, leave the canvas as a clean
+  // dark background. The draft panel overlay covers the canvas area, so any
+  // grid/units drawn here would just bleed through the panel's translucent
+  // background. Skipping the full pipeline also avoids running per-tick
+  // helpers (visibility / routes) against the empty draft state.
+  if (state.phase === 'draft') return;
   drawHexGrid(ctx, state.map);
   // Pass D — region labels drawn after grid (so background) but before
   // anything player-actionable so they don't fight routes/units for attention.

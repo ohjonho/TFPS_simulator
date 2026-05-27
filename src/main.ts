@@ -40,6 +40,8 @@ import { renderAttributesPanel } from './ui/attributesPanel.ts';
 import { renderBottomControls } from './ui/bottomControls.ts';
 import { renderTopBar } from './ui/topBar.ts';
 import { renderCardPanel } from './ui/cardPanel.ts';
+import { renderDraftPanel } from './ui/draftPanel.ts';
+import { autoDraft, commitDraftPick, finalizeDraft } from './game/draft.ts';
 import { renderKillFeedOverlay } from './ui/killFeedOverlay.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
@@ -249,9 +251,10 @@ function rerenderChrome() {
       hover.unitId = unitId;
       rerenderChrome();
     },
-    // Pass E m5 — Regenerate (in Randomize mode): rebuild the match on the
-    // current map with the user-supplied seed.
+    // Pass E m5 / Pass G — Regenerate (in Draft mode): rebuild the match on
+    // the current map with the user-supplied seed (re-rolls the pool).
     onRegenerate: (seed: number) => {
+      clearPlanningUiState();
       matchSeed = seed;
       state = buildInitialState(state.map.name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
@@ -275,6 +278,30 @@ function rerenderChrome() {
       setState({ ...state, playerVariantChoice: idx });
       recomputePreview();
       rerenderCanvas();
+    },
+  });
+  // Pass G — draft phase overlay. Shown only when phase === 'draft'; cleared
+  // (panel element removed) once the player confirms and we transition to
+  // planning. Lives inside canvasArea so it sits on top of the canvas itself.
+  renderDraftPanel(shell.canvasArea, state, {
+    onPick: (unitId: string) => {
+      const next = commitDraftPick(state, unitId);
+      setState(next);
+    },
+    onAutoToggle: () => {
+      if (!state.draft) return;
+      // Toggling on = run-to-end; toggling off = leave the rest manual.
+      if (!state.draft.autoMode) {
+        setState(autoDraft(state));
+      } else {
+        setState({ ...state, draft: { ...state.draft, autoMode: false } });
+      }
+    },
+    onConfirm: () => {
+      const finalized = finalizeDraft(state);
+      if (finalized === state) return; // not ready (shouldn't happen — button gated)
+      initialUnitsById = snapshotUnits(finalized.units);
+      setState(finalized);
     },
   });
   // Pass E m4 — kill feed as a small overlay anchored bottom-left in canvas.
@@ -304,6 +331,9 @@ function rerenderChrome() {
     onSetMap: (name) => {
       // Pass E m5 — preserve current mode + seed across map switches (user
       // choice: same units, different map).
+      // Pass G — wipe planning UI state (selected card / targeting / preview)
+      // so the rebuilt match starts clean even if the player had picks pending.
+      clearPlanningUiState();
       state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
@@ -313,6 +343,9 @@ function rerenderChrome() {
     cardTargetingPending: targetingMode !== null,
     pickedCardDefId: playerCard?.defId ?? null,
     onSetMode: (mode: MatchMode) => {
+      // Pass G — switching modes rebuilds the match (Draft mode lands in
+      // the pre-match draft phase; Standard lands directly in planning).
+      clearPlanningUiState();
       matchMode = mode;
       state = buildInitialState(state.map.name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
@@ -338,9 +371,24 @@ function snapshotUnits(units: readonly Unit[]): Record<string, Unit> {
   return out;
 }
 
+// Pass G — clear the planning-only UI state. Called whenever we rebuild the
+// match (mode/map/seed change, New Match, Draft toggle). Without this, a
+// half-committed card or strategy choice would leak across rebuilds.
+function clearPlanningUiState(): void {
+  playerCard = null;
+  previewRoutes = null;
+  targetingMode = null;
+  selection.unitId = null;
+  hover.unitId = null;
+  dragState = null;
+}
+
 // --- Match flow ------------------------------------------------------------
 
 function beginRound(): void {
+  // Pass G — Begin Round is only valid in planning; draft uses its own
+  // Confirm button and resolution can't loop back through this path.
+  if (state.phase !== 'planning') return;
   if (!state.playerStrategy) return;
   // Pass C — multi-variant strategies require an explicit A/B pick before
   // Begin Round can fire. Top-bar UI also disables the button; this is a
@@ -473,9 +521,10 @@ function showMatchEndModal(): void {
     label: 'New Match',
     primary: true,
     onClick: () => {
-      // Pass E m5 — preserve mode but increment seed so the next match isn't
-      // identical (in Randomize mode). In Standard mode the seed advance is
-      // inert (attribute generation is flat-50).
+      // Pass E m5 / Pass G — preserve mode but increment seed so the next
+      // match isn't identical (in Draft mode this re-rolls the pool too).
+      // In Standard mode the seed advance is inert (flat-50 attributes).
+      clearPlanningUiState();
       matchSeed = (matchSeed + 1) >>> 0;
       state = buildInitialState(currentMap, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
@@ -501,14 +550,19 @@ attachHover(handle.canvas, () => state.units, (unitId) => {
 });
 
 attachClickToCommand(handle.canvas, {
-  getUnits: () => state.units,
-  onSelect: (unitId) => { selection.unitId = unitId; rerenderAll(); },
+  getUnits: () => (state.phase === 'draft' ? [] : state.units),
+  onSelect: (unitId) => {
+    if (state.phase === 'draft') return; // ignore canvas clicks during draft
+    selection.unitId = unitId;
+    rerenderAll();
+  },
 });
 
 // Pass E3 — drag player units within their starting zone during planning.
 // Drag is gated on planning phase + the unit being on the player team; the
 // drop is validated against the team's current-side spawn region.
 attachUnitDrag(handle.canvas, {
+  // Pass G — only planning allows drag (draft + resolution suppress it).
   canDrag: () => state.phase === 'planning',
   unitAt: (hex) => {
     for (const u of state.units) {
@@ -776,6 +830,7 @@ if (import.meta.env.DEV) {
     },
     // Pass E m5 — accept optional mode + seed; default to current UI state.
     newMatch: (mapName?: 'Foundry' | 'Atoll', mode?: MatchMode, seed?: number) => {
+      clearPlanningUiState();
       if (mode !== undefined) matchMode = mode;
       if (seed !== undefined) matchSeed = seed;
       state = buildInitialState(mapName ?? state.map.name, matchMode, matchSeed);
@@ -783,17 +838,20 @@ if (import.meta.env.DEV) {
       rerenderAll();
     },
     setMap: (name: 'Foundry' | 'Atoll') => {
+      clearPlanningUiState();
       state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
     setMode: (mode: MatchMode) => {
+      clearPlanningUiState();
       matchMode = mode;
       state = buildInitialState(state.map.name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
     setSeed: (seed: number) => {
+      clearPlanningUiState();
       matchSeed = seed;
       state = buildInitialState(state.map.name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
@@ -801,6 +859,21 @@ if (import.meta.env.DEV) {
     },
     getMatchMode: () => matchMode,
     getMatchSeed: () => matchSeed,
+    // Pass G — draft phase introspection + headless drive.
+    getDraft: () => state.draft ?? null,
+    draftPick: (unitId: string) => {
+      setState(commitDraftPick(state, unitId));
+    },
+    autoDraft: () => {
+      setState(autoDraft(state));
+    },
+    finalizeDraft: () => {
+      const finalized = finalizeDraft(state);
+      if (finalized !== state) {
+        initialUnitsById = snapshotUnits(finalized.units);
+        setState(finalized);
+      }
+    },
     getMatch: () => ({
       round: state.round, scores: state.scores, teamSide: state.teamSide,
       playerStrategy: state.playerStrategy, aiStrategy: state.aiStrategy,

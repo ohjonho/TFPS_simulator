@@ -43,21 +43,106 @@ body {
 }
 
 /* Pass E m4 — left card panel (mirror of #side-panel chrome). */
+/* G10 — bumped horizontal padding 14→18 + vertical 12→16 so the column
+   has room to breathe; per-element gaps below land in #card-panel scope so
+   they don't disturb generic buttons elsewhere. */
 #card-panel {
   grid-area: card;
   background: var(--panel);
   border-right: 1px solid var(--panel-border);
-  padding: 12px 14px;
+  padding: 16px 18px;
   overflow-y: auto;
   font-size: 12px;
 }
 
+/* G10 — H3 "STRATEGY" / "CARD (OPTIONAL)" headers: more vertical breathing
+   above + below, and a subtle bottom divider so the strategy and card
+   sections read as distinct groups instead of one stacked column. */
 #card-panel h3 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
   font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--accent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+#card-panel h3:not(:first-child) {
+  margin-top: 18px;
+}
+
+/* G10 — strategy + card lists: visible gap between pills so they read as
+   stacked options rather than one continuous block. */
+#card-panel .strategy-menu,
+#card-panel .card-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* G10 — strategy + card pills: more vertical padding + a left "rail" that
+   highlights when selected, internal spacing between title and description. */
+#card-panel .strategy,
+#card-panel .card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  color: var(--text);
+}
+#card-panel .strategy:hover,
+#card-panel .card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+#card-panel .strategy.selected,
+#card-panel .card.selected {
+  background: rgba(250, 204, 21, 0.10);
+  border-color: rgba(250, 204, 21, 0.55);
+  border-left-color: var(--accent);
+}
+
+/* G10 — strategy + card text rows: a small gap between title and the body
+   text so the description doesn't crowd the name. */
+#card-panel .s-name,
+#card-panel .c-name {
+  display: block;
+  font-weight: 700;
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+#card-panel .s-desc,
+#card-panel .c-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+#card-panel .c-source {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 1px 0 4px;
+}
+
+/* G10 — Skip-card button: small visual gap above so it doesn't kiss the
+   last card. */
+#card-panel .card-skip {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+#card-panel .card-skip.selected {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Pass E3 — kill-feed overlay anchored TOP-left in canvas area (was
@@ -888,12 +973,14 @@ button.selected:not(:disabled) {
 }
 
 /* Card cycle line (deck / discard counts) */
+/* G10 — bumped bottom margin so the line doesn't kiss the first card pill
+   and font-size up a hair so it reads as a real label, not a debug print. */
 .card-cycle {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin: 2px 0 6px;
+  margin: 0 0 10px;
 }
 
 /* Pass D — muted hint inside card pills (replaces (auto-targets) note). */
@@ -999,4 +1086,206 @@ button.selected:not(:disabled) {
   color: var(--text-dim);
   font-size: 11px;
   margin-left: 12px;
+}
+
+/* --- Pass G: Draft phase overlay ----------------------------------------- */
+
+/* Pass G — span the full viewport below the top bar (48px). The draft panel
+   is hosted in canvasArea but uses fixed positioning so it covers the side
+   sidebars too (they show empty during draft anyway — see sidePanel/cardPanel). */
+#draft-panel {
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(8, 11, 16, 0.97);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 32px;
+  overflow: auto;
+  z-index: 50;
+}
+
+.draft-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.draft-header h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+.draft-progress {
+  display: flex;
+  gap: 6px;
+}
+.pick-slot {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  line-height: 28px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.pick-slot.you { box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.6); }
+.pick-slot.opp { box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.6); }
+.pick-slot.done { background: rgba(255, 255, 255, 0.18); color: var(--text); }
+.pick-slot.current { background: rgba(250, 204, 21, 0.25); color: #facc15; }
+.pick-slot sub {
+  position: absolute;
+  bottom: 0;
+  right: 2px;
+  font-size: 8px;
+  opacity: 0.7;
+}
+.draft-status {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.draft-status strong { color: var(--text); }
+.draft-auto-toggle {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.draft-body {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.draft-pool {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  align-content: start;
+}
+
+.pool-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  position: relative;
+  transition: background 0.1s, border-color 0.1s;
+}
+.pool-card.available { cursor: pointer; }
+.pool-card.available:hover {
+  background: rgba(250, 204, 21, 0.10);
+  border-color: rgba(250, 204, 21, 0.55);
+}
+.pool-card.picked {
+  opacity: 0.50;
+  cursor: not-allowed;
+}
+.pool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.pool-card-id { font-size: 12px; }
+.pool-card-role,
+.pool-card-hero {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.weapon-glyph {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 3px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.10);
+}
+.weapon-glyph.weapon-rifle   { background: rgba(96, 165, 250, 0.25); }
+.weapon-glyph.weapon-shotgun { background: rgba(248, 113, 113, 0.25); }
+.weapon-glyph.weapon-sniper  { background: rgba(167, 139, 250, 0.25); }
+.pick-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.pick-tag.you { background: rgba(59, 130, 246, 0.8); color: white; }
+.pick-tag.opp { background: rgba(239, 68, 68, 0.8); color: white; }
+.pool-card-traits {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.pool-card-traits .trait {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+.pool-card-attrs .attr-row {
+  font-size: 9px;
+  margin-bottom: 1px;
+}
+
+.draft-rosters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.draft-roster {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.draft-roster h3 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+.draft-roster ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.draft-roster li.empty { color: var(--text-dim); font-style: italic; }
+
+.draft-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: flex-end;
+}
+.draft-footer button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -99,11 +99,54 @@ export function pickRandomLoadout(rng: Rng, n: number): Weapon[] {
   return out;
 }
 
+// Pass G — extracted from `assignAttributes` so the draft pool generator
+// (draft.generatePool) can populate freshly-built pool units with the same
+// trait/role/hero/modifiers + attribute logic. Pure: mutates `u` in place.
+// Returns nothing.
+export function rollUnitMeta(
+  u: Unit,
+  rng: Rng,
+  override: AttributeOverride = {},
+  rangeOverride?: { min: number; max: number },
+): void {
+  // An override key that is *present* is honored literally — even when null
+  // (meaning "no trait"); only an absent key randomizes. This keeps A/B tests
+  // clean (e.g. "vanilla" = explicit nulls).
+  u.skillTrait = 'skillTrait' in override ? override.skillTrait! : rng.pick(SKILL_TRAITS);
+  u.behavioralTrait = 'behavioralTrait' in override
+    ? override.behavioralTrait!
+    : rng.pick(BEHAVIORAL_TRAITS);
+  // Default: assigned role == preferred role (no off-position in normal play;
+  // off-position is set when a player assigns an off-role — Pass 7 — or via
+  // an explicit override here).
+  const preferred = 'preferredRole' in override ? override.preferredRole! : rng.pick(ROLES);
+  const role = 'role' in override ? override.role! : preferred;
+  u.preferredRole = preferred;
+  u.role = role;
+  u.hero = 'hero' in override ? override.hero! : rng.pick(HEROES);
+
+  u.modifiers = {
+    aggression: ROLE_AGGRESSION[role],
+    offPosition: role !== preferred,
+    retreatThresholdMod: 0,
+  };
+
+  // Pass A1: roll the full 14-attribute record. Order of RNG draws is fixed
+  // by generateAttributes() so determinism holds across A2+ even after
+  // partial-override merges.
+  // Pass E m5: rangeOverride flattens generation to a uniform window.
+  const generated = generateAttributes(rng, rangeOverride);
+  const ao = override.attributes;
+  u.attributes = ao ? { ...generated, ...ao } : generated;
+}
+
 // Assign attributes to every unit. `overrides` (keyed by unit id) lets callers
 // (tests / the batch harness) pin specific attributes for A/B comparisons.
 // Pass E m5 — `options.rangeOverride` clamps every attribute slot to a single
 // uniform window (used by Randomize Units mode for [40, 60]). Overrides still
 // apply on top.
+// Pass G — body now delegates to rollUnitMeta so the draft pool generator
+// shares the same RNG-draw sequence (determinism stays bit-identical).
 export function assignAttributes(
   units: Unit[],
   rng: Rng,
@@ -111,39 +154,6 @@ export function assignAttributes(
   options: { rangeOverride?: { min: number; max: number } } = {},
 ): void {
   for (const u of units) {
-    const o = overrides[u.id] ?? {};
-    // An override key that is *present* is honored literally — even when null
-    // (meaning "no trait"); only an absent key randomizes. This keeps A/B tests
-    // clean (e.g. "vanilla" = explicit nulls).
-    u.skillTrait = 'skillTrait' in o ? o.skillTrait! : rng.pick(SKILL_TRAITS);
-    u.behavioralTrait = 'behavioralTrait' in o ? o.behavioralTrait! : rng.pick(BEHAVIORAL_TRAITS);
-    // Default: assigned role == preferred role (no off-position in normal play;
-    // off-position is set when a player assigns an off-role — Pass 7 — or via
-    // an explicit override here).
-    const preferred = 'preferredRole' in o ? o.preferredRole! : rng.pick(ROLES);
-    const role = 'role' in o ? o.role! : preferred;
-    u.preferredRole = preferred;
-    u.role = role;
-    u.hero = 'hero' in o ? o.hero! : rng.pick(HEROES);
-
-    u.modifiers = {
-      aggression: ROLE_AGGRESSION[role],
-      offPosition: role !== preferred,
-      retreatThresholdMod: 0,
-    };
-
-    // Pass A1: roll the full 14-attribute record. Order of RNG draws is fixed
-    // by generateAttributes() so determinism holds across A2+ even after
-    // partial-override merges.
-    // Pass E m5: pass through the optional rangeOverride for Randomize mode.
-    const generated = generateAttributes(rng, options.rangeOverride);
-    const ao = o.attributes;
-    if (ao) {
-      // F2 — mapIQ is now a flat number, so the partial-override merge is a
-      // simple spread (was a nested mapIQ.{foundry, atoll} merge).
-      u.attributes = { ...generated, ...ao };
-    } else {
-      u.attributes = generated;
-    }
+    rollUnitMeta(u, rng, overrides[u.id] ?? {}, options.rangeOverride);
   }
 }

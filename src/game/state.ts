@@ -16,23 +16,29 @@ import type {
   Team,
   TeamDeck,
   TrackEntry,
+  Unit,
 } from './types.ts';
 import { createTeam } from './units.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { assignAttributes, pickRandomLoadout } from './attributes.ts';
+import { assignAttributes } from './attributes.ts';
 import { createRng } from './rng.ts';
 import { buildDeck, drawCards } from './cards.ts';
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
 import type { MapDefinition } from './types.ts';
-import { AI, RANDOMIZE_ATTRIBUTES, RNG_SEED_DEFAULT } from './config.ts';
+import { AI, RNG_SEED_DEFAULT } from './config.ts';
+import { startDraft } from './draft.ts';
 
 // Pass E m5 — `mode` chooses between Standard (today's fixed loadouts + flat
 // attributes via ATTRIBUTES.generation) and Randomize (seeded random
 // loadouts via pickRandomLoadout + uniform [40, 60] attributes). `seed`
 // drives BOTH the loadout pick AND the attribute assignment so the same
 // (mode, seed, map) triple reproduces the same matchup deterministically.
+// Pass G — `'randomize'` renamed to `'draft'`; in draft mode this function
+// returns a state with `phase: 'draft'` and units not yet assigned to spawns.
+// The draft UI handles the pick flow and calls `finalizeDraft` (which uses
+// buildStateFromUnits) to land in planning.
 export function buildInitialState(
   mapName: MapDefinition['name'] = 'Foundry',
   mode: MatchMode = 'standard',
@@ -40,29 +46,34 @@ export function buildInitialState(
 ): GameState {
   const map = mapName === 'Atoll' ? atoll : foundry;
 
-  // Randomize mode: pre-roll team loadouts from the match seed before
-  // createTeam runs. Standard mode falls through to LOADOUTS in units.ts.
-  let defenderLoadouts: readonly ('shotgun' | 'rifle' | 'sniper')[] | undefined;
-  let attackerLoadouts: readonly ('shotgun' | 'rifle' | 'sniper')[] | undefined;
-  if (mode === 'randomize') {
-    // Separate RNG streams per team so the defender loadout doesn't shift
-    // the attacker stream when constraints change later.
-    defenderLoadouts = pickRandomLoadout(createRng((seed ^ 0xdef10ad) >>> 0), map.spawns.defenders.length);
-    attackerLoadouts = pickRandomLoadout(createRng((seed ^ 0xa7710ad) >>> 0), map.spawns.attackers.length);
-  }
-  const defenders = createTeam('defenders', map.spawns.defenders, defenderLoadouts);
-  const attackers = createTeam('attackers', map.spawns.attackers, attackerLoadouts);
-  const units = [...defenders, ...attackers];
-  // Random trait/role/hero/handling assignment at match start (spec §10–13).
-  // Pass E m5: in Randomize mode, override the attribute range to [40, 60]
-  // (configurable via RANDOMIZE_ATTRIBUTES).
-  const attrRng = createRng(seed);
-  if (mode === 'randomize') {
-    assignAttributes(units, attrRng, {}, { rangeOverride: RANDOMIZE_ATTRIBUTES });
-  } else {
-    assignAttributes(units, attrRng);
+  if (mode === 'draft') {
+    // Pass G — pre-planning draft phase: generate an 8-unit pool, return a
+    // state with no spawned units. The draft UI runs the picks and calls
+    // finalizeDraft → buildStateFromUnits to start the match.
+    return startDraft(map, seed);
   }
 
+  // Standard mode: today's fixed-loadout assignment path.
+  const defenders = createTeam('defenders', map.spawns.defenders);
+  const attackers = createTeam('attackers', map.spawns.attackers);
+  const units = [...defenders, ...attackers];
+  const attrRng = createRng(seed);
+  assignAttributes(units, attrRng);
+
+  return buildStateFromUnits(units, map, seed, mode);
+}
+
+// Pass G — extracted from buildInitialState so finalizeDraft (in draft.ts)
+// can produce a GameState from drafted-and-assigned units using the same
+// init logic. Caller is responsible for: (1) creating the unit objects with
+// the right spawn positions, ids, facings; (2) running assignAttributes (or
+// rollUnitMeta per-unit, as the draft pool generator does).
+export function buildStateFromUnits(
+  units: Unit[],
+  map: MapDefinition,
+  seed: number,
+  mode: MatchMode,
+): GameState {
   const targets: Record<string, null> = {};
   const moves: Record<string, MoveState> = {};
   const tracking: Record<string, TrackEntry | null> = {};
@@ -84,10 +95,9 @@ export function buildInitialState(
 
   // Pass 8 — build each team's 9-card deck from their units' trait/role/hero,
   // then draw the 3-card starting hand. Deck shuffles use the seeded RNG so
-  // hands replay identically. (Per team we derive a separate RNG stream so the
-  // attacker deck doesn't depend on the defender's first.)
-  // Pass E m5: derive from the match seed (was hardcoded to RNG_SEED_DEFAULT)
-  // so Randomize mode's seed also drives the deck order.
+  // hands replay identically.
+  const defenders = units.filter((u) => u.team === 'defenders');
+  const attackers = units.filter((u) => u.team === 'attackers');
   const defenderDeckRng = createRng((seed ^ 0xdec0de) >>> 0);
   const attackerDeckRng = createRng((seed ^ 0xa77ac4) >>> 0);
   const defenderDeck = drawCards(buildDeck(defenders, defenderDeckRng), 3, defenderDeckRng);
@@ -98,9 +108,6 @@ export function buildInitialState(
   };
   const playedCard: Record<Team, PlayedCard | null> = { defenders: null, attackers: null };
 
-  // Pass E m5: renamed `seed` -> `initial` to avoid shadowing the new
-  // `seed: number` parameter (was a pre-existing variable name collision
-  // exposed by the arg refactor).
   const initial: GameState = {
     phase: 'planning',
     map,
@@ -156,3 +163,4 @@ export function initialAi(): AiState {
     engageStickyTicks: 0,
   };
 }
+

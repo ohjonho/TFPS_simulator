@@ -365,10 +365,28 @@ export const POST_PLANT_PREFERRED_RANGE = { min: 4, max: 10 } as const;
 
 // Pass E m5 — Randomize Units mode. The top-bar toggle flips matches between
 // "Standard" (today's fixed 2r+1s loadout + flat-50 attributes) and
-// "Randomize" (seeded random loadouts + attributes uniform in [40, 60] +
-// random traits/skills). Foundation for the v1 management/training layer.
+// "Draft" (Pass G — generate 8-unit pool + player/AI snake-pick 3 each;
+// drafted units use the same attribute distribution as old Randomize).
+// LOADOUT_POOL + RANDOMIZE_ATTRIBUTES kept under their original names so
+// Standard mode + the draft generator both reuse them.
 export const LOADOUT_POOL: readonly Weapon[] = ['shotgun', 'rifle', 'sniper'];
 export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
+
+// --- Pass G: draft phase --------------------------------------------------
+// Pool of N units shared between player and AI; snake-pick 3 each, 2 leftovers
+// discarded. AI picks via greedy-Aim with a rifle-floor rule. Pool composition
+// is soft-constrained (≥ minPerWeapon of each weapon) so neither team can be
+// forced into a degenerate roster — resample loadouts up to maxComposeRetries
+// before accepting whatever the pool ended up with.
+export const DRAFT = {
+  poolSize: 8,
+  picksPerTeam: 3,
+  // 'P' = player, 'A' = AI. Resolved to actual team identities by startDraft
+  // using the player team. Snake = P-A-A-P-P-A (player picks 1st + 4th + 5th).
+  snakeOrder: ['P', 'A', 'A', 'P', 'P', 'A'] as readonly ('P' | 'A')[],
+  minPerWeapon: 2,
+  maxComposeRetries: 32,
+} as const;
 
 // --- Pass 8: cards (spec §15) --------------------------------------------
 // Every per-card tunable. Card handlers read these — no magic numbers in the

@@ -55,18 +55,18 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     mapName.appendChild(b);
   }
 
-  // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
-  // match with the new mode (and the current seed by user choice — see
-  // main.ts.onSetMode).
+  // Pass E m5 / Pass G — Standard / Draft mode toggle. Standard = fixed 2r+1s
+  // + flat-50 attributes (today's default). Draft = generate an 8-unit pool
+  // and player/AI snake-pick 3 each before the match begins.
   const modeGroup = document.createElement('div');
   modeGroup.className = 'mode-toggle';
-  for (const m of ['standard', 'randomize'] as const) {
+  for (const m of ['standard', 'draft'] as const) {
     const b = document.createElement('button');
-    b.textContent = m === 'standard' ? 'Standard' : 'Randomize';
+    b.textContent = m === 'standard' ? 'Standard' : 'Draft';
     if (state.matchMode === m) b.classList.add('selected');
     b.title = m === 'standard'
       ? 'Fixed 2 rifles + 1 sniper, flat-50 attributes.'
-      : 'Seeded random loadouts + attributes (40–60). Same units across map switches with the same seed.';
+      : 'Pool of 8 random units — you and the AI snake-pick 3 each (P-A-A-P-P-A).';
     b.addEventListener('click', () => cb.onSetMode(m));
     modeGroup.appendChild(b);
   }
@@ -179,7 +179,15 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     host.appendChild(tBtn);
   }
 
-  if (state.phase === 'planning') {
+  // Pass G — during the pre-match draft, show a small "Drafting…" label in
+  // place of the Begin Round / Back to Planning buttons. The draft panel
+  // owns the Confirm action.
+  if (state.phase === 'draft') {
+    const status = document.createElement('span');
+    status.className = 'phase-label';
+    status.textContent = 'Drafting…';
+    host.appendChild(status);
+  } else if (state.phase === 'planning') {
     const begin = document.createElement('button');
     begin.className = 'btn-primary';
     begin.textContent = 'Begin Round';
@@ -210,7 +218,7 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     if (hint) begin.title = hint;
     begin.addEventListener('click', cb.onBeginRound);
     host.appendChild(begin);
-  } else {
+  } else if (state.phase === 'resolution') {
     const back = document.createElement('button');
     back.textContent = 'Back to Planning';
     back.addEventListener('click', cb.onBackToPlanning);
