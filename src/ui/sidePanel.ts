@@ -9,6 +9,7 @@
 import type { GameState, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
 import { traitSpan } from './traitChip.ts';
+import { roleChip, heroChip } from './unitMetaChip.ts';
 
 export type SidePanelCallbacks = {
   // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
@@ -89,16 +90,22 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
   const rows = teamUnits.map((u) => {
     const off = u.modifiers.offPosition ? '<span class="warn" title="Off preferred role (−10pp HR)">⚠off-pos</span>' : '';
     const dead = u.state === 'dead' ? '<span class="warn">DEAD</span>' : '';
+    // H3.fix3 — role + hero are chips with hover tooltips. Hero is shown on
+    // the planning roster (previously only in resolution unit-info), since
+    // hero passives are the only hero mechanic after the H3.3 card collapse.
     return `
       <li data-roster-unit="${u.id}">
         <div class="ru-line1">
           <strong>${u.id}</strong>
           <span class="ru-weapon">${u.weapon}</span>
-          <span class="ru-role">${u.role}</span>
           <span class="ru-hp">HP ${u.hp}/${UNIT_DEFAULTS.maxHp}</span>
           ${off}${dead}
         </div>
         <div class="ru-line2">
+          ${roleChip(u.role)}
+          ${heroChip(u.hero)}
+        </div>
+        <div class="ru-line3">
           ${traitSpan(u.skillTrait, 'skill')}
           ${traitSpan(u.behavioralTrait, 'beh')}
           ${traitSpan(u.personalityTrait, 'personality')}
@@ -132,10 +139,14 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
   const ai = state.ai[unit.id];
   const mode = unit.state === 'dead' ? 'dead' : ai?.mode ?? '—';
   const tgt = ai?.firingTarget ? ` → ${ai.firingTarget}` : '';
-  const roleLabel = unit.modifiers.offPosition ? `${unit.role} (off-pos)` : unit.role;
+  const offWarn = unit.modifiers.offPosition
+    ? ' <span class="warn" title="Off preferred role (−10pp HR)">⚠off-pos</span>'
+    : '';
   // Pass E2 — show team identity AND current side so a "defenders" unit on
   // the attacker side reads "defenders (ATK)" instead of just "defenders".
   const sideTag = state.teamSide[unit.team] === 'defender' ? 'DEF' : 'ATK';
+  // H3.fix3 — role + hero rendered as chips with tooltips (matches the
+  // planning roster + draft pool cards).
   return `
     <h2>Unit Info</h2>
     <dl class="unit-stats">
@@ -144,8 +155,8 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>Loadout</dt><dd>${unit.weapon}</dd>
       <dt>HP</dt><dd>${unit.hp} / ${UNIT_DEFAULTS.maxHp}</dd>
       <dt>AI mode</dt><dd>${mode}${tgt}</dd>
-      <dt>Role</dt><dd>${roleLabel}</dd>
-      <dt>Hero</dt><dd>${unit.hero}</dd>
+      <dt>Role</dt><dd>${roleChip(unit.role)}${offWarn}</dd>
+      <dt>Hero</dt><dd>${heroChip(unit.hero)}</dd>
       <dt>Skill trait</dt><dd>${traitSpan(unit.skillTrait, 'skill')}</dd>
       <dt>Behavioral</dt><dd>${traitSpan(unit.behavioralTrait, 'beh')}</dd>
       <dt>Personality</dt><dd>${traitSpan(unit.personalityTrait, 'personality')}</dd>

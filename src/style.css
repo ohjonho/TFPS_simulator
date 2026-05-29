@@ -1204,12 +1204,21 @@ button.selected:not(:disabled) {
   font-weight: 600;
 }
 .pool-card-id { font-size: 12px; }
-.pool-card-role,
-.pool-card-hero {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-weight: 400;
+/* H3.fix3 — full-word weapon name with the same per-weapon tint the
+   single-letter glyph used to carry. The single-letter `.weapon-glyph`
+   is still used by the canvas hex-square overlay (drawUnits). */
+.pool-card-weapon {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.10);
 }
+.pool-card-weapon.weapon-rifle   { background: rgba(96, 165, 250, 0.25);  color: #93c5fd; }
+.pool-card-weapon.weapon-shotgun { background: rgba(248, 113, 113, 0.25); color: #fca5a5; }
+.pool-card-weapon.weapon-sniper  { background: rgba(167, 139, 250, 0.25); color: #c4b5fd; }
 .weapon-glyph {
   display: inline-block;
   width: 18px;
@@ -1326,7 +1335,16 @@ button.selected:not(:disabled) {
 #attributes-panel .sub-attrs .attr-row {
   font-size: 10.5px;
   margin-bottom: 2px;
+}
+/* H3.fix3: differentiate active vs inert sub-rows so the H3 badge actually
+   corresponds to a visible grey-out. Without these, the blanket sub-row rule
+   above used to fix opacity at 0.9, beating the lower-specificity
+   `.attr-row.v1 { opacity: 0.45 }` and making inert subs look bright. */
+#attributes-panel .sub-attrs .attr-row.v0 {
   opacity: 0.9;
+}
+#attributes-panel .sub-attrs .attr-row.v1 {
+  opacity: 0.45;
 }
 
 /* Pool cards reuse `.visible-attrs` rendering — slightly tighter for the
@@ -1370,8 +1388,7 @@ button.selected:not(:disabled) {
 #side-panel .ru-line1 strong {
   font-size: 12.5px;
 }
-#side-panel .ru-line1 .ru-weapon,
-#side-panel .ru-line1 .ru-role {
+#side-panel .ru-line1 .ru-weapon {
   color: var(--text-dim);
 }
 #side-panel .ru-line1 .ru-hp {
@@ -1404,4 +1421,61 @@ button.selected:not(:disabled) {
 #side-panel .ru-line2 .trait.personality {
   background: rgba(168, 85, 247, 0.15);  /* purple tint — personality */
   color: #c4b5fd;
+}
+
+/* H3.fix3 — roster line3 holds the 3 trait chips after role/hero were
+   promoted to line2 as chips. Same styling as the legacy line2 trait
+   chips so the visual identity row stays consistent. */
+#side-panel .ru-line3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+#side-panel .ru-line3 .trait {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  cursor: help;
+}
+#side-panel .ru-line3 .trait.skill {
+  background: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+}
+#side-panel .ru-line3 .trait.beh {
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+}
+#side-panel .ru-line3 .trait.personality {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c4b5fd;
+}
+
+/* H3.fix3 — role + hero (origin) chips. Visually weighted like trait
+   chips so the planning roster reads as "identity row + trait row + ...".
+   Distinct accent colors keep them readable at a glance:
+   role = cyan/teal (positional identity), hero = gold (passive ability). */
+.meta-chip {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: help;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  border: 1px solid transparent;
+}
+.meta-chip.role {
+  background: rgba(45, 212, 191, 0.15);  /* teal */
+  color: #5eead4;
+  border-color: rgba(45, 212, 191, 0.30);
+}
+.meta-chip.hero {
+  background: rgba(234, 179, 8, 0.16);   /* amber/gold */
+  color: #fde68a;
+  border-color: rgba(234, 179, 8, 0.35);
 }

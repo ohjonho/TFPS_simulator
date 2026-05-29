@@ -43,10 +43,12 @@ const VISIBLE_ROWS: readonly VisibleRow[] = [
     desc: 'Team buff radius + ally aura strength + info-sharing magnitude (wires fully in H3).' },
 ];
 
-// v0-active visible aggregates. H1 wires Mechanics + Game Sense +
-// Improvisation; Discipline + Leadership are generated but inert until H3.
+// v0-active visible aggregates. H1 wired Mechanics + Game Sense +
+// Improvisation; H3 also wired Discipline (Tenacity drives the per-tick
+// compliance roll in directives.ts). Leadership is the lone holdout —
+// its sub (Comms) won't be consumed until H4+ wires hero auras.
 const V0_VISIBLE: ReadonlySet<keyof VisibleAttributes> = new Set([
-  'mechanics', 'gameSense', 'improvisation',
+  'mechanics', 'gameSense', 'discipline', 'improvisation',
 ]);
 
 // --- Hidden sub-attributes (the 10 that feed combat/vision math) ---------
@@ -75,8 +77,8 @@ const SUB_ROWS: readonly SubRow[] = [
   { key: 'mapIQ',          label: 'Map IQ',          group: 'Game Sense',    active: true,
     desc: 'Cover-seek search radius when settling into hold (0–2 hex).' },
   // Discipline
-  { key: 'tenacity',       label: 'Tenacity',        group: 'Discipline',    active: false,
-    desc: 'H3 — gates the per-tick strategy-compliance roll.' },
+  { key: 'tenacity',       label: 'Tenacity',        group: 'Discipline',    active: true,
+    desc: 'Drives the per-tick strategy-compliance roll (high Tenacity = unit stays on plan under fire).' },
   // Improvisation
   { key: 'composure',      label: 'Composure',       group: 'Improvisation', active: true,
     desc: 'Scales last-alive HR/HS bonus (with or without Clutch trait).' },

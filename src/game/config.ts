@@ -341,6 +341,25 @@ export const ROLE_AGGRESSION = {
   Specialist: 55,
 } as const;
 
+// H3.fix3 — manager-readable one-liner per role. Surfaced in role chip
+// tooltips (sidePanel roster, draftPanel pool cards, unit-info DL). Each
+// references the role's aggression for context.
+export const ROLE_DESCRIPTIONS = {
+  Vanguard: 'Aggression 70 — pushes first, takes the entry duel, leads contact.',
+  Tactician: 'Aggression 50 — mid-range setup, supports flanks, plays for trades.',
+  Warden: 'Aggression 35 — patient anchor, holds angles from cover, rotates late.',
+  Specialist: 'Aggression 55 — flex slot, adapts to the picked strategy.',
+} as const;
+
+// H3.fix3 — hero passive-ability descriptions. Heroes became passive
+// role-tags in H3.3 (card system collapse); each grants one always-on
+// effect with no decision surface.
+export const HERO_DESCRIPTIONS = {
+  Angelic: 'Guardian Aura — allies within 5 hex get +1 max HP, always on.',
+  Techy: 'Tactical Scan — round-start reveal of all enemy positions for a few ticks.',
+  Cursed: 'Mark Target — the first enemy this unit spots each round is auto-marked all round (+20 HR / +10 HS for allies vs the mark).',
+} as const;
+
 // Dynamic modifier scales (spec §13.1).
 // (Pass A3 — `weaponHandlingHrScale` removed; per-weapon handling is now an
 // attribute sub-rating with its scale in `ATTRIBUTES.formulas.weaponHandling`.)

@@ -5,10 +5,19 @@
 // Renders via plain HTML/CSS (no canvas). Pure-DOM module that takes a
 // callback bundle from main.ts to commit picks / toggle auto / finalize.
 
-import type { DraftState, GameState, Team, Unit } from '../game/types.ts';
-import { WEAPON_GLYPH } from '../game/config.ts';
+import type { DraftState, GameState, Team, Unit, Weapon } from '../game/types.ts';
 import { visibleAttributeBlockHtml } from './attributesPanel.ts';
 import { traitSpan } from './traitChip.ts';
+import { roleChip, heroChip } from './unitMetaChip.ts';
+
+// H3.fix3 — full weapon name for the draft scouting view (single-letter
+// glyph forces memorization across 8 unknown units). Canvas overlay still
+// uses WEAPON_GLYPH for the spatial hex marker.
+const WEAPON_NAME: Record<Weapon, string> = {
+  shotgun: 'Shotgun',
+  rifle: 'Rifle',
+  sniper: 'Sniper',
+};
 
 export type DraftPanelCallbacks = {
   onPick: (unitId: string) => void;
@@ -129,7 +138,6 @@ function poolHtml(
 }
 
 function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string {
-  const glyph = WEAPON_GLYPH[u.weapon];
   const picked = pickedBy !== null;
   const byYou = pickedBy === playerTeam;
   const tag = !picked
@@ -139,9 +147,9 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
       : '<span class="pick-tag opp">OPP</span>';
   const cls = ['pool-card', picked ? 'picked' : 'available'].join(' ');
   // H2.2 — trait chips with hover tooltips (description + bonuses + unlocks).
-  const skillChip = traitSpan(u.skillTrait, 'skill');
-  const behChip = traitSpan(u.behavioralTrait, 'beh');
-  const personalityChip = traitSpan(u.personalityTrait, 'personality');
+  const skillChipHtml = traitSpan(u.skillTrait, 'skill');
+  const behChipHtml = traitSpan(u.behavioralTrait, 'beh');
+  const personalityChipHtml = traitSpan(u.personalityTrait, 'personality');
   // Attribute bars: Pass H1 — pool cards show the 5 visible aggregates only,
   // matching the H1 thesis (manager sees the legible scout card, not the
   // sub-attribute breakdown). The floating attributes panel still exposes
@@ -150,16 +158,16 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
   return `
     <div class="${cls}" data-unit-id="${u.id}">
       <div class="pool-card-head">
-        <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span>
+        <span class="pool-card-weapon weapon-${u.weapon}">${WEAPON_NAME[u.weapon]}</span>
         <span class="pool-card-id">${u.id}</span>
-        <span class="pool-card-role">${u.role}</span>
-        <span class="pool-card-hero">${u.hero}</span>
+        ${roleChip(u.role)}
+        ${heroChip(u.hero)}
         ${tag}
       </div>
       <div class="pool-card-traits">
-        ${skillChip}
-        ${behChip}
-        ${personalityChip}
+        ${skillChipHtml}
+        ${behChipHtml}
+        ${personalityChipHtml}
       </div>
       <div class="pool-card-attrs">${inner}</div>
     </div>
@@ -172,10 +180,10 @@ function rosterHtml(draft: DraftState, team: Team, _label: 'You' | 'Opp'): strin
     .map((p, i) => {
       const u = draft.pool.find((x) => x.id === p.unitId);
       if (!u) return '';
-      const glyph = WEAPON_GLYPH[u.weapon];
       // H2.2 — trait chips with tooltips here too; visually consistent with
       // the pool cards above + the side-panel roster.
-      return `<li>${i + 1}. <span class="weapon-glyph weapon-${u.weapon}">${glyph}</span> ${u.role} · ${traitSpan(u.skillTrait, 'skill')} ${traitSpan(u.behavioralTrait, 'beh')} ${traitSpan(u.personalityTrait, 'personality')}</li>`;
+      // H3.fix3 — full weapon name + role/hero as chips with tooltips.
+      return `<li>${i + 1}. <span class="pool-card-weapon weapon-${u.weapon}">${WEAPON_NAME[u.weapon]}</span> ${roleChip(u.role)} ${heroChip(u.hero)} · ${traitSpan(u.skillTrait, 'skill')} ${traitSpan(u.behavioralTrait, 'beh')} ${traitSpan(u.personalityTrait, 'personality')}</li>`;
     })
     .join('');
   return `<ul>${rows || '<li class="empty">—</li>'}</ul>`;
