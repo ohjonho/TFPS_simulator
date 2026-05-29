@@ -94,12 +94,16 @@ const HOW_TO_PLAY = `
   <section>
     <h3>Planning phase</h3>
     <ol>
-      <li><strong>Pick a strategy</strong> (left panel). Defender: Hold / Stack /
-        Pressure. Attacker: Execute / Rush / Control. For Stack / Execute / Rush
-        you also pick site <strong>A</strong> or <strong>B</strong>.</li>
-      <li><strong>(Optional) play a card</strong> from your hand of 3 below the
-        strategy menu. Some cards need a target (you'll click a hex on the map
-        or pick a role from a modal).</li>
+      <li><strong>Pick a strategy</strong> (left panel). Baseline 6: Hold /
+        Stack / Pressure (defender), Execute / Rush / Control (attacker).
+        Your roster's traits unlock <strong>variant strategies</strong>
+        — e.g. a Sentinel on the team adds "Anchor Hold", a Lurker adds
+        "Patient Flank", a Leader adds "Coordinated Lockdown". Variants
+        have higher ceilings but demand more from your roster's
+        Discipline.</li>
+      <li><strong>For multi-site strategies</strong> (Stack / Execute / Rush)
+        pick site <strong>A</strong> or <strong>B</strong> in the sub-row
+        that appears.</li>
       <li><strong>(Optional) drag your units</strong> on the map to reposition
         within your spawn zone. Useful when a specific loadout (e.g. a sniper)
         wants a particular angle.</li>
@@ -110,12 +114,15 @@ const HOW_TO_PLAY = `
   <section>
     <h3>Resolution phase</h3>
     <ul>
-      <li>Watch the round play out tick by tick. Kill feed (top-left) shows
-        every shot, hit, plant / defuse / detonate, and card play.</li>
+      <li>Watch the round play out tick by tick. Kill feed (bottom-left)
+        shows every shot, hit, plant / defuse / detonate, and the
+        round-start strategy summary for both teams.</li>
       <li>Bottom bar: Play / Pause, speed 1× / 2× / 4×, Replay (re-runs the
-        round from the same starting state).</li>
-      <li>Cards in play this round appear in the left panel with their
-        remaining duration.</li>
+        round from the same starting state — identical outcome).</li>
+      <li>Hero passive abilities fire automatically — Tactical Scan
+        (Techy) reveals enemies at round start; Guardian Aura (Angelic)
+        is always on; Mark Target (Cursed) triggers the first time the
+        unit spots an enemy.</li>
     </ul>
   </section>
   <section>
@@ -137,20 +144,21 @@ const HOW_TO_PLAY = `
         cone + visible hexes rendered).</li>
       <li><kbd>R</kbd> — toggle the region-name overlay (helps you map
         "A site" / "mid" / "b_main" to actual hexes).</li>
-      <li><kbd>Esc</kbd> — close this modal, cancel an active card-target
-        session, or deselect a unit.</li>
+      <li><kbd>Esc</kbd> — close this modal or deselect a unit.</li>
     </ul>
   </section>
   <section>
     <h3>Modes</h3>
     <ul>
-      <li><strong>Standard</strong>: fixed 2 rifles + 1 sniper per team,
-        all attributes at 50. The validation default.</li>
-      <li><strong>Draft</strong>: pool of 8 random units (≥2 of each
-        weapon); you and the AI snake-pick 3 each (P-A-A-P-P-A). The
-        leftover 2 are discarded. Drafted units carry random
-        attributes (40–60) + 3 random traits each. The seed appears in
-        the right panel; same seed reproduces the same pool + AI picks.</li>
+      <li><strong>Draft</strong> (default): pool of 8 random units (≥2 of
+        each weapon); you and the AI snake-pick 3 each (P-A-A-P-P-A). The
+        leftover 2 are discarded. Drafted units carry random attributes
+        (40–60) + 3 random traits each. The seed appears in the right
+        panel; same seed reproduces the same pool + AI picks.</li>
+      <li><strong>Standard</strong> (debug toggle): fixed 2 rifles + 1
+        sniper per team, all attributes at 50. The validation baseline —
+        removes attribute / trait RNG so you can see strategy effects
+        cleanly.</li>
     </ul>
   </section>
 `;
@@ -183,22 +191,28 @@ const GLOSSARY = `
       <li><strong>Game Sense</strong> — what they perceive. Subs: Vision
         (cone width + tracking), Map IQ (cover-seek quality).</li>
       <li><strong>Discipline</strong> — adherence to assigned directives.
-        Sub: Tenacity. <em>(gates strategy compliance — H3)</em></li>
+        Sub: Tenacity (drives the per-tick directive compliance roll —
+        high-Tenacity units stay on plan; low-Tenacity drop into the
+        fallback behavior tree more often, especially on demanding
+        strategies and under fire).</li>
       <li><strong>Improvisation</strong> — off-plan quality + stress.
-        Subs: Composure (last-alive scaling), Adaptability <em>(H3)</em>.</li>
+        Subs: Composure (last-alive HR scaling), Adaptability
+        <em>(generated; v1 fallback-tree quality hook)</em>.</li>
       <li><strong>Leadership</strong> — buff aura magnitude. Sub: Comms
-        <em>(wires fully in H3)</em>.</li>
+        <em>(generated; v1 hero aura scaling hook)</em>.</li>
     </ul>
   </section>
   <section>
     <h3>Traits — 23 total, 3 per unit</h3>
     <p>Every unit rolls one Skill + one Behavioral + one Personality trait.
       Each trait gives sub-attribute bonuses (visible in the panel) AND
-      forward-data "unlocks" that surface extra strategies on the menu
-      once H3 lands. Hover any trait chip for the full description.
-      Trait tier (starter / earned / event) is shown in the tooltip — v1
-      progression uses it to gate scout / XP-earned / event-triggered
-      acquisition.</p>
+      may carry an <code>unlocks</code> list that adds extra strategies
+      to your team's strategy menu. Skill traits are pure stat; every
+      behavioral + personality trait unlocks one variant strategy when
+      a unit on your team carries it. Hover any trait chip for the full
+      description and unlocks. Trait tier (starter / earned / event) is
+      shown in the tooltip — v1 progression uses it to gate scout /
+      XP-earned / event-triggered acquisition.</p>
     <h4>Skill (7)</h4>
     <ul class="glossary">
       <li><strong>Sharp Aim</strong> — +10 HR on every shot. +15 Aim.</li>
@@ -246,15 +260,17 @@ const GLOSSARY = `
     </ul>
   </section>
   <section>
-    <h3>Heroes (card source)</h3>
+    <h3>Heroes / Origins — passive abilities</h3>
+    <p>One hero per unit; each grants one always-on ability. No
+      decision surface — heroes do their thing automatically.</p>
     <ul class="glossary">
-      <li><strong>Angelic</strong> — contributes the Guardian Aura card
-        (+1 max HP to allies within 5 hex).</li>
-      <li><strong>Techy</strong> — contributes Tactical Scan (reveals all
-        enemies at round start for 3 ticks).</li>
-      <li><strong>Cursed</strong> — contributes Mark Target (marks the
-        first enemy this unit spots; allies get +20 HR / +10 HS vs that
-        target, plus 5 ticks of LoS-bypass reveal).</li>
+      <li><strong>Angelic</strong> — Guardian Aura: allies within 5 hex
+        of this unit get +1 max HP for the round, always on.</li>
+      <li><strong>Techy</strong> — Tactical Scan: reveals all enemy
+        positions to your team for 3 ticks at round start.</li>
+      <li><strong>Cursed</strong> — Mark Target: the first enemy this
+        unit spots each round is auto-marked all round — allies get
+        +20 HR / +10 HS vs the mark, plus 5 ticks of vision past LoS.</li>
     </ul>
   </section>
   <section>
@@ -296,6 +312,88 @@ const GLOSSARY = `
 // happened, not just what.
 
 const PATCH_NOTES = `
+  <section>
+    <h3>v0.8.2 — clean v0 package</h3>
+    <ul>
+      <li>Full spec rewrite (<code>docs/spec.md</code>) describing what
+        actually shipped — match flow, maps, units, attributes, traits,
+        vision, combat, AI directives + compliance, plant mechanic,
+        draft mode, determinism + event log + stats pipeline, UI
+        surfaces, code map, config cheat sheet.</li>
+      <li>New <code>README.md</code> with project intro, getting-started,
+        what's modeled vs not, and dev-tool overview.</li>
+      <li><code>CLAUDE.md</code> refreshed to a v0-complete coding
+        contract.</li>
+      <li>Module headers across the most-visited game files
+        (main / tick / combat / directives / strategies / match / state /
+        loop / attributes / vision) replaced with intent-first
+        descriptions instead of pass-tag changelogs.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.8.1 — planning UI polish</h3>
+    <ul>
+      <li><strong>Attribute panel consistency.</strong> Discipline
+        promoted to a v0-active visible attribute (Tenacity is wired
+        via the compliance roll). H3-badged inert subs (Adaptability,
+        Comms) now actually grey out in the Details panel — a CSS
+        specificity bug was making them render at full brightness.</li>
+      <li><strong>Full weapon names</strong> in the draft pool cards
+        (Sniper / Rifle / Shotgun) — the single-letter glyph forced
+        memorization across 8 unknown units.</li>
+      <li><strong>Role + Hero chips with hover tooltips</strong>
+        across the planning roster, draft pool cards, and resolution
+        unit info. Hero is now visible during planning (previously
+        only in the resolution unit-info DL).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.8 — H3: roster-driven strategies + card system collapse</h3>
+    <ul>
+      <li><strong>15 strategies on the menu</strong> (was 6). Baseline 6
+        (Hold / Stack / Pressure / Execute / Rush / Control) plus 9
+        trait-unlocked variants for defense and 6 for attack. The menu
+        is filtered to your roster — a strategy appears only when a
+        unit on your team carries a trait that unlocks it. A Sentinel
+        adds "Anchor Hold"; a Lurker adds "Patient Flank"; a Leader
+        adds "Coordinated Lockdown"; a Lone Wolf adds "Scatter Push";
+        and so on.</li>
+      <li><strong>Per-tick directive compliance roll.</strong> Each tick
+        a unit's directive applies, it rolls
+        <code>50 + 0.5×Tenacity_delta + 0.3×Composure_delta
+        − threshold − situational_pressure</code> (clamp [5, 95]). On
+        failure the unit drops into the fallback behavior tree. High-
+        Tenacity rosters stay on plan; low-Tenacity rosters break
+        under fire — especially on demanding strategies (Anchor Hold,
+        Patient Flank, Coordinated Lockdown all raise the threshold
+        above the baseline 50).</li>
+      <li><strong>Card system removed end-to-end.</strong> Deck / hand /
+        discard, the targeting UI, all 13 card definitions, and the
+        per-card visual layer have all been retired. The strategy menu
+        + traits + heroes now own the manager-agency surface that
+        cards used to share. The few card behaviors worth keeping
+        migrated:
+        <ul>
+          <li>Tactical Scan, Guardian Aura, Mark Target became
+            <strong>hero passive abilities</strong>.</li>
+          <li>Reckless Push / Anchor Position / Slow Flank / Spearhead
+            / Crossfire became <strong>strategy synergies</strong>
+            inside their relevant variants.</li>
+        </ul>
+      </li>
+      <li><strong>Draft is now the default mode.</strong> Standard
+        becomes the debug toggle for sim work (removes attribute /
+        trait RNG so you can read strategy effects cleanly).</li>
+      <li><strong>Validation harness.</strong> <code>__sim.runValidation</code>
+        runs the 6×6 strategy matrix + a high-vs-low-Tenacity
+        compliance test + the determinism check in ~30s and prints a
+        console summary.</li>
+      <li><strong>Round-resolution fix.</strong> Plant-then-elim cases
+        (attackers plant the spike but also wipe defenders, or vice
+        versa) now resolve correctly via the plant timer instead of
+        stalling.</li>
+    </ul>
+  </section>
   <section>
     <h3>v0.7 — H1 + H2: attributes + traits redesign</h3>
     <ul>
