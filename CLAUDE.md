@@ -1,74 +1,88 @@
-\# Tactical FPS Match Simulator — v0
+# Tactical FPS Match Simulator — Coding Contract
 
+## Project status
 
+**v0 is complete.** The simulator ships a draftable roster, a roster-filtered
+strategy menu, deterministic tick-based rounds with spike-plant, two
+hand-authored maps, and the full event-log / stats / UI surface. The
+build history that produced it is preserved in `git log`.
 
-\## Project Context
+**Future work targets v1**: a management layer on top of this simulator
+(rosters across matches, training, sponsors, season structure). Several
+fields in the v0 data model are inert and waiting for that layer — see
+`docs/spec.md` §15.
 
+The full v0 reference is `docs/spec.md`. Read the relevant sections
+before non-trivial work.
 
+## Architecture rules
 
-This is v0 of a match simulator for a future esports team management game. The full design spec is in `docs/spec.md` — read the relevant sections before any non-trivial work. The spec has 14 sections of game design plus a 7-pass build plan. v0's goal is to validate the core simulation before any management layer.
+- **Logic separate from rendering.** `src/game/` is pure logic with no
+  DOM or canvas imports. `src/render/` draws. `src/ui/` mounts panels
+  and reads events. This keeps the sim portable for a later desktop
+  wrap (Electron / Tauri) or native port.
+- **Deterministic simulation.** Given the same
+  `(map, mode, seed, player picks)`, a match must resolve bit-for-bit
+  identically. Every random roll routes through the seeded PRNG in
+  `src/game/rng.ts`. Per-tick rolls re-derive via `hashSeed(seed, tick)`
+  so a tick's outcome is independent of earlier-tick roll counts.
+- **Tick-based loop.** Discrete ticks (~1s at 1×). Per-tick pipeline
+  lives in `src/game/tick.ts` (vision → AI → movement → fire → vision →
+  round-end). Playback speed scales tick *duration*, never tick
+  *logic*.
+- **Event log is the source of truth.** Every shot, hit, kill, plant,
+  defuse, detonate, strategy pick, and round result lands in
+  `state.events`. The kill feed, stats, round/match modals, and headless
+  harness all read from it.
+- **Numbers in config.** All tunable values live in
+  `src/game/config.ts`. No magic numbers in game logic. Re-tuning the
+  sim should never require touching non-config files.
 
+## Code style
 
+- Strict TypeScript (`tsconfig.json` has strict + erasableSyntaxOnly).
+- Pure functions in `src/game/` wherever possible. `tick.ts`,
+  `match.ts`, `combat.ts`, `directives.ts`, `stats.ts`, `batch.ts`,
+  `pathfind.ts`, `vision.ts`, `attributes.ts` are all pure.
+- Small modules; one concept per file.
+- Comment intent, not mechanics. Reference spec sections when relevant.
+- Never create new documentation files unless explicitly requested.
 
-\## Build Discipline
+## Tech stack
 
+- TypeScript strict + Vite + HTML5 Canvas. Vanilla — no React, no game
+  engine, no UI library.
+- No backend. State in memory.
+- Browser-only for v0. Architecture permits a later desktop wrap.
 
+## Workflow
 
-\- \*\*One pass at a time.\*\* Do not skip ahead or pull features from later passes.
+- For non-trivial changes, use Plan mode (Shift+Tab twice) before
+  implementing. Describe the approach and wait for approval.
+- Touch one concern at a time — bundling unrelated fixes makes review
+  harder.
+- After meaningful behavior changes, run the headless validation:
+  `npx vite build && npx tsc --noEmit`, then in the dev console
+  `__sim.runValidation(20)`. The determinism check is a hard invariant
+  (must report 0 mismatches).
+- Use the validation harness in `src/game/batch.ts` for tuning. The
+  strategy matrix + compliance test surface roster-composition effects
+  on win rate.
 
-\- \*\*Validate before advancing.\*\* Each pass has explicit validation criteria. Confirm with me before starting the next.
+## Where things live
 
-\- \*\*Numbers in config.\*\* All tunable values (hit %, damage, trait modifiers, range thresholds, grid size, hex size) live in a single config module. No magic numbers in game logic.
+- **All tunables** → `src/game/config.ts`.
+- **State shape + event log + Directive union** → `src/game/types.ts`.
+- **Per-tick pipeline** → `src/game/tick.ts`.
+- **Combat math** → `src/game/combat.ts` (the effective-stat seam is in
+  here — every pp contribution flows through one of its hooks).
+- **AI directives** → `src/game/directives.ts` + per-strategy directive
+  specs in `src/game/strategies.ts`.
+- **Roster generation** → `src/game/attributes.ts rollUnitMeta` +
+  `src/game/draft.ts generatePool`.
+- **Headless harness** → `src/game/batch.ts`.
+- **The `__sim` dev hook** → `src/main.ts` (only mounted in DEV builds).
 
-
-
-\## Architecture Rules
-
-
-
-\- \*\*Logic separate from rendering.\*\* `src/game/` is pure logic, no DOM or canvas imports. `src/render/` handles drawing. Keeps the sim portable for later Electron/Tauri wrapping or native ports.
-
-\- \*\*Deterministic simulation.\*\* Given the same inputs (paths + AI strategy + seed), rounds must resolve identically. Use a seeded PRNG for ALL random rolls.
-
-\- \*\*Tick-based loop.\*\* Discrete ticks (\~1s real time at 1x). Per tick: positions → vision → engagements → damage → round-end check. Playback speed scales tick duration, never tick logic.
-
-\- \*\*Event log.\*\* Every shot, hit, miss, kill, state change goes into an internal log. Powers the kill feed AND deterministic replays.
-
-
-
-\## Tech Stack
-
-
-
-\- TypeScript (strict mode), Vite, HTML5 Canvas. Vanilla — no React, no game engine.
-
-\- No backend. State in memory.
-
-\- Browser-only for v0; architecture must permit later desktop wrap.
-
-
-
-\## Code Style
-
-
-
-\- Strict TypeScript.
-
-\- Pure functions in `src/game/` wherever possible.
-
-\- Small modules; one concept per file.
-
-\- Comment intent, not mechanics.
-
-
-
-\## Workflow
-
-
-
-\- Use Plan mode (Shift+Tab twice) before non-trivial changes.
-
-\- Describe your approach and wait for approval before implementing.
-
-\- After each pass, run the validation criteria from `docs/spec.md` and confirm with me before continuing.
-
+When uncertain about behavior, the cheapest path is: read `config.ts` for
+the numbers, read `types.ts` for the state shape, then jump to the file
+that owns the behavior using `docs/spec.md` §13's module map.

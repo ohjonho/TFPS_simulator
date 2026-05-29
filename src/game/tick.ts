@@ -1,7 +1,17 @@
-// Per-tick simulation step (spec §21 pipeline):
-//   AI decisions → movement → fire/damage → vision recompute → round-end.
-// Pass 5 resolves combat via the real nested-roll pipeline (combat.ts) and ticks
-// down active buffs.
+// Per-tick simulation step. Pure: takes a GameState, returns the next one.
+//
+// Pipeline:
+//   1. Snapshot pre-tick positions (for stationary-sniper test).
+//   2. Compute visibility (drives AI; what units act on at tick start).
+//   3. Plant/defuse state update (may decide the round immediately).
+//   4. Per-unit AI decision (directives + compliance roll → fallback tree).
+//   5. Movement (advanceUnit along A* paths).
+//   6. Fire/damage resolution (combat.resolveShot, seeded; simultaneous).
+//   7. Recompute visibility + tracking + ghosts; tick down buffs.
+//   8. Plant-defuse triggers + Mark Target + Trade Window post-checks.
+//
+// Determinism: per-tick RNG is `createRng(hashSeed(seed, tick))`, so the
+// tick's outcome is independent of how many rolls earlier ticks consumed.
 
 import type {
   AiState,

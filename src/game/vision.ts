@@ -1,15 +1,19 @@
-// Pass 3 — Vision Cones & Fog of War. All functions pure: take a state
-// snapshot, return derived data. Ported from the legacy flat-top/axial version
-// onto the pointy-top odd-row offset grid.
+// Vision cones + fog of war (spec §5). All pure: take a state snapshot,
+// return derived data.
 //
 // Pipeline per tick (called from stepTick AFTER movement):
 //   1. computeVisibility(state) → { visibility, perUnit }
 //   2. updateTracking(state, perUnit) → tracking
 //   3. updateGhosts(preMoveUnits, …) → ghosts
 //
-// Cone math is done in pixel space (offsetToPixel) so hex geometry maps cleanly
-// to angles. Occlusion uses a supercover hex-line trace in axial coords with
-// double-sampling so the line catches hexes it merely grazes at boundaries.
+// Cone math runs in pixel space (`offsetToPixel`) so hex geometry maps
+// cleanly to angles. Occlusion is a supercover hex-line trace in axial
+// coords with double-sampling so the line catches hexes it merely grazes
+// at boundaries. `wall` blocks; `cover` does not.
+//
+// Tactical Scan (Techy hero) extends visibility with all live enemy hexes
+// while the effect is active. Mark Target (Cursed hero) adds the marked
+// enemy's hex for the marking team for `revealUntilTick`.
 
 import type {
   GameState,

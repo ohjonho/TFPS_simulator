@@ -1,12 +1,18 @@
-// Pass 9 — per-unit directive evaluators. Pure functions of
-// (unit, state, prevAi, visibleEnemies); return a DirectiveDecision the tick
-// loop merges with the legacy default-behavior tree. No mutation.
+// Per-unit directive evaluators (spec §7.3). Pure functions of
+// (unit, state, prevAi, visibleEnemies); return a DirectiveDecision the
+// tick loop merges with the default-behavior fallback tree. No mutation.
 //
-// Directives compose tactical behaviors that pre-Pass-9 strategies couldn't
-// express ("hold this angle", "rotate when teammate spots", "trade for ally",
-// "peek and retreat"). Strategies in `strategies.ts` and card handlers in
-// `cardEffects.ts` populate `unit.directives`; the legacy tree fires only
-// when no directive applies, keeping all existing behavior backward-compatible.
+// Directives compose tactical behaviors strategies couldn't express in
+// region-target form: "hold this angle", "rotate when teammate spots",
+// "trade for ally", "peek and retreat", "commit to site". Strategies in
+// `strategies.ts` populate `unit.directives` at round start; tick.ts
+// evaluates them in priority order and falls back to the legacy
+// behavior tree when no directive applies (or compliance fails).
+//
+// `compliancePct` is the per-tick adherence roll (spec §7.4): higher
+// Tenacity/Composure + lower strategy threshold + less situational
+// pressure → near-100% adherence; low values + demanding strategy +
+// under-fire pressure → frequent breaks.
 
 import type {
   AiState,

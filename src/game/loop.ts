@@ -1,7 +1,15 @@
-// Drives the resolution phase. Owns the setInterval that fires stepTick at
-// (TICK.msAt1x / speed) cadence and calls back to the host after each tick so
-// render + UI refresh. Salvaged from the legacy loop, trimmed to Pass 2 state
-// (no vision/ghosts/tracking).
+// `PlaybackLoop` drives the resolution phase. Owns the setInterval that
+// fires `stepTick` at `TICK.msAt1x / speed` cadence and calls back to the
+// host after each tick so render + UI refresh.
+//
+// Round-end precedence inside `fire()`:
+//   1. Plant detonation / defuse (`state.roundResult` set by stepTick).
+//   2. Elimination (via `eliminationWinner`).
+//   3. Round timer (`state.tick >= ROUND_TICK_LIMIT`) → defender wins.
+//
+// `reset(initialUnitsById)` restores the round-start snapshot (units +
+// HP + facing + AI counters + buffs + plant state + cardEffects) for
+// Replay / Back-to-Planning. The snapshot itself lives in main.ts.
 
 import type {
   AiState,

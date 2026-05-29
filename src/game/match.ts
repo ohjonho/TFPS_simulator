@@ -1,7 +1,21 @@
-// Pass 7 — match flow helpers (spec §17). Manages round lifecycle: reposition
-// units to their team's current-side spawn at the start of every round, apply
-// the chosen strategy at Begin Round, award scores at round end, and swap
-// sides at halftime.
+// Match flow helpers (spec §1, §9). Manages the round lifecycle:
+//
+// - `startRound` — reposition units to their team's current-side spawn,
+//   restore HP / state / facing, reset AI / move / buffs / tracking /
+//   ghosts / plant / cardEffects, recompute initial visibility, mark
+//   phase 'planning'.
+// - `applyStrategies` — picks the strategy variant + assigns units to
+//   slots; resolves region-named DirectiveSpecs to concrete HexCoords;
+//   sets `targets` / `directives` / aggression + retreat mods; runs the
+//   hero-passive synergies (Guardian Aura / Tactical Scan / Mark Target);
+//   marks phase 'resolution'.
+// - `endRound` — bumps score, updates AI strategy win-tracker, sets
+//   `roundResult`. Checks match-end (`MATCH_WIN_SCORE`).
+// - `halftimeSwap` — flips `state.teamSide` entries; `startRound` then
+//   spawns each team at its new side's spawn.
+// - `eliminationWinner` — checks team alive counts; post-plant mutual
+//   annihilation awards attackers (planting was the win condition).
+// - `defenderTeam` — whichever team currently holds the 'defender' side.
 
 import type {
   AiState,

@@ -1,7 +1,20 @@
-// Builds the initial GameState: load Foundry, spawn both teams at the map's
-// spawn hexes, default to planning phase at 1× paused, with empty movement
-// orders, the deterministic seed set, and an initial visibility computed so the
-// first frame already has fog populated.
+// Initial-state construction.
+//
+// `buildInitialState(mapName, mode, seed)` selects the map (Foundry or
+// Atoll), routes by mode:
+//   - 'standard' → spawn fixed loadouts via createTeam, assign flat-50
+//     attributes via assignAttributes, hand off to buildStateFromUnits.
+//   - 'draft'    → return a state with phase: 'draft' and a populated
+//     DraftState; finalizeDraft (in draft.ts) re-enters via
+//     buildStateFromUnits once picks are committed.
+//
+// `buildStateFromUnits(units, map, seed, mode)` is the shared tail —
+// initializes all GameState slices (visibility, ai, buffs, plant,
+// scores, teamSide, cardEffects, …) and runs the first
+// `computeVisibility` so the planning frame has fog populated.
+//
+// All randomness threads through `createRng(seed)` so a given (map,
+// mode, seed) triple reproduces the same matchup bit-for-bit.
 
 import type {
   AiState,

@@ -1,833 +1,804 @@
-# Tactical FPS Team Manager — v0 Spec (rev 2)
+# Tactical FPS Match Simulator — v0 Reference
 
-This document supersedes all prior versions. It is the build specification for v0 of an esports team management simulator focused on a tactical FPS game (Valorant-inspired). v0 validates the core simulation and manager-agency loop. The full game (rosters, training, sponsors, seasons, drama) is OUT OF SCOPE here and is built on top of v0 in v1+.
+This document describes v0 of the simulator **as it actually shipped**. It is
+the reference for what's in the code today — not a build plan. The iterative
+build history is preserved in `git log`; the per-pass plan archive lives in
+`~/.claude/plans/` for the working session that produced this build.
 
-Paste this entire document into your AI coding assistant as the project brief. Work through the 9-pass build plan in section 22 — do not attempt to build everything in one prompt.
-
----
-
-## 1. Project Overview
-
-**Game thesis.** An esports team manager simulator for a tactical FPS league. The player is the head coach / manager. They prepare the team (roles, loadouts, strategy book), make round-by-round strategic calls during matches, and play tactical "playbook cards" at key moments. They do NOT control units directly. Units execute autonomously via AI based on team strategy, individual traits, roles, heroes, and modifiers.
-
-**Inspirations:** Esports Godfather (management loop), Football Manager (depth of preparation, sparingness of in-match intervention), Valorant (tactical FPS frame).
-
-**v0 goal.** Validate that the in-match simulation feels meaningful, that manager-agency decisions (strategies + cards) visibly affect outcomes, and that trait/role/hero/loadout combinations produce distinct play patterns across the two maps.
-
-**v1 target (post-v0).** Scale to 5v5, add spike-plant objective, add roster management layer, add utility cards, add morale system, expand card pool.
+v0's purpose was to **validate the in-match simulation** for a future esports
+team-manager game (Valorant-inspired). The management layer (rosters across
+matches, training, sponsors, season structure) is **out of scope** here. v0
+delivers a draftable roster, a tactical strategy menu, a deterministic
+tick-based round, two hand-authored maps, and the stat/event surfaces needed
+to evaluate whether unit / strategy choices matter.
 
 ---
 
-## 2. Tech Stack & Architecture
+## 1. Match flow
 
-- **Platform:** Browser-based, single-player, no backend.
-- **Language:** TypeScript (strict mode).
-- **Rendering:** HTML5 Canvas. No game engine, no React.
-- **State:** in-memory. No persistence in v0.
-- **Visuals:** abstract / minimal. Hex grid with shaded terrain, colored squares for units with weapon icons, simple UI overlays. No 3D, no audio.
-- **Tech-debt rules:**
-  - **Game logic strictly separated from rendering.** `src/game/` is pure logic with no DOM or canvas imports. `src/render/` handles drawing. This enables later porting to Electron/Tauri or a native engine.
-  - **Deterministic simulation.** Given the same inputs (strategy, cards played, seed), rounds must resolve identically. Use a seeded PRNG for all random rolls.
-  - **Tick-based loop.** Discrete ticks (~1s real time at 1x speed). Per tick: AI decisions → movement → vision update → engagement → damage → state changes → round-end check. Playback speed scales tick *duration*, not tick *logic*.
-  - **All tunable values in config.** Hit %, damage, trait modifiers, range thresholds, grid sizes, card effect numbers, AI thresholds — single config module. Expect heavy iteration.
-  - **Event log.** Every shot, hit, miss, kill, card play, AI decision goes into an internal log. Powers the kill feed AND deterministic replays AND debug tools.
+A match is up to 6 rounds, first team to `MATCH_WIN_SCORE = 4` wins.
 
----
+Per round:
 
-## 3. The Match Loop
+1. **Draft** (match start, Draft mode only). 8 units generated; player and AI
+   snake-pick 3 each (P-A-A-P-P-A). Two units discarded. See §10.
+2. **Planning.** Player sees score, both rosters (with traits / role / hero /
+   attributes), and a strategy menu filtered by their roster's traits. Player
+   picks one strategy (and an A/B variant if applicable) and clicks **Begin
+   Round**. AI picks its own strategy via a weighted heuristic.
+3. **Resolution.** Both teams execute autonomously. Player watches with
+   playback controls (1× / 2× / 4× / Pause / Replay).
+4. **Round end.** Triggered by elimination, spike detonation, defuse, or the
+   `ROUND_TICK_LIMIT` timer expiring (defenders win on timeout — "attackers
+   ran out of time"). Round-end modal shows the result + per-unit K/D/A/ACS
+   table.
+5. **Halftime** after round 3: each team's side swaps. Same units, same
+   traits, opposite spawn.
+6. **Next round** or **match end**. Match-end modal shows the full scoreboard
+   sorted by ACS with MVP marker and per-round ACS sparkline.
 
-A match consists of up to 6 rounds, plus possible sudden death. Each round:
-
-1. **Planning phase (~15s real time, skippable).** Player sees current score, both teams' rosters with roles/loadouts/traits, hand of cards, and the strategy menu. Player picks one strategy and optionally plays one card. Clicks "Begin Round."
-2. **AI opponent picks its strategy and card.** Hidden from player. Same logic as player but executed by simple AI heuristics.
-3. **Resolution phase.** Both teams execute autonomously per their AI behavior, modified by their strategy and any played cards. Player watches with kill feed, playback speed controls, and the ability to pause.
-4. **Round end.** Triggered when one team has zero units alive. Winning team +1 round score. Round-end screen shows result, kills, key events.
-5. **Card draw.** Player draws 1 card (if hand < 3 cap). Used cards shuffle back into the deck.
-6. **Next round.** At round 3 → 4, sides swap (attackers become defenders and vice versa). At match point (player's score = 3, opponent < 4), timeout becomes available. At sudden death (3–3), the sudden-death sub-loop begins.
-
-**Match end:** first team to 4 round wins, or wins sudden death (see section 17).
+Standard mode uses fixed loadouts (2 rifles + 1 sniper per team) and flat-50
+attributes — the debug baseline. Draft mode is the default and produces
+varied rosters with normally-distributed attributes.
 
 ---
 
-## 4. Maps
+## 2. Architecture
 
-### 4.1 Grid & Coordinate System
+- **Browser-only, no backend.** TypeScript strict, Vite, HTML5 Canvas.
+  Vanilla — no React, no game engine.
+- **`src/game/` is pure logic** with no DOM or canvas imports. `src/render/`
+  draws. `src/ui/` mounts panels and reads events. `src/maps/` defines the
+  hex grids. This keeps the sim portable for a later desktop wrap.
+- **Deterministic.** Given the same `(seed, map, mode, player picks)` tuple,
+  a match resolves bit-for-bit identically. Every random roll routes through
+  the seeded PRNG in `src/game/rng.ts` (mulberry32 + per-tick re-derivation
+  via `hashSeed(seed, tick)`).
+- **Tick-based.** ~1 s of real time per tick at 1×. Playback speed scales
+  tick *duration*, not tick *logic*. Per tick (in `src/game/tick.ts`):
+  1. snapshot pre-tick positions,
+  2. compute visibility,
+  3. plant/defuse state update,
+  4. AI decisions (directives → fallback tree),
+  5. movement,
+  6. fire / damage resolution,
+  7. recompute visibility / tracking / ghosts,
+  8. round-end check.
+- **Event log.** Every shot, hit, miss, kill, plant, defuse, detonate,
+  strategy pick, and round result is appended to `state.events`. The kill
+  feed, round-end stats, match-end scoreboard, and headless harness all read
+  from it. Replays are bit-identical because the event log is a pure function
+  of `(seed, picks)`.
+- **All tunables in `src/game/config.ts`.** Hit table, damage, range bands,
+  trait bonuses, attribute formulas, compliance thresholds, plant timers,
+  draft pool size — every magic number lives here. Game logic never inlines
+  numerics.
 
-- **30 columns × 40 rows** hex grid (axial coordinates, "pointy-top" hexes).
-- Hex distance computed by axial coord math.
-- Defenders spawn at top (north), attackers at bottom (south).
+---
 
-### 4.2 Cell Types
+## 3. Maps
 
-| Code | Name | Vision | Movement | Notes |
-|------|------|--------|----------|-------|
-| `wall` | Full wall | BLOCKS | Blocked | Architectural / void |
-| `open` | Open corridor/floor | Passes | Allowed | Default traversable |
-| `def` | Defender spawn | Passes | Allowed | Spawn marker |
-| `atk` | Attacker spawn | Passes | Allowed | Spawn marker |
-| `site` | Site interior | Passes | Allowed | Latent v1 plant area marker |
-| `plant` | Plant zone | Passes | Allowed | Subset of site; v1 plant-placement target |
-| `mid` | Mid zone | Passes | Allowed | Same as open, region-labeled |
-| `cover` | Cover (half-wall) | Passes | Blocked | Provides incoming hit % penalty |
+### 3.1 Grid
 
-**Half-wall cover effect:** when a unit is adjacent to a `cover` hex and a shot crosses that cover toward it, incoming hit chance is reduced by **20 percentage points**.
+- **30 columns × 40 rows**, pointy-top hexes, odd-row offset coords
+  `{col, row}`. Defenders spawn at the top (north), attackers at the bottom
+  (south).
+- Hex geometry: `HEX = { size: 13, w = size·√3, vs = size·1.5, mx = 12, my = 12 }`.
+- Hex distance uses axial conversion via `hexDistance` in `src/game/hex.ts`.
 
-**Note:** in v0, `site` and `plant` behave identically to `open`/`mid`. They are metadata for v1 spike-plant. Region labels (`mid`, `site`) are also used by AI for behavior templates and don't affect mechanics.
+### 3.2 Cell types
 
-### 4.3 Range Definitions (hex distance)
+| Type | Vision | Movement | Notes |
+|------|--------|----------|-------|
+| `wall` | Blocks | Blocked | Architectural |
+| `open` | Passes | Allowed | Default traversable |
+| `def` / `atk` | Passes | Allowed | Spawn markers |
+| `site` | Passes | Allowed | Site interior (region tag) |
+| `plant` | Passes | Allowed | Subset of site; spike-plantable |
+| `mid` | Passes | Allowed | Region-labeled open space |
+| `cover` | Passes | **Blocked** | Half-wall — adjacent target gets −20pp HR |
 
-- Short: 1–4 hexes
-- Medium: 5–10 hexes
-- Long: 11+ hexes
+Cover only blocks **movement**, never vision. The cover penalty fires when a
+shot's hex-line crosses a `cover` hex adjacent to the target (see
+`shotCrossesCover` in `src/game/combat.ts`).
 
-### 4.4 Map A: Foundry
+### 3.3 Range bands (hex distance)
 
-**Character:** tight B squeeze, open A site. Asymmetric — B is a constricted corridor approach with hard chokes; A is a wider site with more entry angles. Favors tactical map control. Mid is a contested zone with a central pillar.
+- **Short** 1–4 · **Medium** 5–10 · **Long** 11+
 
-**Layout source:** prototyped in `hex_maps_foundry_atoll.html` (foundry function). Translate the grid generation directly into `src/maps/foundry.ts`.
+### 3.4 The two maps
 
-**Key regions** (used by AI as behavior templates):
-- `def_spawn`
-- `b_site`, `b_plant`, `b_squeeze` (tight choke)
-- `a_site`, `a_plant`, `a_connector` (wider entry)
-- `mid`, `mid_pillar` (central 2×2 wall block)
-- `b_main`, `b_lobby`, `a_main`, `a_lobby` (attacker corridors and staging)
-- `atk_spawn`
+Both maps are hand-authored in code as a sequence of region fills using
+`src/maps/gridUtils.ts` helpers and translated from the
+`hex_maps_foundry_atoll.html` prototype.
 
-### 4.5 Map B: Atoll
+- **Foundry** (`src/maps/foundry.ts`) — symmetric two-site map. Tight B
+  squeeze, wider A site, central mid pillar breaking the long sightline.
+  Regions: `def_spawn`, `atk_spawn`, `mid`, `mid_pillar`, `a_site` /
+  `a_plant` / `a_connector` / `a_main` / `a_lobby`, B-side mirrors.
+- **Atoll** (`src/maps/atoll.ts`) — asymmetric. Wide B dock with a long
+  sniper lane, tight A labyrinth with internal walls. Regions add
+  `b_dock`, `mid_courtyard`, `a_maze`.
 
-**Character:** wide B dock with long sniper sightline, tight A labyrinth. Asymmetric — B Main is a long sniper-friendly approach; A site is a constricted labyrinth with multiple internal walls. Favors information-gathering and adaptive play.
+The top bar's Map toggle rebuilds the match on the chosen map preserving the
+current `(matchMode, matchSeed)`.
 
-**Layout source:** prototyped in `hex_maps_foundry_atoll.html` (atoll function). Translate directly into `src/maps/atoll.ts`.
+### 3.5 Map schema (`src/maps/types.ts`)
 
-**Key regions:**
-- `def_spawn`
-- `b_site` (wide), `b_plant`, `b_dock`
-- `a_site` (labyrinth with internal walls), `a_plant`, `a_maze`
-- `mid`, `mid_courtyard`
-- `b_main` (long sniper lane), `b_lobby`, `a_main`, `a_lobby`
-- `atk_spawn`
-
-### 4.6 Map Definition Schema
-
-```typescript
+```ts
 type CellType = 'wall' | 'open' | 'def' | 'atk' | 'site' | 'plant' | 'mid' | 'cover';
-
 type HexCoord = { col: number; row: number };
-
 type MapDefinition = {
   name: 'Foundry' | 'Atoll';
-  width: 30;
-  height: 40;
-  grid: CellType[][];                    // [row][col]
-  regions: Record<string, HexCoord[]>;   // named region → hexes
-  sites: {
-    A: { hexes: HexCoord[]; plantHexes: HexCoord[]; centerHex: HexCoord };
-    B: { hexes: HexCoord[]; plantHexes: HexCoord[]; centerHex: HexCoord };
-  };
-  spawns: {
-    defenders: HexCoord[];                // length 3 for v0, will be 5 for v1
-    attackers: HexCoord[];
-  };
+  width: 30; height: 40;
+  grid: CellType[][];                                    // grid[row][col]
+  regions: Record<string, HexCoord[]>;                   // strategies reference these
+  sites: { A: SiteInfo; B: SiteInfo };                   // hexes + plantHexes + centerHex
+  spawns: { defenders: HexCoord[]; attackers: HexCoord[] };
   character: 'open_sightlines' | 'tight_corridors_asymmetric';
 };
 ```
 
-Region metadata is required because AI behavior templates reference regions by name ("attacker rushes B via b_main"). Without regions, the AI has no language for strategy.
+Regions are required because strategies and directives reference hexes **by
+region name**, e.g. "Vanguard goes to `a_site` centroid." `regionCentroid` in
+`src/game/strategies.ts` returns the middle passable hex of a region.
 
 ---
 
-## 5. Units
+## 4. Units
 
-### 5.1 Properties
+### 4.1 Identity
 
-Each unit has:
+Each unit (`src/game/types.ts Unit`) carries:
 
-- **HP**: 3 (max). 4 with Angelic Guardian Aura card.
-- **Loadout**: Shotgun / Rifle / Sniper, set per-match by player loadout policy.
-- **Role**: Vanguard / Tactician / Warden / Specialist (see section 10).
-- **Hero**: Angelic / Techy / Cursed (see section 11). Random at match start in v0.
-- **Skill trait**: 1 of 4, random at match start (see section 12.1).
-- **Behavioral trait**: 1 of 6, random at match start (see section 12.2).
-- **Modifiers**: dynamic state — aggression, clutch eligibility, off-position penalty status, active buffs/debuffs from cards (see section 13).
-- **State**: Alive / Dead, current hex, current facing (1 of 6 hex directions).
+- `id`, `team`, `pos`, `facing` (0-5, clockwise from N), `hp`, `maxHp`, `state`.
+- `weapon`: `shotgun` / `rifle` / `sniper`.
+- `role` + `preferredRole`: Vanguard / Tactician / Warden / Specialist.
+  Off-preferred role triggers a −10pp HR penalty.
+- `hero` (origin): Angelic / Techy / Cursed — passive ability tag, no
+  decision surface (§4.6).
+- `skillTrait`, `behavioralTrait`, `personalityTrait`: one per category from
+  the 23-trait pool (§4.4).
+- `attributes`: 10 hidden sub-ratings (0–100, 50 = baseline) feeding 5
+  visible aggregates (§4.3).
+- `modifiers`: dynamic — `aggression` (per role + strategy mod),
+  `offPosition`, `retreatThresholdMod` (strategy-driven).
+- `directives`: 0+ tactical directives for this round, injected by the
+  strategy (§7.3).
+- `cardFlags`: per-unit boolean / hex flags set by hero passives + a few
+  strategy synergies. (The name is historical; the card system was removed
+  in H3.4. The flag/effect plumbing remains because hero passives reuse it.)
 
-### 5.2 Movement
+### 4.2 Loadouts
 
-- Default: **1 hex per tick**.
-- Sniper: 0.5 hex per tick (moves every other tick).
-- Run-n-Gun behavioral trait: +0.5 speed.
-- Tick = 1 second at 1x playback. Playback speed options: 1x / 2x / 4x.
+| Weapon | HR short | HR medium | HR long | Body / head dmg | Fire rate | Move speed |
+|--------|---------:|----------:|--------:|----------------:|----------:|-----------:|
+| Shotgun | 80% | 30% | 5% | 1 / 2 | 1 / tick | 1.0 |
+| Rifle | 70% | 75% | 55% | 1 / 2 | 1 / tick | 1.0 |
+| Sniper stationary | 30% | 60% | 80% | 2 / 4 | 1 / 2 ticks | 1.0 |
+| Sniper moving | 15% | 30% | 45% | 2 / 4 | 1 / 2 ticks | 1.0 |
 
-### 5.3 Loadouts
+Sniper uses the **stationary** row only after `SNIPER_SETTLED_TICKS = 2`
+consecutive ticks of stillness; otherwise it shoots from the **moving** row.
+Snipers also get +10pp headshot at long range when stationary.
 
-| Weapon | HR Short | HR Medium | HR Long | Body Dmg | Head Dmg | Fire Rate | Move Speed |
-|--------|:--------:|:---------:|:-------:|:--------:|:--------:|:---------:|:----------:|
-| Shotgun | 90% | 30% | 5% | 1 | 2 | 1/tick | 1.0 |
-| Rifle | 70% | 75% | 55% | 1 | 2 | 1/tick | 1.0 |
-| Sniper (stationary) | 30% | 60% | 90% | 2 | 4 | 1/2 ticks | 0.5 |
-| Sniper (moving) | 15% | 30% | 45% | 2 | 4 | 1/2 ticks | 0.5 |
+`maxHp = 3`. Guardian Aura (Angelic hero) adds +1 maxHp to allies within 5
+hexes; restored at round end.
 
-**Sniper additional rules:**
-- Vision cone narrows to 45° when stationary (defined: did not change hex this tick AND not the first tick leaving a hold). 90° while moving.
-- Headshot bonus at long range: +10 percentage points (so 40% HS chance at 11+ hexes instead of 30%).
+### 4.3 Attributes (5 visible, 10 hidden)
 
-In v0, loadouts are set per match by the player's "loadout policy" (see section 9). No in-round purchasing.
+The hidden 10 are the source of truth — combat / vision math reads them
+directly. The visible 5 are a weighted-sum aggregation for display only
+(see `ATTRIBUTES.aggregation` in config, and `aggregateVisible` in
+`src/game/attributes.ts`).
 
----
+| Visible aggregate | Hidden subs feeding it | What it does in v0 |
+|---|---|---|
+| **Mechanics** | aim, headshot, reflexes, weaponAffinity | HR + HS pp contributions; reflexes scales First Shot magnitude |
+| **Game Sense** | vision, mapIQ | Cone width + ghost duration + cover-seek radius |
+| **Discipline** | tenacity | Gates the per-tick directive compliance roll (§7.4) |
+| **Improvisation** | composure, adaptability* | Last-alive HR retention via composure; adaptability inert |
+| **Leadership** | comms* | Inert in v0 (placeholder for v1 hero auras) |
 
-## 6. Vision & Information
+*`adaptability` and `comms` are generated but not yet consumed — they're
+forward state for v1. The UI greys them with an "H3" badge in the attribute
+panel's Details disclosure.
 
-### 6.1 Vision Cone
+**Generation modes** (`ATTRIBUTES.generation.distribution`):
+- `flat`: every attribute = 50 (Standard mode default; deterministic).
+- `normal`: truncated-normal sample, mean 50, stdDev 12, clamped to [10, 90]
+  (the Draft default — produces variety).
+- `uniform`: uniform in [min, max].
 
-- 90° cone in the direction the unit is currently facing.
-- **Infinite distance** along the cone, blocked only by `wall` cells.
-- `cover` cells do NOT block vision.
-- Default facing = direction of last movement. While holding (stationary by AI choice), facing = direction toward expected threat (set by behavior template) or last movement.
-- When an enemy enters the cone, facing snaps to point at the closest visible enemy by hex distance. Tiebreak: lowest unit ID (deterministic).
-- When the tracked enemy dies or leaves sight for 3+ consecutive ticks, facing reverts to behavior-default (movement direction or assigned hold direction).
-- **Sniper** stationary: 45° cone. Moving: 90°.
-- **Eagle Eye** skill trait: +30° to base cone (so 120° normal, 75° stationary sniper).
+### 4.4 Traits (23, three categories)
 
-### 6.2 Occlusion
+Each unit picks one trait per category. Trait list in
+`config.ts TRAITS_BY_ID`:
 
-- Computed via **supercover hex-line tracing**: for each candidate hex in the cone, trace a hex line from the viewer to the target. If any hex along the line is `wall`, the target is hidden. `cover` cells do not block.
-- Cone filter (angle test) is applied first; occlusion check is applied to hexes passing the cone test.
+| Category | Traits |
+|---|---|
+| **Skill** (mechanical) | Sharp Aim, Headhunter, Eagle Eye, First Shot, Spray Down, Deadeye, Close Quarters |
+| **Behavioral** (engagement style) | Sentinel, Run-n-Gun, Lurker, Entry, Trader, Clutch, Roamer, Hot Head |
+| **Personality** (mental + social) | Big Brain, Ego, Composed, Leader, Lone Wolf, Paranoid, Patient, Old Pro |
 
-### 6.3 Fog of War
+Each trait carries:
+- **Sub-attribute deltas** applied at unit generation (e.g. Sharp Aim = +15
+  aim). Stacked on top of the rolled attribute.
+- **Conditional combat hooks** (e.g. Sentinel +25 HR / +20 HS after 3 ticks
+  stationary) — see `combat.ts traitHitPp` / `traitHeadshotPp`.
+- **`unlocks: StrategyId[]`** — strategies this trait makes available to the
+  roster (§7.2). Skill traits unlock nothing; behavioral + personality each
+  unlock one variant strategy.
+- **`tier`**: `starter` / `earned` / `event`. v0 picks uniformly across
+  tiers; v1's management layer would gate scouting + XP-earned traits.
 
-- **Team-shared visibility.** A hex is visible to a team if any alive ally has it in their cone.
-- Enemy units render only when currently visible to the player's team.
-- **Ghost markers:** after losing sight of an enemy, a faded marker persists at last known position for 5 ticks. Cleared immediately if the enemy becomes visible again.
+### 4.5 Roles
 
-### 6.4 Debug Mode
+Vanguard (aggression 70), Tactician (50), Warden (35), Specialist (55).
+Aggression contributes to early-round HR via the `modifiers.aggression`
+modifier (combat.ts), and an above-`AGGRESSION_PUSH_THRESHOLD` value makes
+an idle, order-less unit advance toward the enemy spawn.
 
-- Toggleable via keyboard (e.g., `V`). For development and validation only — not exposed in production UI.
-- When on: renders cone arc edges for selected unit, hexes currently in cone, hexes currently visible (cone ∩ not-occluded), and trace lines to tracked enemy.
+`preferredRole` is set at unit generation and equals `role` by default. Pass
+H-era off-position handling: setting `role !== preferredRole` triggers
+`offPosition: true` and the −10pp HR penalty.
 
----
+### 4.6 Heroes (origins)
 
-## 7. Combat
+Passive abilities (no decision surface), set per unit at draft / match start:
 
-### 7.1 Engagement Trigger
+- **Angelic** — Guardian Aura: allies within 5 hex get +1 max HP, always on.
+- **Techy** — Tactical Scan: round-start reveal of all enemy positions for
+  3 ticks (per `CARD_EFFECTS.tacticalScan.ticks`).
+- **Cursed** — Mark Target: the first enemy this unit spots each round is
+  auto-marked all round — allies get +20pp HR / +10pp HS vs the mark and
+  team visibility includes the marked hex for 5 ticks even past LoS.
 
-When an alive unit's cone (post-occlusion) contains an alive enemy unit, the unit transitions to "engaged" state and stops executing its AI behavior path. It fires per loadout rules each tick (or every 2 ticks for sniper).
-
-Disengagement: when the engaged target dies or leaves sight for 3+ ticks AND no other enemy is visible, the unit resumes its AI behavior.
-
-### 7.2 Hit Resolution (nested rolls)
-
-Per fired shot:
-
-1. **Hit roll:** weapon-and-range hit %, modified by:
-   - Trait bonuses (Sharp Aim +10pp, First Shot +20pp on first shot of engagement)
-   - Behavioral bonuses (Sentinel +25pp stationary, Run-n-Gun +15pp moving, Lurker +20pp adjacent to wall, Entry +20pp first 3 ticks, etc.)
-   - Modifier effects (aggression, clutch, off-position — see section 13)
-   - Card effects (Spearhead +15pp, Cursed Mark +20pp on target, etc.)
-   - Half-wall cover penalty: −20pp if shot crosses cover into target
-   - Final hit % clamped to [5%, 95%].
-2. If hit, **headshot roll:** 30% base (40% sniper at long range), modified by traits (Headhunter +10pp with rifle, Cursed Mark +10pp on target, Sentinel +20pp stationary, Lurker +10pp adj wall, Clutch +15pp when last alive).
-3. Apply damage: body = weapon body damage, head = weapon head damage.
-4. If HP drops to ≤0, unit dies. Position remains as a greyed-out marker for the round.
-
-### 7.3 Per-Tick Engagement
-
-Each engaged unit fires once per tick (snipers every 2 ticks). Both units in an engagement fire in the same tick — simultaneous. Order of damage application doesn't matter when both shoot; deaths apply at end of tick.
-
-### 7.4 Buff/Debuff System
-
-Cards apply temporary modifiers (buffs/debuffs) with duration in ticks. Each unit has an active modifiers list. Hit/damage calculations read base stats + trait mods + active buff mods.
-
-Buffs to support:
-- HR / HS additive modifiers (per-unit or per-target-pair)
-- Max HP modifier (Angelic aura)
-- Vision modifier (forced visibility for Techy Scan)
-- Behavior overrides (push instead of hold, ignore retreat, etc.)
-
-Duration: most card buffs last one round. Cleared at round end.
-
----
-
-## 8. Unit AI Behavior
-
-### 8.1 Architecture: Team Strategy → Role/Region → Per-Unit Execution
-
-Three-layer cascade:
-
-**Layer 1 — Team Strategy** (picked once at round start by player or AI).
-The strategy is a named behavior template: Execute / Rush / Control (attacker) or Hold / Stack / Pressure (defender). The template encodes per-role region assignments and aggression baseline.
-
-**Layer 2 — Role/Region Assignment.**
-Strategy resolves into role-specific targets:
-- "Execute" → Vanguard pushes A_main → A_site, Warden holds A_main → A_lobby trade position, Tactician moves to mid_pillar for util setup, etc.
-- Each strategy has hardcoded region assignments per role per map.
-
-**Layer 3 — Per-Unit Tactical AI.**
-Within their assigned region, each unit makes tick-by-tick decisions:
-- Move toward assigned region (A* pathfinding on hex grid)
-- Engage on sight (section 7.1)
-- Retreat at 1 HP (unless trait overrides: Sentinel, Clutch, Entry)
-- Hold position once assigned region reached
-- Reposition every N ticks if no enemy seen (avoid being predictable)
-
-Card effects insert *overrides* into Layer 3: e.g., Lurker "Slow Flank" replaces the unit's region target with a perimeter path; Vanguard "Spearhead" makes that unit take point with allies following 2 ticks behind.
-
-### 8.2 Modifier Application
-
-Every AI decision and every hit calculation reads the unit's effective stats: base + trait + role + hero + active modifiers + card buffs. Section 13 details the modifier system.
-
-### 8.3 Behavior Primitives (Pass 4)
-
-Build these as pure functions in `src/game/unit-ai.ts`:
-
-- `moveToward(unit, targetHex, map): NextHex`
-- `shouldEngage(unit, visibleEnemies): EngagementDecision`
-- `shouldRetreat(unit, threats): RetreatDecision`
-- `pickFiringTarget(unit, visibleEnemies): UnitId`
-- `holdPosition(unit, facingDir): HoldAction`
-
-Each is overridable by strategy parameters and card buffs.
+Hero passives wire through `match.applyStrategies` → `cardEffects` /
+`cardFlags`. The "card" names are historical; v0's card system was removed
+in the H3 redesign and these flags became the synergy plumbing.
 
 ---
 
-## 9. Manager Agency
+## 5. Vision & fog
 
-The player makes a small number of high-leverage decisions per match, organized in three layers by time horizon.
+### 5.1 Vision cone
 
-### 9.1 Layer 1 — Pre-Match (set once)
+- Base half-angle 45° (90° full).
+- Sniper while stationary: 22.5° half (45° full).
+- Eagle Eye trait: +15° half (so 120° full normal, 75° full stationary
+  sniper).
+- High Vision attribute: +0.4°/(rating − 50) half-angle, capped at ±20°.
+- **Infinite range** along the cone, blocked only by `wall` cells.
+  `cover` does not block.
 
-- **Role assignments.** Player assigns each unit a role from {Vanguard, Tactician, Warden, Specialist}. Each unit has a preferred role; assigning off-preferred-role applies the off-position modifier penalty for the whole match.
-- **Loadout policy.** Player picks each unit's loadout (Shotgun / Rifle / Sniper). Fixed for the match.
-- **Side selection.** Player chooses attack or defense for the first half. Sides swap at round 3 → 4.
+### 5.2 Facing
 
-### 9.2 Layer 2 — Per-Round (every round)
+- Default = direction of last movement.
+- When an enemy enters the cone, facing snaps to point at the **closest
+  visible enemy** by hex distance (lowest-id tiebreak).
+- When the tracked enemy dies or has been unseen for
+  `VISION.trackLossThreshold = 3` consecutive ticks, facing reverts to the
+  unit's directive-default or to a periodic re-face toward enemy-spawn /
+  mid-centroid (Pass E m1).
 
-- **Strategy pick.** From 3 options for the player's current side (section 14).
-- **Card play.** Optionally play 1 card from hand (section 15).
+### 5.3 Occlusion
 
-### 9.3 Layer 3 — Reactive (rare, trigger-gated)
+- Supercover hex-line trace (`hexLine` in `hex.ts`) from viewer to candidate
+  hex. Cone filter applied first; occlusion check on hexes passing the cone.
+- A `wall` hex on the line hides the target. `cover` does not.
 
-- **Timeout** (1 per match, available at match point). On use: replan strategy pick before the next round; card hand carries over.
-- **Halftime team talk.** Placeholder in v0 (UI hook present but no mechanical effect). Active in v1+ when morale system lands.
+### 5.4 Fog of war
 
----
+- **Team-shared** visibility. A hex is visible to a team if any alive
+  teammate has it in their cone unblocked.
+- Enemy units render only when in the player team's visibility set during
+  resolution.
+- **Ghost markers** for enemies lost from sight persist `VISION.ghostTicks =
+  5` (±1 by Vision attribute) at the last-seen hex, then clear.
+- Planning has an optional "Show enemies" debug toggle (default on);
+  resolution always respects fog.
 
-## 10. Roles
+### 5.5 Debug overlay
 
-Four roles for v0. Each role has a preferred playstyle and a unique role card.
-
-| Role | Description | Off-Position Penalty Applies When |
-|------|-------------|-----------------------------------|
-| **Vanguard** | Entry duelist. Takes first contact, wins opening engagements. | Assigned to a role they're not preferred for. |
-| **Tactician** | Utility-heavy initiator. Sets up plays, creates angles for allies. | (same) |
-| **Warden** | Defensive anchor. Holds sites, rotates to defend. | (same) |
-| **Specialist** | Flex / unique. Adapts to team needs, can mimic other roles. | (same) |
-
-**Each unit has a preferred role** (set in v0 by random assignment at match start, becomes a permanent attribute in v1 rosters). Assigning the unit to its preferred role: no penalty. Assigning to a non-preferred role: −10pp hit rate for the whole match.
-
-Each role contributes 1 card to the team deck. Card names and effects in section 15.
-
----
-
-## 11. Heroes
-
-Three heroes for v0. Random assignment at match start (becomes permanent player attribute in v1).
-
-| Hero | Tendency | Card Card Effect Theme |
-|------|----------|------------------------|
-| **Angelic** | Supportive, defensive | Aura buff to nearby allies |
-| **Techy** | Supportive, info-gathering | Forced visibility |
-| **Cursed** | Info-gathering, aggressive | Single-target debuff |
-
-Each hero contributes 1 card to the team deck. Effects in section 15.
-
-**Important scope clarification:** in v0, heroes are *only* a card source. They do not add abilities to in-round play beyond their card. The "full hero system" (passive abilities, unique mechanics, ultimates) is deferred to v1+.
+`V` toggles a debug overlay (`drawDebugVision.ts`) drawing per-unit cone
+edges, visible-hex tint, and tracking lines. `R` toggles region-name labels
+on the map.
 
 ---
 
-## 12. Traits
+## 6. Combat
 
-Each unit has 2 traits: 1 skill + 1 behavioral. Random at match start.
+### 6.1 Pipeline (`src/game/combat.ts resolveShot`)
 
-### 12.1 Skill Traits (1 of 4)
+For each shooter→target pair this tick:
 
-| Trait | Effect |
-|-------|--------|
-| **Sharp Aim** | +10pp hit rate across all weapons |
-| **Headhunter** | +10pp headshot chance with rifle only |
-| **Eagle Eye** | Vision cone +30° (120° normal, 75° stationary sniper) |
-| **First Shot** | +20pp hit rate on the unit's first shot of any engagement |
+1. **Range band** from `hexDistance` and `RANGE` thresholds.
+2. **Base HR** from `HIT_TABLE[weapon × band]`. Sniper picks `stationary`
+   or `moving` row based on `SNIPER_SETTLED_TICKS` test.
+3. **Effective HR** = `baseHit + traitHitPp + modifierHitPp + cardHitPp +
+   buffHitPp − coverPenalty`, clamped to `HIT_CLAMP = [5%, 95%]`.
+4. **Hit roll** via the seeded `Rng.chance`.
+5. **Headshot roll** on a hit: 30% base, +10pp for stationary sniper at
+   long range, plus trait / modifier / mark contributions, clamped to the
+   same window.
+6. **Damage** = `DAMAGE[weapon].head` or `.body`. Apply at end of tick
+   (simultaneous damage — both can die same tick).
 
-### 12.2 Behavioral Traits (1 of 6)
+### 6.2 Effective-stat seam
 
-| Trait | Effect |
-|-------|--------|
-| **Sentinel** | +25pp HR / +20pp HS when stationary for 3+ consecutive ticks. Doesn't retreat at 1 HP — holds. |
-| **Run-n-Gun** | +0.5 movement speed; +15pp HR while moving |
-| **Lurker** | +20pp HR / +10pp HS when adjacent to any wall hex. At 1 HP, retreats by routing to nearest wall. |
-| **Entry** | +20pp HR / +15pp HS during first 3 ticks of any engagement; −10pp HR after. At 1 HP, does NOT retreat — pushes forward. |
-| **Trader** | +15pp HR if any ally has fired in the last 3 ticks |
-| **Clutch** | +20pp HR / +15pp HS when last alive on team. Does NOT retreat — ignores normal retreat behavior. |
+`combat.ts` exposes the contribution hooks the rest of the sim feeds:
 
-### 12.3 Trait → Card Mapping
+| Hook | What contributes |
+|---|---|
+| `traitHitPp` | Sharp Aim, First Shot, Sentinel, Run-n-Gun, Lurker, Entry, Trader, Clutch, Spray Down, Deadeye, Close Quarters, Patient |
+| `traitHeadshotPp` | Headhunter (rifle), Sentinel, Lurker, Entry, Clutch |
+| `modifierHitPp` | Aggression (early-round), Weapon Affinity attribute, Off-Position penalty, default Clutch (last-alive without the trait) |
+| `cardHitPp` / `cardHeadshotPp` | Hero passives via `cardEffects` (Mark Target / Cursed) — and a small set of strategy-synergy bonuses |
+| Buffs | Any active `Buff` on `state.buffs[unitId]` (cleared per `expiresAtTick`) |
 
-Each behavioral trait contributes 1 card to the team deck (named card per trait). See section 15.
+The seam is one place to add new pp contributions without touching the roll
+or clamp logic. Every contribution is pure-function of `(unit, ctx,
+state)` and goes through the same seeded RNG.
 
----
+### 6.3 Per-shot context (`ShotContextInput`)
 
-## 13. Modifiers
+Caller-supplied flags that drive trait gating:
 
-Modifiers are dynamic per-unit state that affects performance during a match. They are calculated and applied in the hit/damage pipeline.
+- `stationary`, `stationaryTicks` (Sentinel)
+- `engagementTicks`, `firstShot` (Entry / Spray Down / First Shot)
+- `allyFiredRecently` (Trader)
+- `lastAlive` (Clutch)
+- `adjacentToWall` (Lurker)
+- `ticksIntoRound` (aggression early-round window, Patient late-round)
+- `firstSightShot` (Peeker's Advantage: −10pp on a target that wasn't in the
+  shooter's visibility last tick)
 
-### 13.1 Modifiers Active in v0
+### 6.4 Fire rate
 
-| Modifier | Mechanic |
-|----------|----------|
-| **Aggression** | Per-unit rating 0–100. Affects unit's tendency to push vs hold and HR in the first 3 ticks of a round. Effective HR = base + ((aggression - 50) × 0.2) for the first 3 ticks. Set per-role (Vanguard 70, Tactician 50, Warden 35, Specialist 55) and modified by strategy (+10 on Rush/Pressure, −10 on Control/Hold). |
-| **Clutch Factor** | Integrated with Clutch behavioral trait. When unit becomes last alive, applies trait bonus (or +10pp/+5pp default if unit doesn't have Clutch trait). |
-| **Weapon Handling** | Per-unit rating 0–100 per weapon type. Applied as HR modifier: ((handling - 50) × 0.1) pp. Random per unit in v0; becomes a player attribute in v1. |
-| **Off-Position Penalty** | −10pp HR for the whole match if assigned a role outside the unit's preferred role. |
-
-### 13.2 Modifiers Deferred to v1+
-
-Mention in spec, do NOT implement in v0:
-
-- **Utility Impact** — requires utility system (flashbangs, smokes, stuns). v1.
-- **Morale Dynamics** — match-state-dependent. v1+. Halftime team talk UI built as placeholder in v0.
-
-### 13.3 Implementation
-
-Modifiers live in a `Modifiers` struct per unit. Effective stats computed each tick as `base + trait + role + hero + active_buffs + modifiers`. All numbers tunable in config.
+- `FIRE_RATE.shotgun = FIRE_RATE.rifle = 1`, `FIRE_RATE.sniper = 2` ticks.
+- `AiState.shotClock` counts down; fire only when ≤ 0.
 
 ---
 
-## 14. Strategies
+## 7. AI behavior
 
-Player picks 1 strategy per round from a 3-option menu specific to current side. AI picks the same way.
+### 7.1 Three-tier composition
 
-### 14.1 Attacker Strategies
+1. **Strategy** (round-level). Player picks one strategy per round; it
+   assigns per-role region targets and per-role `Directive`s. See §7.2.
+2. **Directives** (per-unit). Each unit carries a small list of `Directive`
+   objects evaluated in priority order at the top of every tick. See §7.3.
+3. **Default behavior tree** (per-tick fallback). If no directive applies
+   (or compliance fails), the legacy tick.ts decision tree fires: retreat
+   → engage → region move → push/hold by aggression → cover-seek shuffle.
 
-| Strategy | Behavior Template |
-|----------|-------------------|
-| **Execute** | Standard map routes, balanced aggression. Units split: 1 each on A_main, mid, B_main. Engage on contact. |
-| **Rush** | Accelerated movement (+10 aggression all units), lower retreat threshold, immediate engagement. Units commit to one site (AI picks A or B based on unit composition). |
-| **Control** | Slower paths (−10 aggression all units), prioritize map information. Units take longest available route to assigned region; hold positions before committing to a site. |
+### 7.2 Strategies
 
-### 14.2 Defender Strategies
+15 strategies authored in `src/game/strategies.ts`:
 
-| Strategy | Behavior Template |
-|----------|-------------------|
-| **Hold** | Standard defensive distribution: 1 Warden on each site, 1 unit (Tactician or Specialist) holding mid. React to threats. |
-| **Stack** | Two units cluster on AI's read of likely attack site (random in v0; AI-predicted in v1), third roams. Stacked site gets +10pp HR (defensive coordination); unstacked site exposed. |
-| **Pressure** | Defenders push forward off spawn (+10 aggression). Contest mid and forward positions. Higher risk of being out of position when attackers commit. |
+- **Baseline 6** (always available): Defender = Hold / Stack / Pressure;
+  Attacker = Execute / Rush / Control.
+- **Trait-unlocked variants** (gated by `requiresUnlock`): each behavioral
+  + personality trait unlocks one variant. Defender unlocks: Anchor_Hold,
+  Crossfire_Lockdown, Last_Stand_Defense, Mind_Games, Hold_Composure,
+  Coordinated_Lockdown, Rotate_Stack, Wide_Watch, Slow_Burn. Attacker
+  unlocks: Mobile_Push, Patient_Flank, Coordinated_Execute, Solo_Frag,
+  Scatter_Push, Aggressive_Peek. (Mind_Games is shared by both sides.)
 
-### 14.3 Strategy Implementation
+A strategy is **available** to a team if ≥1 unit on the roster carries an
+unlock trait. `availableStrategies` in `src/game/traits.ts` filters the
+menu shown to the player; the AI's picker (`aiOpponent.ts pickAiStrategy`)
+filters identically.
 
-Each strategy is a data structure mapping (role × map) → assigned region, aggression modifier, retreat threshold modifier, and engagement priority.
+Per-strategy mods (`STRATEGY_MODS` in config):
+- `aggression` delta added to every unit's `modifiers.aggression`.
+- `retreatThreshold` delta added to `AI.retreatHpThreshold`.
+- `complianceThreshold` for the directive roll (§7.4). Trait-unlocked
+  variants raise this above 50 — higher ceiling, lower floor design.
 
-```typescript
-type Strategy = {
-  name: string;
-  side: 'attacker' | 'defender';
-  assignments: Record<Role, { region: string; holdFacing?: HexDir }>;
-  aggressionMod: number;
-  retreatThresholdMod: number;
-};
-```
+Each strategy also defines per-role `variants[v][role]` with:
+- `region` — the region centroid is the unit's primary target.
+- `directives` — composable behaviors (§7.3).
+- `usePerimeterPath` — A* picks `findPerimeterPath` (Slow Flank route).
+- `anchorOffset` — pulls defender targets back behind a region's centroid
+  toward the spawn (Hold-style strategies).
 
-Hand-author 6 strategies × 2 maps = 12 strategy definitions for v0.
+The variant choice (e.g. Hold A vs Hold B for site selection) is picked
+explicitly by the player; the AI picks via the seeded RNG. The `playerSide`
+sees a strategy's `variants[idx][0].region` label as the A/B button.
 
----
+### 7.3 Directives
 
-## 15. Cards
+`Directive` is a discriminated union (`types.ts`). Each evaluator is a pure
+function `(unit, state, prevAi) → DirectiveDecision | null` in
+`src/game/directives.ts`. Higher-priority directives win.
 
-### 15.1 Deck Construction
+| Directive | What it does |
+|---|---|
+| `hold_angle` | Face a fixed hex, do not move, engage if enemy in cone |
+| `safe_sniper` | Hold sightline; after N shots BFS to nearest cover and re-hold |
+| `rotate_on_team_contact` | If watched ally has fresh tracking, re-target after delay |
+| `trade_for` | For N ticks after an ally fires / dies, engage their firingTarget if visible |
+| `peek_and_retreat` | Alternate between peek hex and cover hex on a cadence; fire when at peek |
+| `commit_site` | Go to siteHex; only leave on contact in named regions |
 
-- Each unit contributes **3 cards** to the team deck: 1 trait card (from their behavioral trait), 1 role card (from their role), 1 hero card (from their hero).
-- 3 units × 3 cards = **9-card deck**.
-- Both teams have decks built the same way (player's team and AI opponent).
+`applyStrategies` resolves region-named directive specs to concrete
+HexCoords using `regionCentroid` + the unit's preferred site variant.
 
-### 15.2 Draw, Play, Shuffle
+### 7.4 Compliance roll
 
-- **Starting hand:** 3 cards drawn at match start.
-- **Per round:** play up to 1 card, draw 1 card. Hand cap: 3.
-- **Used cards** shuffle back into the deck after being played (deck never empties).
-- Cards persist across halftime and sudden death.
-
-### 15.3 Card Types
-
-| Type | Description | Implementation Cost |
-|------|-------------|---------------------|
-| **Directive** | Overrides a unit's default behavior for the round | Low — modifies the AI Layer 3 input |
-| **Buff** | Applies a temporary stat modifier | Low — adds to modifiers list with duration |
-| **Utility** | Creates a world effect (zones, forced visibility, etc.) | Medium — requires new game-state systems |
-
-### 15.4 Full Card Pool (13 unique cards)
-
-**Behavioral trait cards (6):**
-
-| Card | From | Type | Effect |
-|------|------|------|--------|
-| Anchor Position | Sentinel | Directive | Unit holds spawn-side position all round; doubles trait bonus (+50pp HR / +40pp HS stationary) |
-| Reckless Push | Run-n-Gun | Directive | Unit ignores retreat all round; +1 movement speed; +15pp HR moving |
-| Slow Flank | Lurker | Directive | Unit takes longest perimeter route to assigned region; +20pp HR adjacent to walls; arrives ~5 ticks later than default but unspotted longer |
-| Opening Pick | Entry | Buff | +30pp HR / +15pp HS on first 3 ticks of first engagement; no post-engagement penalty this round |
-| Crossfire | Trader | Buff | If any ally fires this round, this unit gets +25pp HR for 5 ticks after; stackable once |
-| Last Stand | Clutch | Buff | If this unit becomes last alive: +30pp HR / +20pp HS AND skip next ghost-marker (vanish from enemy intel for 5 ticks) |
-
-**Role cards (4):**
-
-| Card | From | Type | Effect |
-|------|------|------|--------|
-| Spearhead | Vanguard | Directive | Vanguard takes point on chosen strategy's path; +15pp HR on first engagement; allies follow 2 ticks behind |
-| Setup Play | Tactician | Directive | Tactician moves to a chosen hex first; one named ally gets +20pp HR for 5 ticks if engaging from a flank angle (>60° off enemy facing) |
-| Hold the Line | Warden | Directive | Warden holds a chosen hex; +20pp HR stationary; allies reaching Warden's position get a 3-tick safe window (no incoming hits land) |
-| Adapt | Specialist | Buff | Specialist gains the bonus of any other role's card for the round (player picks; must be a role currently on the team) |
-
-**Hero cards (3):**
-
-| Card | From | Type | Effect |
-|------|------|------|--------|
-| Guardian Aura | Angelic | Buff | All allies within 5 hexes of this unit get +1 max HP for this round; aura moves with the unit |
-| Tactical Scan | Techy | Utility | Reveals all enemy positions for 5 ticks at round start (overrides fog of war) |
-| Mark Target | Cursed | Buff | Choose 1 enemy unit; all allied attacks against that unit get +20pp HR / +10pp HS for the round |
-
-### 15.5 Card Targeting
-
-- Cards needing a target (Setup Play, Hold the Line, Adapt, Mark Target) enter a "targeting mode" when played. Player clicks the target hex/unit. Esc cancels.
-- Untargeted cards apply immediately on click.
-
-### 15.6 AI Opponent Cards
-
-For v0, the AI plays cards with simple heuristics:
-
-- 70% of rounds, play 1 card; 30% skip.
-- Card selection: weighted random from the cards in hand that match the AI's chosen strategy theme (e.g., Rush strategy favors Spearhead, Opening Pick, Reckless Push).
-- For targeted cards, AI picks heuristically: Mark Target → enemy with highest current HP; Setup Play → strategy's primary attack region; Hold the Line → strategy's anchor region.
-
-More sophisticated card AI is v1.
-
----
-
-## 16. AI Opponent (Strategy Selection)
-
-For v0, the AI opponent's per-round strategy and card play uses heuristics:
-
-- **Strategy selection:** weighted random from the 3 options for the AI's side. Weights bias toward strategies that historically won for the AI this match (simple win-rate tracking per strategy).
-- **Trait/Role/Hero/Loadout assignment:** AI's units assigned randomly at match start, same pool as player.
-- **Card AI:** see 15.6.
-
-This is intentionally not a sophisticated AI for v0. The point of v0 is to validate the simulator, not test against a clever opponent. Smarter AI is a v1+ goal.
-
----
-
-## 17. Round & Match Structure
-
-- **6 rounds:** 3 attack + 3 defense, side determined by player choice at match start.
-- **Half transition:** at round 3 → 4, sides swap. Same units, same roles, same loadouts, same traits, same heroes. Cards persist.
-- **First to 4 wins** the match.
-- **Sudden death** if 3–3 after 6 rounds: replay full economy, player must win one attack AND one defense round consecutively. If they lose either, AI gets a chance. Continues until one team chains 1-attack + 1-defense.
-- **Timeout:** 1 per side, available at match point (own score = 3 AND opponent < 4). On use: replan strategy for next round, card hand carries.
-- **Halftime team talk:** placeholder UI screen between rounds 3 and 4. No mechanical effect in v0.
-
----
-
-## 18. UI Requirements
-
-### 18.1 Match Screen Layout
-
-- **Top bar:** round score (Player vs AI), round number, current half (Atk/Def label), timeout indicator.
-- **Center:** hex map with units, fog of war during resolution.
-- **Side panel:** hovered/selected unit's details (HP, role, hero, traits, loadout, active modifiers).
-- **Bottom controls:** Play/Pause, 1x / 2x / 4x speed, Replay last round.
-- **Kill feed:** persistent log at side or bottom.
-
-### 18.2 Planning Phase UI
-
-Shown between rounds. Player sees:
-
-- Current score, round number, half indicator.
-- Both teams' rosters with: name (or ID for v0), role, hero, traits, loadout, current HP (in case of sudden death).
-- **Off-position warnings** for any unit assigned a non-preferred role.
-- Player's hand of cards with source labels ("From: Sentinel trait, Unit D2").
-- **Strategy menu:** 3 options for current side, each with name + one-line description.
-- **Card source legend** showing which units contributed which cards.
-- **Begin Round button:** disabled until strategy is picked. Card play is optional.
-
-### 18.3 Resolution Phase UI
-
-- Fog of war active.
-- Units render only when visible to player's team.
-- Ghost markers for recently-seen enemies (5-tick fade).
-- Shot events: brief line flash from shooter to target.
-- Damage popups: "−1" or "−2 HS" floating above hit unit.
-- Death: unit greys out and remains as marker.
-- Active card effects display (e.g., aura radius for Guardian Aura, Mark Target indicator on marked enemy).
-
-### 18.4 Kill Feed
-
-Persistent log. Format:
+Each tick that a directive's evaluator would apply, it first rolls against
+the unit's compliance probability:
 
 ```
-T:12 — D1 (Rifle) → A2 [body, 1 dmg]
-T:14 — D1 (Rifle) → A2 [HEAD, 2 dmg] KILL
-T:18 — A3 (Sniper) → D2 [body, 2 dmg] @ long
-T:23 — D3 (Shotgun) → A1 [body, 1 dmg] @ short, cover penalty
-T:25 — [CARD] Player plays Mark Target on A1
-T:27 — D3 (Shotgun) → A1 [HEAD, 2 dmg] KILL  (Mark Target +HS)
+compliancePct = clamp(
+  50 + 0.5×Tenacity_delta + 0.3×Composure_delta − complianceThreshold_delta
+     − situationalPressure,
+  5, 95)
 ```
 
-Cards played logged inline so player can read the round narrative.
+(See `compliancePct` in `directives.ts` for the exact formula and term
+sources.) High Tenacity + low strategy threshold → near-100% adherence; low
+Tenacity + high threshold + under-fire pressure → frequent breaks. On
+failure the directive returns `null` and the legacy behavior tree fires.
 
-### 18.5 Replay
+### 7.5 Default behavior tree (`tick.ts`)
 
-- After each round, Replay button re-runs the same round at chosen speed.
-- Deterministic: uses recorded random seed, strategies, cards, and AI decisions.
-- Useful for player learning and for debugging.
+The fallback when no directive applies. Per unit, in priority order:
 
----
+1. **Retreat** if `hp ≤ AI.retreatHpThreshold + retreatThresholdMod`. Goes
+   to nearest `wall`-adjacent hex (Lurker's wall preference). Override:
+   Sentinel / Entry / Clutch / Reckless-Push / Hot-Head don't retreat.
+2. **Engage** if any visible enemy. Pick closest enemy (lowest-id tiebreak).
+   Stop moving. `engageStickyTicks` keeps the engagement live for 2 ticks
+   after losing LoS to avoid flip-flop.
+3. **Move toward assigned region** if a target is set and not yet reached.
+4. **Push to enemy spawn** if no target and aggression ≥
+   `AGGRESSION_PUSH_THRESHOLD`.
+5. **Hold** otherwise. After `ROTATE_AFTER_HOLD_TICKS = 15` ticks of no
+   contact, re-target to mid centroid (light stalemate breaker).
 
-## 19. Validation Criteria for v0
+Movement uses A* (`pathfind.findPath`) over `passableAt` (excludes `wall`
+and `cover`). Cover-aware: each step costs `1 + 0.3` extra if the
+neighbor has no cover-adjacent neighbor of its own (`MOVE.coverPathPreference`).
+`findPerimeterPath` adds a perimeter-pull weight for Slow Flank routes.
 
-v0 is successful if 5 of these 7 are observably true after 10+ test matches:
+### 7.6 Post-plant attacker hold
 
-1. **Trait differentiation:** two different trait combinations on the same unit (same role, same hero, same loadout) produce visibly different play patterns.
-2. **Role differentiation:** Vanguards visibly play differently from Wardens in the same strategy.
-3. **Map character:** Foundry and Atoll produce different optimal team compositions and play styles. Snipers thrive on Atoll's B Main long lane more than on Foundry. Tight-corridor traits (Lurker, Entry, Run-n-Gun) shine more on Foundry's B squeeze.
-4. **Defender favor:** in neutral matchups across 20+ rounds, defenders win 55–65% of rounds.
-5. **Card meaningfulness:** when a card is played, the player can identify its effect in the kill feed or replay, and it visibly changes round outcomes in ≥50% of cases.
-6. **Match length:** a full match runs 5–15 minutes of real time at 1x playback.
-7. **Causal legibility:** after watching a round, the player can articulate why the team won or lost using the kill feed and replay.
-
-If these hit, the design is validated and the v1 management layer (rosters, training, sponsors, spike-plant, 5v5) can be built on top. If they don't, identify failing criteria and tune before expanding scope.
-
----
-
-## 20. Out of Scope for v0
-
-Do NOT build:
-
-- 5v5 (v0 is 3v3)
-- Spike-plant mechanic (sites and plant zones are metadata only)
-- Hero abilities beyond their card (no passive abilities, no ultimates)
-- Utility cards beyond what's in the v0 card pool (no flashbangs, smokes, stuns)
-- Morale system (placeholder UI only)
-- Loadout cards
-- Economy / in-round purchasing (no pistol rounds, no save rounds)
-- Roster management, signing, training, scouting
-- Tournaments, seasons, leagues
-- Sponsors, drama, storylines
-- 3D rendering, audio
-- Mobile / touch controls (keyboard + mouse)
-- Save / load
-- Multiplayer
-- Advanced AI opponent (use simple heuristics)
-- Map editor (maps are code-defined)
+When the spike is down, alive attackers off the plant zone retarget to a
+cover-adjacent hex within `POST_PLANT_SEARCH_RADIUS = 6` of their current
+position with line-of-sight to the plant centroid and in the rifle/sniper
+sweet-spot range. They hold the angle to deny defuse instead of wandering.
 
 ---
 
-## 21. Engineering Notes
+## 8. Spike plant
 
-- **Determinism.** Seeded PRNG for all rolls. Same inputs → same outputs. Enables replays and deterministic tests.
-- **Config-driven tuning.** Every number in a single `src/game/config.ts`. Expect heavy iteration.
-- **Tick simulation pipeline (each tick):**
-  1. AI decisions per alive unit (target hex, engage decision)
-  2. Movement applied
-  3. Vision recomputed per alive unit
-  4. Engagement transitions evaluated
-  5. Engaged units fire (hit + headshot rolls per nested-roll spec)
-  6. Damage applied
-  7. State transitions (deaths, retreats, behavior changes)
-  8. Buff/debuff durations tick down
-  9. Round-end check
-- **Event log.** Every decision and state change recorded. Used for kill feed, replay, debugging.
-- **Architecture rules:**
-  - `src/game/` — pure logic, no DOM/canvas imports. Includes: vision.ts, combat.ts, unit-ai.ts, strategy.ts, cards.ts, modifiers.ts, tick.ts, rng.ts.
-  - `src/render/` — canvas rendering.
-  - `src/ui/` — HTML overlays, controls, menus.
-  - `src/maps/` — map data modules.
-  - `src/config.ts` — all tunable values.
+`PlantState` on `GameState.plant`:
+- `planted`: `{ site, plantedAtTick } | null` — set when a plant completes.
+- `planting` / `defusing`: in-progress action, cleared each tick that
+  doesn't continue.
 
----
+Mechanics (`updatePlantState` in `tick.ts`):
 
-## 22. Build Plan: 9 Passes
+- **Plant**: an alive attacker remains on any `plant` hex of a site for
+  `PLANT_TICKS = 2` consecutive ticks with no alive defender on the same
+  site's plant hexes. Sets `planted`, pushes `'plant'` event.
+- **Detonation**: `DETONATION_TICKS = 20` ticks after planted with no
+  defuse — attackers win the round, pushes `'detonate'`.
+- **Defuse**: an alive defender remains on the planted site's plant hexes
+  for `DEFUSE_TICKS = 4` consecutive ticks with no attacker present.
+  Clears `planted`, pushes `'defuse'`, defenders win the round.
 
-Do not attempt to build all of this in one prompt. Build in 9 incremental passes, validating after each. Order matters: vision logic (Pass 3) is the riskiest piece; AI (Pass 4–6) is the largest; cards (Pass 8) is the most novel.
+Round-end precedence in `loop.fire()`:
 
-### Pass 1 — Map Rendering & Static Units (REDO)
-
-**Goal:** render the 30×40 hex grid, load Foundry and Atoll from their definitions, place 3 attackers + 3 defenders at spawn hexes.
-
-**Note:** Foundry and Atoll grids are prototyped in `hex_maps_foundry_atoll.html` in the repo. Extract the `foundry()` and `atoll()` cell-generation functions into `src/maps/foundry.ts` and `src/maps/atoll.ts` as `MapDefinition` exports.
-
-**Deliverables:**
-- Hex grid renderer (30×40, axial coords)
-- Map loader from `MapDefinition`
-- Both maps defined and toggleable
-- Units rendered with weapon icons at spawn hexes (loadouts pre-assigned 2 rifles + 1 sniper per team for now)
-- UI shell: side panel, top score bar, bottom playback control placeholders
-
-**Validation:** both maps render with all cell types visually distinct. Spawns and sites visible. Hover shows unit details.
-
-### Pass 2 — Tick Loop, Movement Foundation, Playback (REDO from Pass 2 v1; salvage where possible)
-
-**Goal:** tick-based game loop with deterministic stepping; units can be programmatically moved between hexes; playback controls work.
-
-**Deliverables:**
-- Tick loop in `src/game/tick.ts` (pure)
-- Loop scheduler in `src/game/loop.ts` (timer-aware)
-- Movement system: 1 hex per tick base, 0.5 sniper, +0.5 Run-n-Gun
-- Playback controls: Play/Pause, 1x/2x/4x
-- Phase model: `'planning' | 'resolution'` (no UI for planning yet, just a "Begin" button stub)
-- Hex pathfinding (A*) for moving toward a target hex
-- Seeded PRNG in `src/game/rng.ts`
-
-**Validation:** programmatically command a unit to walk to a target hex; it pathfinds and arrives correctly. Sniper visibly slower. Playback speed scales correctly.
-
-### Pass 3 — Vision Cones & Fog of War (REDO; salvage vision logic from prior attempt if good)
-
-**Goal:** directional vision with wall occlusion and team-shared fog.
-
-**Deliverables:**
-- 90° vision cone per unit, infinite range, blocked by full walls only
-- Sniper 45° stationary, 90° moving
-- Eagle Eye trait support (+30° cone)
-- Supercover hex-line tracing for occlusion
-- Team-shared visibility
-- Ghost markers for 5 ticks after losing sight
-- Cone snap-to-track behavior (closest visible enemy)
-- Debug mode (toggle V): renders cones, visible hexes, trace lines
-
-**Validation:** units behind walls hidden; revealed when LoS established. Half-walls do NOT block vision. Ghost markers persist for 5 ticks. Sniper cone visibly narrows when stationary.
-
-### Pass 4 — Per-Unit AI Primitives
-
-**Goal:** units autonomously move, engage on sight, retreat at low HP, hold positions — without any role/trait/card complexity yet.
-
-**Deliverables:**
-- `src/game/unit-ai.ts` with primitives: `moveToward`, `shouldEngage`, `shouldRetreat`, `pickFiringTarget`, `holdPosition`
-- Each unit has an "assigned region" — moves there, then holds
-- On enemy sight, transitions to engaged state, stops path, fires per fire rate
-- At 1 HP, retreats to nearest wall (default behavior; trait overrides come in Pass 6)
-- Resume path 3 ticks after losing all sight of enemies
-
-**Validation:** drop two units of opposing teams on opposite sides of a map with a region target each. They move, encounter, engage, one dies. Behavior reads as intentional.
-
-### Pass 5 — Combat Resolution & Buff Infrastructure
-
-**Goal:** full hit/damage pipeline + the buff/debuff system that cards (Pass 8) will plug into.
-
-**Deliverables:**
-- Hit roll → headshot roll → damage application per nested-roll spec
-- Loadout-and-range hit % table
-- 30% headshot base, 40% sniper long, conditional on hit
-- Sniper 2/4 damage, others 1/2
-- Half-wall cover −20pp
-- Per-unit Modifiers struct with active buffs list
-- Effective stat computation: `base + traits + role + hero + buffs + modifiers`
-- Buff duration management (tick down, clear expired)
-- Kill feed populated with combat events
-
-**Validation:** combat plays out cleanly. Snipers feel snipey. Shotguns dominate short range, miss at long. Cover noticeably extends duels. Hit/HS rolls observable in kill feed.
-
-### Pass 6 — Traits, Roles, Heroes, Modifiers
-
-**Goal:** all unit attributes integrated into the AI and combat pipelines.
-
-**Deliverables:**
-- 4 skill traits implemented (stat modifiers)
-- 6 behavioral traits implemented (stat modifiers + behavior overrides for Sentinel, Lurker, Entry, Clutch)
-- 4 roles implemented (preferred-role attribute on unit, off-position penalty applied at match start)
-- 3 heroes implemented (hero card source — no in-round effect yet, just metadata)
-- Modifiers: Aggression, Clutch Factor, Weapon Handling, Off-Position
-- Random assignment of trait + role + hero + weapon-handling at match start
-- All values configurable in config
-
-**Validation:** same map, same loadouts, different traits → visibly different play. Vanguard units rush; Wardens hold. Off-position penalty observable.
-
-### Pass 7 — Strategy Menu & Planning Phase UI
-
-**Goal:** player can pick a strategy each round; AI does too. No cards yet.
-
-**Deliverables:**
-- 12 strategy definitions (3 per side per map × 2 maps × 2 sides = 12 strategy x map combos; some shared across maps OK)
-- Planning phase UI: shows both rosters, scores, strategy menu, Begin Round button
-- AI opponent picks strategy heuristically per section 16
-- Strategy resolves to per-role region assignments per map
-- Unit AI consumes strategy parameters at round start
-- Halftime placeholder screen between rounds 3 and 4
-- Timeout button (functional, becomes available at match point)
-
-**Validation:** play a full match. Different strategies produce visibly different team behavior. Half transition works. Timeout works.
-
-### Pass 8 — Card System
-
-**Goal:** full card system: deck, hand, draw, play, effects, targeting, AI card play.
-
-**Deliverables:**
-- Card data layer in JSON/TS config (13 card definitions)
-- Deck/hand/discard state per team, with shuffle-back-in mechanic
-- Draw 3 starting hand; play up to 1 per round; draw 1; hand cap 3
-- Effect handler registry, 13 unique handlers
-- Card targeting mode UI (click hex/unit, Esc cancels)
-- Card play logged in kill feed
-- AI opponent card heuristics per section 15.6
-- Hand UI in planning phase with source labels
-- Card effects visible in resolution phase (auras, marks, etc.)
-
-**Validation:** every card has a visible effect when played. Playing cards measurably changes round outcomes. AI cards feel meaningful, not random-feeling.
-
-### Pass 9 — Replay, Polish, Validation, Tuning
-
-**Goal:** deterministic replay, kill feed polish, end-of-match screen, tuning pass against validation criteria.
-
-**Deliverables:**
-- Deterministic round replay using seeded PRNG + recorded inputs
-- Kill feed polished with weapon, range, cover notes, card events, kill flags
-- Damage popups in world
-- Death markers
-- End-of-match screen: final score, MVP (most kills), per-round summary, key card plays
-- Validation pass: run 10+ matches, check each of the 7 validation criteria
-- Tuning iterations on hit %, damage, trait modifiers, card effects, modifier scales
-
-**Validation:** at least 5 of 7 validation criteria met. Project is v0-complete.
+1. Detonation / defuse winner (set by `updatePlantState`).
+2. Elimination winner. **Post-plant mutual annihilation** awards the round
+   to attackers (planting was the win condition).
+3. Round timer expiry → defender side wins.
 
 ---
 
-## 23. Appendix A: Card Pool Reference
+## 9. Match flow details
 
-(See section 15.4 for full details. Cards are tracked here for quick reference during deck-building debug.)
-
-| ID | Name | Source | Type | Targeting |
-|----|------|--------|------|-----------|
-| C01 | Anchor Position | Sentinel | Directive | self (auto) |
-| C02 | Reckless Push | Run-n-Gun | Directive | self (auto) |
-| C03 | Slow Flank | Lurker | Directive | self (auto) |
-| C04 | Opening Pick | Entry | Buff | self (auto) |
-| C05 | Crossfire | Trader | Buff | self (auto) |
-| C06 | Last Stand | Clutch | Buff | self (auto) |
-| C07 | Spearhead | Vanguard | Directive | self (auto) |
-| C08 | Setup Play | Tactician | Directive | ally + flank-hex |
-| C09 | Hold the Line | Warden | Directive | self + hex |
-| C10 | Adapt | Specialist | Buff | role pick |
-| C11 | Guardian Aura | Angelic | Buff | self (auto) |
-| C12 | Tactical Scan | Techy | Utility | self (auto) |
-| C13 | Mark Target | Cursed | Buff | enemy unit |
-
----
-
-## 24. Appendix B: Map Region Reference
-
-For both Foundry and Atoll, the following region names MUST exist in the `regions` map of the `MapDefinition`. AI strategy assignments reference these names.
-
-**Foundry:**
-- `def_spawn`, `b_site`, `b_plant`, `b_squeeze`, `a_site`, `a_plant`, `a_connector`, `mid`, `mid_pillar`, `b_main`, `b_lobby`, `a_main`, `a_lobby`, `atk_spawn`
-
-**Atoll:**
-- `def_spawn`, `b_site`, `b_plant`, `b_dock`, `a_site`, `a_plant`, `a_maze`, `mid`, `mid_courtyard`, `b_main`, `b_lobby`, `a_main`, `a_lobby`, `atk_spawn`
-
-Region hex membership is hand-defined in the map files based on the HTML prototype cell positions. Any hex labeled `site` in the HTML belongs to the site region; `plant` hexes belong to both site and plant zones; etc.
+- `MATCH_WIN_SCORE = 4`. First team to score this many round wins takes the
+  match.
+- `MATCH_ROUND_COUNT = 6` regular rounds. Sudden-death tiebreaker for 3–3
+  is deferred to a future pass (the match-end modal currently lands on a
+  draw with a note).
+- `HALFTIME_AFTER_ROUND = 3`. `halftimeSwap` flips `state.teamSide`
+  entries; `startRound` then re-spawns each team at its new side's spawn.
+- **Timeout**: a one-shot per team, active when the team is at match point
+  (3 wins, opponent < 4). Player click is one button on the top bar.
+- **Replay** restores the round-start snapshot (`initialUnitsById` taken
+  at `beginRound`) and re-runs identically.
+- **AI strategy bias**: `aiOpponent.pickAiStrategy` does a weighted
+  random over available strategies — weight =
+  `1 + state.aiStrategyWins[team][strategyId] + uniform[0,
+  AI_STRATEGY_EXPLORATION)`. Wins recorded on `endRound` via
+  `recordStrategyWin`.
 
 ---
 
-## End of Spec
+## 10. Draft mode
+
+Default match mode (`MatchMode = 'draft'`; Standard is the debug toggle).
+
+`src/game/draft.ts`:
+
+- `startDraft(map, seed)` generates an 8-unit pool. Each pool unit gets a
+  random loadout (uniform from `LOADOUT_POOL`, with a ≥ 2-of-each-weapon
+  soft constraint, resampling up to `DRAFT.maxComposeRetries`), a full
+  `rollUnitMeta` (random skill / behavioral / personality trait, role +
+  preferredRole, hero), and `generateAttributes` with mode
+  `RANDOMIZE_ATTRIBUTES` ([40, 60] uniform). Pool ids are `P1..P8`.
+- `DRAFT.snakeOrder = ['P','A','A','P','P','A']` — player picks 1st, 4th,
+  5th. AI picks 2nd, 3rd, 6th.
+- `aiPickHeuristic`: greedy on Aim attribute with a hard rule "don't end
+  with zero rifles when a rifle is in the pool."
+- `finalizeDraft` re-IDs picked units to `D1/A1/...` per spawn slot, sets
+  facing per `units.ts` convention, and runs `buildStateFromUnits` to
+  produce a normal `GameState` at `phase: 'planning'`.
+
+Auto-draft toggle resolves the player's remaining picks via the same
+heuristic. Confirm becomes available once all 6 picks are in.
+
+---
+
+## 11. Determinism + event log + stats
+
+### 11.1 Determinism contract
+
+For a given `(map, mode, seed, player draft picks, player strategy picks)`
+tuple, the match log (`state.events`) is bit-identical across runs. This
+is the foundation for Replay, the headless harness (`batch.ts`), and any
+future training-data export.
+
+Per-tick RNG is `createRng(hashSeed(seed, tick))` re-derived from the
+match seed and current tick — so a tick's outcome is independent of how
+many rolls earlier ticks consumed.
+
+### 11.2 Event log
+
+`GameEvent` discriminated union (`types.ts`):
+
+- `shot` — every resolved attempted shot. Carries `hit`, `headshot`,
+  `damage`, `cover`, `range`, `weapon`, `roundIndex`.
+- `death` — pushed alongside the lethal `shot`.
+- `plant` / `defuse` / `detonate` — spike-plant lifecycle.
+- `strategyPick` — round-start summary (player + AI strategy ids).
+- `roundResult` — round-end winner + tick count.
+
+All carry `tick` and `roundIndex` so stats can filter to a single round
+without timestamp-walking.
+
+### 11.3 Performance stats (`src/game/stats.ts`)
+
+Pure functions consuming `(events, units, roundIndex?)`:
+
+- `computeRoundStats(events, round, units)` — per-unit
+  `{ kills, deaths, assists, damage, headshotKills, acs, k/a/s/t }`. KAST
+  flags: K = had a kill; A = had an assist (damaged the killer's victim
+  within `assistWindowTicks`); S = survived the round; T = was traded
+  (teammate killed the killer within `tradeWindowTicks`).
+- `computeMatchStats(events, units)` — match-totals + per-round ACS
+  history + MVP unit id.
+
+ACS formula:
+`acs = perRoundAvg(killValue × kills + assistValue × assists +
+multikill3K × (k≥3 ? 1 : 0) + damageMultiplier × damage)`.
+
+Round-end + match-end modals render these directly
+(`ui/roundEndPanel.ts`, `ui/matchEndScoreboard.ts`).
+
+### 11.4 Kill feed
+
+`src/ui/killFeed.ts` formats the last N events. Sample lines:
+
+```
+R2 strategy — D: Hold | A: Rush
+T:8 — D1 (Rifle) → A2 [HEAD, 2 dmg] @ short, cover · KILL
+T:12 — ★ A1 planted the spike @ A
+T:24 — 💥 SPIKE DETONATED @ A
+```
+
+The overlay (`killFeedOverlay.ts`) renders bottom-left of the canvas
+during resolution.
+
+---
+
+## 12. UI surfaces
+
+`src/ui/layout.ts` builds a three-column grid:
+
+| Slot | Planning | Resolution |
+|---|---|---|
+| **Top bar** | Map / Mode / Fog POV / Show enemies / Regions / Help / Begin Round / Timeout | Score + round + half + Back-to-Planning |
+| **Left panel** (`cardPanel.ts`) | Strategy menu (roster-filtered) + A/B variant picker | Empty |
+| **Canvas** (`renderer.ts`) | Map + units (player team + previewed enemies) + preview routes | Map + units (fog applied) + committed routes + engagements + card-effect visuals |
+| **Right panel** (`sidePanel.ts`) | Seed input (Draft only) + both rosters | Hovered unit info DL |
+| **Bottom bar** (`bottomControls.ts`) | Disabled placeholders | Play / Pause / 1× / 2× / 4× / Replay |
+| **Floating attribute panel** (`attributesPanel.ts`) | Hovered/selected unit's 5 visible aggregates + Details (10 hidden subs) | Same |
+| **Kill feed overlay** (`killFeedOverlay.ts`) | Empty | Recent events bottom-left of canvas |
+| **Draft overlay** (`draftPanel.ts`, Draft mode match-start only) | 8-unit pool grid + pick progress + Confirm | — |
+| **Help modal** (`helpModal.ts`) | Tutorial + glossary + patch notes; auto-opens once per browser | Same |
+
+Render pipeline (`renderer.ts`):
+`background → grid → routes → fog → engagements → units → cardEffects →
+regionLabels (R) → debugVision (V)`.
+
+---
+
+## 13. Code organization
+
+```
+src/
+├── main.ts                       Entry point; wires state, render, loop, UI, __sim hook
+├── style.css                     All styling (3-column shell + chips + panels)
+├── game/                         Pure logic — no DOM / canvas imports
+│   ├── config.ts                 ALL tunables (hit table, traits, attrs, plant, draft, …)
+│   ├── types.ts                  Shared types (Unit, GameState, GameEvent, Directive, …)
+│   ├── hex.ts                    Pointy-top offset/axial conversions, hexLine, hexDistance
+│   ├── rng.ts                    Seeded mulberry32 PRNG + hashSeed
+│   ├── pathfind.ts               A* + findPerimeterPath + passableAt + neighbors
+│   ├── vision.ts                 Cone + occlusion + tracking + ghosts + per-team visibility
+│   ├── combat.ts                 resolveShot + effective-stat seam (trait/mod/card/buff hooks)
+│   ├── movement.ts               assignTarget + advanceUnit + effectiveSpeed
+│   ├── unit-ai.ts                Helpers (cover-hold hex, retreat targets, facing)
+│   ├── directives.ts             6 directive evaluators + compliance roll
+│   ├── tick.ts                   The per-tick pipeline (AI → move → fire → vision → checks)
+│   ├── loop.ts                   PlaybackLoop (timer-driven; pause/play/speed/reset)
+│   ├── attributes.ts             generateAttributes + aggregateVisible + rollUnitMeta
+│   ├── traits.ts                 availableStrategies + rosterUnlocks + unlockContributors
+│   ├── strategies.ts             15 strategy definitions + regionCentroid
+│   ├── aiOpponent.ts             pickAiStrategy (roster-filtered weighted random)
+│   ├── match.ts                  startRound, applyStrategies, endRound, halftimeSwap
+│   ├── state.ts                  buildInitialState + buildStateFromUnits
+│   ├── draft.ts                  startDraft, commitDraftPick, autoDraft, finalizeDraft
+│   ├── planningPreview.ts        previewPlayerPlan (what-if A* routes during planning)
+│   ├── stats.ts                  computeRoundStats + computeMatchStats (pure on events)
+│   ├── batch.ts                  Headless harness — runSkirmish / runStrategyMatrix /
+│   │                             runComplianceTest / determinismCheck
+│   └── units.ts                  createTeam (spawn-slot assignment + facing defaults)
+├── render/                       Canvas drawing only
+│   ├── canvas.ts                 setupCanvas (CSS+DPR sizing)
+│   ├── renderer.ts               Pipeline orchestrator
+│   ├── drawHexGrid.ts            8-type grid colors
+│   ├── drawUnits.ts              Unit squares + weapon glyph + facing indicator + drag ghost
+│   ├── drawRoutes.ts             Committed + preview A* breadcrumbs
+│   ├── drawFog.ts                Hex tint + ghost markers
+│   ├── drawEngagements.ts        Shooter→target lines during engaged ticks
+│   ├── drawCardEffects.ts        Hero passive visuals (aura ring / mark crosshair / scan tint)
+│   ├── drawRegionLabels.ts       R-key overlay
+│   └── drawDebugVision.ts        V-key overlay (cones + visible hexes + tracking lines)
+├── maps/                         Map definitions
+│   ├── types.ts                  MapDefinition / CellType / HexCoord
+│   ├── gridUtils.ts              fill / rect / hexesOfType / passable helpers
+│   ├── foundry.ts                Foundry v2 layout
+│   └── atoll.ts                  Atoll v2 layout
+└── ui/                           DOM panels + interactions
+    ├── layout.ts                 buildShell (3-col grid + all named slots)
+    ├── topBar.ts                 Map/Mode/Fog/Region/Help/flow controls
+    ├── sidePanel.ts              Roster + unit-info DL + seed input
+    ├── cardPanel.ts              Strategy menu + A/B variant picker
+    ├── bottomControls.ts         Play / speed / Replay
+    ├── attributesPanel.ts        Floating 5-visible + 10-hidden panel
+    ├── traitChip.ts              Trait pill with hover tooltip
+    ├── unitMetaChip.ts           Role + hero pills with hover tooltip
+    ├── hover.ts                  Canvas hex-hover → unit id
+    ├── clickToCommand.ts         Canvas click → select unit (planning only)
+    ├── unitDrag.ts               Drag player units within spawn zone
+    ├── killFeed.ts               Event-line formatters
+    ├── killFeedOverlay.ts        Bottom-left mount
+    ├── modal.ts                  Centered overlay (round-end / halftime / match-end)
+    ├── roundEndPanel.ts          K/D/A/ACS/KAST table for the round modal
+    ├── matchEndScoreboard.ts     Full scoreboard sorted by ACS + per-round sparkline
+    ├── helpModal.ts              Tutorial + glossary + patch notes
+    └── draftPanel.ts             Pool grid + pick progress + Confirm (Draft only)
+```
+
+---
+
+## 14. Development & verification
+
+### 14.1 Dev loop
+
+- `npm run dev` — Vite dev server at http://localhost:5173.
+- `npm run build` — `tsc --noEmit` + Vite production build.
+- `npm run preview` — serve the production build locally.
+
+### 14.2 The `__sim` dev hook
+
+`main.ts` mounts `window.__sim` in DEV builds with the full suite of
+inspection / mutation / batch entry points. Highlights:
+
+- `__sim.getState()` / `__sim.setState(s)`
+- `__sim.step(n)` — advance the sim n ticks without the loop
+- `__sim.place(id, col, row)` / `__sim.setFacing` / `__sim.setHp`
+- `__sim.sampleHits(shooter, target, n, ctxOverride)` — empirical HR
+- `__sim.getRatings(id?)` / `__sim.getVisible(id?)` / `__sim.setRating(id, key, value)`
+- `__sim.getAvailableStrategies(team?)` / `__sim.simulateRound(stratId)`
+- `__sim.runValidation(seeds)` — runs strategy matrix + compliance test
+  + determinism check; prints a console summary
+
+### 14.3 Validation harness (`src/game/batch.ts`)
+
+All headless, all deterministic:
+
+- `runSkirmish(seed, opts)` — one match start-to-finish.
+- `runStrategyRound(seed, opts)` — single round with pinned strategies.
+- `runStrategyMatrix(seeds, map, includeUnlocks)` — N seeds × every
+  player-strategy × every AI-strategy cell, returns defender-win-% table.
+- `runComplianceTest(seeds, map)` — high-Tenacity vs low-Tenacity rosters
+  on demanding strategies; expects high-Tenacity to outperform measurably.
+- `determinismCheck(seeds, map)` — runs each seed twice, hashes the event
+  log, reports mismatch count (hard invariant: must be 0).
+
+### 14.4 Smoke tests via the UI
+
+- **Match flow.** Standard or Draft → pick a strategy → Begin Round →
+  round resolves → modal → continue through halftime → first to 4 wins.
+- **Visibility / fog.** Press `V`; cones, visible hexes, tracking lines
+  should match the seeded outcome.
+- **Spike plant.** Watch a Rush attacker reach the plant zone; the
+  detonation timer appears in the top bar; defenders rotate to defuse.
+- **Attributes.** Hover any unit in planning → 5 visible aggregates
+  populated; open Details → 10 hidden subs, with H3-badged greys for the
+  inert pair (adaptability + comms).
+- **Replay.** Begin Round, let it resolve, click Replay — bit-identical
+  re-run.
+
+---
+
+## 15. v1 hooks (what's intentionally inert)
+
+These are wired in v0's data model but consumed only by display, awaiting
+the management layer:
+
+- **`adaptability` + `comms` sub-attributes** generated per unit; H3-badged
+  inert in the attribute panel. Future fallback-tree quality + hero aura
+  scaling.
+- **Trait `tier`** (`starter` / `earned` / `event`) generated but treated
+  uniformly. Future scouting / XP / event-trigger gating.
+- **`preferredRole` mismatch** mechanic shipped, but v0 always assigns
+  `role === preferredRole` at draft. Future training / season-build hooks
+  would set off-position deliberately.
+- **`hero`** as a passive ability tag. Future management layer could let
+  managers swap hero training or hero abilities between matches.
+- **Sites / plant hexes** are full schema for both maps; v0 uses them for
+  the plant mechanic. v1's site-control mechanics ride on the same fields.
+- **Match seed** is a single `number` — straightforward to expose via URL
+  hash for sharing replays.
+
+---
+
+## 16. Configuration cheat sheet
+
+All numbers live in `src/game/config.ts`. The headline knobs:
+
+| Knob | Default | What it controls |
+|---|---|---|
+| `GRID` | 30 × 40 | Map dimensions |
+| `MATCH_WIN_SCORE` | 4 | Rounds to win the match |
+| `MATCH_ROUND_COUNT` | 6 | Regular rounds before tiebreak |
+| `ROUND_TICK_LIMIT` | 60 | Max ticks per round (defender wins on timeout) |
+| `HIT_TABLE` | per weapon × band | Base hit % |
+| `HIT_CLAMP` | [5, 95] pp | Final hit % window |
+| `COVER_HIT_PENALTY_PP` | 20 | Half-wall penalty |
+| `FIRST_SIGHT_HIT_PENALTY_PP` | 10 | Peeker's advantage |
+| `SNIPER_SETTLED_TICKS` | 2 | Ticks before sniper qualifies for stationary table |
+| `VISION.ghostTicks` | 5 | Ghost marker lifetime |
+| `AI.retreatHpThreshold` | 1 | HP at which a unit retreats |
+| `AGGRESSION_PUSH_THRESHOLD` | 55 | Aggression at which idle units advance |
+| `ROTATE_AFTER_HOLD_TICKS` | 15 | Idle hold → mid rotation |
+| `PLANT_TICKS` | 2 | Ticks to plant |
+| `DETONATION_TICKS` | 20 | Ticks plant → detonate |
+| `DEFUSE_TICKS` | 4 | Ticks to defuse |
+| `DRAFT.poolSize` | 8 | Draft pool size |
+| `DRAFT.picksPerTeam` | 3 | Picks per team |
+| `ATTRIBUTES.generation.distribution` | `'flat'` | `flat` / `normal` / `uniform` |
+| `ATTRIBUTES.generation.mean / stdDev` | 50 / 12 | Normal-mode params |
+| `RNG_SEED_DEFAULT` | `0x1a2b3c4d` | Match seed default |
+
+Re-tuning the sim should never require touching non-config files.

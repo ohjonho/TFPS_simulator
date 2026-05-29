@@ -1,6 +1,17 @@
-// Pass 5 — combat resolution (spec §7.2 nested rolls) + the effective-stat
-// summation seam that traits/role/hero (Pass 6) and cards (Pass 8) feed.
-// Pure: given shooter/target/map/state, roll a shot and return its outcome.
+// Combat resolution (spec §6).
+//
+// `resolveShot` is the per-shot nested-roll pipeline:
+//   range band → base HR → effective HR (clamped) → hit roll →
+//   on hit: headshot roll → damage selection.
+//
+// The "effective-stat seam" is the contribution hooks below
+// (`traitHitPp`, `traitHeadshotPp`, `modifierHitPp`,
+// `modifierHeadshotPp`, `cardHitPp`, `cardHeadshotPp`). Every pp
+// contribution flows through one of them. Adding a new contributor
+// = extending one hook; never touch the roll or clamp logic.
+//
+// Pure: given shooter/target/map/context/buffs/cardEffects/rng, return
+// the shot's outcome. Tick.ts owns the call ordering + per-tick RNG.
 
 import type { ActiveCardEffect, Buff, MapDefinition, RangeBand, Unit, Weapon } from './types.ts';
 import type { Rng } from './rng.ts';

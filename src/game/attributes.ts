@@ -1,12 +1,23 @@
-// Random per-unit attribute assignment at match start (spec §10–13): one skill
-// trait, one behavioral trait, a role (+ preferred role), a hero, and a
-// weapon-handling rating. Deterministic given the seeded RNG. Pure: mutates the
-// passed unit objects in place (called on freshly-built units).
+// Per-unit attribute + trait + role + hero assignment at match start
+// (spec §4). Deterministic given the seeded RNG.
 //
-// Pass A1 extension (docs/attributes-design.md): also generates the full 14-
-// attribute record per unit and writes it to `u.attributes`. v0 sim math only
-// consumes 6 of them (Aim, Rifle/Shotgun/Sniper Handling, Awareness, Clutch);
-// the others are generated, displayed in the UI, and inert until v1.
+// `rollUnitMeta(unit, rng)` is the shared per-unit roller — picks one
+// skill / behavioral / personality trait, a role + preferredRole, a hero,
+// and the 10 hidden sub-attributes via `generateAttributes`. Applies
+// trait sub-attribute deltas on top of the rolled values.
+//
+// `assignAttributes(units, rng, overrides?)` runs `rollUnitMeta` across
+// a team, with optional per-unit overrides for headless A/B testing.
+//
+// `aggregateVisible(attrs)` is the visible 5 aggregates (Mechanics / Game
+// Sense / Discipline / Improvisation / Leadership) — a weighted sum of
+// the hidden 10 per `ATTRIBUTES.aggregation`. Display-only; combat /
+// vision read the hidden subs directly.
+//
+// `generateAttributes(rng, rangeOverride?)` is the sample-per-sub helper.
+// Distribution = `ATTRIBUTES.generation.distribution` (flat / normal /
+// uniform); `rangeOverride` lets Draft mode pin to [40, 60] regardless
+// of the global distribution.
 
 import type {
   Attributes, BehavioralTrait, Hero, PersonalityTrait, Role, SkillTrait, Unit,

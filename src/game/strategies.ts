@@ -1,18 +1,22 @@
-// Pass 7 — strategy definitions (spec §14). 6 strategies (3 attacker + 3
-// defender) × 2 maps = 12 entries. Each strategy is map-specific so it can
-// reference regions that exist on that map (e.g. Foundry has b_squeeze,
-// Atoll has b_dock/a_maze).
+// Strategy definitions (spec §7.2). 15 strategies total: 6 baseline
+// (Hold / Stack / Pressure / Execute / Rush / Control) + 9 defender-side +
+// 6 attacker-side trait-unlocked variants. Variants are gated by the
+// `requiresUnlock: TraitId[]` field; `availableStrategies` in traits.ts
+// filters the menu to the roster's actual unlocks.
 //
-// Pass A strategy review — strategies are now defined as an ORDERED LIST OF
-// SLOTS instead of a Role→region map. Each slot is a tactical position
-// ('site_anchor', 'mid_info') with a loadout preference. At Begin Round,
-// assignSlots() greedily picks the team's units into slots based on
-// `preferWeapon`. This fixes the bug where teams with role repeats (e.g. two
-// Vanguards) had multiple units collapse onto the same Role-keyed region.
+// Strategy = an ORDERED LIST OF SLOTS (not a Role→region map). Each slot is
+// a tactical position with a loadout preference; `assignSlots` greedily
+// picks team units into slots by `preferWeapon`. Avoids the role-repeat
+// bug where two Vanguards collapsed onto the same Role-keyed region.
 //
-// Each strategy defines per-slot directives. Variants exist for strategies
-// that pick a site at round start (Rush A/B, Stack A/B, Execute A/B). The
-// match flow picks one variant deterministically via the seeded RNG.
+// Each slot carries:
+//   - region (centroid is the unit's primary target)
+//   - directives (composable Directives the unit will follow this round)
+//   - optional usePerimeterPath / anchorOffset tweaks
+//
+// Multi-site strategies (Rush A/B, Stack A/B, Execute A/B, Hold A/B) declare
+// `variants[]`. The player picks the variant explicitly via the A/B
+// sub-button; the AI picks via the seeded RNG.
 
 import type { HexCoord, MapDefinition, Side, Unit, Weapon } from './types.ts';
 import { neighbors, passableAt } from './pathfind.ts';

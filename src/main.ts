@@ -1,6 +1,17 @@
-// Entry point. Wires game state, render, the playback loop, hover, click-to-
-// command, and the Pass 7 match flow (planning → resolution → round-end →
-// halftime/next round → match end).
+// Entry point. The only place the pure game/* logic meets the DOM.
+//
+// Wires:
+//   - GameState (`buildInitialState` + setState reducer pattern).
+//   - Render pipeline (`render` from render/renderer.ts).
+//   - Playback loop (resolution-phase timer; calls `stepTick` → `onTick`).
+//   - UI panels (topBar, sidePanel, cardPanel, draftPanel, bottomControls,
+//     attributesPanel, killFeedOverlay, helpModal).
+//   - Mouse + keyboard interactions (hover, click-to-select, drag-in-spawn,
+//     V/R toggles).
+//   - Match flow (planning → resolution → round-end modal → halftime swap →
+//     next round → match-end modal → New Match).
+//   - Draft flow (pool overlay → pick commits → finalizeDraft → planning).
+//   - The `window.__sim` dev hook (DEV builds only) — see spec §14.2.
 
 import './style.css';
 import type { GameState, HexCoord, MatchMode, PlaybackSpeed, Team, Unit } from './game/types.ts';
