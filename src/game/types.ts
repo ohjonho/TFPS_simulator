@@ -27,7 +27,12 @@ export type UnitState = 'alive' | 'dead';
 // assigns real per-role/handling/off-position values and wires their formulas.
 // Pass 7 adds the per-round strategy-driven retreat-threshold delta.
 export type Modifiers = {
-  aggression: number;             // 0–100; affects push tendency + early-round HR
+  aggression: number;             // 0–100; affects push tendency + early-round HR + #2 engage gate
+  // AI #3 — the role+strategy aggression this round, BEFORE the per-tick
+  // situational delta (man-count / round-timer / plant). tick.ts recomputes
+  // `aggression = clamp(baseAggression + situationDelta)` each tick so the
+  // adjustment never compounds across ticks. Set wherever aggression is set.
+  baseAggression: number;
   // (Pass A3 — `weaponHandling` removed; HR modifier now comes from the three
   // per-weapon attribute sub-ratings: rifleHandling / shotgunHandling /
   // sniperHandling, selected against the shooter's current loadout.)

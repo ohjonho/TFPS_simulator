@@ -46,7 +46,7 @@ function buildPoolUnit(slot: number, weapon: Weapon, rng: Rng): Unit {
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',
-    modifiers: { aggression: 50, offPosition: false, retreatThresholdMod: 0 } as Modifiers,
+    modifiers: { aggression: 50, baseAggression: 50, offPosition: false, retreatThresholdMod: 0 } as Modifiers,
     attributes: {} as Attributes,            // filled by rollUnitMeta
     cardFlags: {},
     directives: [],

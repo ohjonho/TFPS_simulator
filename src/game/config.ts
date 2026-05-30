@@ -142,6 +142,76 @@ export const AI = {
   resumeAfterTicks: 3,
 } as const;
 
+// --- Threat model (AI competence foundation) ------------------------------
+// Tunables for src/game/threat.ts. The model is two layers: a STATIC per-map
+// exposure field (how visible each hex is to the enemy side's territory — a
+// sniper-lane proxy) and a DYNAMIC suspected-enemy contribution (visible
+// enemies + team-shared ghosts + per-unit tracking projected as LoS danger).
+// All deterministic; no RNG. Consumed by the engage gate + approach-IQ
+// movement (later concerns) so units respect angles they can't yet see down.
+export const THREAT = {
+  // A vantage hex farther than this (hexes) doesn't meaningfully threaten a
+  // queried hex — caps the static precompute cost and matches "you're not
+  // shot from across an unreachable distance."
+  maxRange: 22,
+  // Weight of the static exposure field (normalized 0..1) in threatAt.
+  staticWeight: 1,
+  // Per suspected-enemy hex with LoS to the queried hex: this much threat,
+  // divided by (1 + dist × distanceFalloff). A known/last-seen enemy with a
+  // clean angle dominates the static lane danger.
+  dynamicLosWeight: 2,
+  distanceFalloff: 0.08,
+} as const;
+
+// --- Engagement gate (AI competence #2) -----------------------------------
+// Whether a unit commits to a duel it can see, based on estimated odds
+// (expected-damage-per-tick share vs the target, from combat.estimateEdpt).
+// Probabilistic so personality shows: P(fight) = logistic((odds - threshold) /
+// softness). `threshold` is lowered by aggression + risk traits (take worse
+// fights) and raised by patient/anchor traits (wait for the good fight). The
+// accept roll uses a dedicated seeded RNG stream in tick.ts (determinism safe).
+export const ENGAGE = {
+  baseThreshold: 0.50,          // a 50/50 fight is a coin flip at neutral discipline
+  softness: 0.15,               // logistic band width; smaller = sharper cutoff
+  aggressionWeight: 0.003,      // threshold -= (aggression-50) × this (Vanguard 70 → −0.06)
+  // Per-trait threshold deltas (negative = takes worse fights). Summed across
+  // the unit's skill/behavioral/personality slots. Calibrated so an Ego unit
+  // (~0.33 threshold) takes a 40/60 fight ≈62% of the time; a plain Warden
+  // (~0.55) ≈28%; Patient/Lurker ≈15%; neutral 50/50 → 50%.
+  traitThreshold: {
+    Ego: -0.16, 'Hot Head': -0.16, 'Run-n-Gun': -0.10, Entry: -0.08, Clutch: -0.08,
+    Patient: 0.12, Lurker: 0.10, Composed: 0.08, Sentinel: 0.08,
+  } as Record<string, number>,
+  minThreshold: 0.20,
+  maxThreshold: 0.75,
+  minAccept: 0.02,
+  maxAccept: 0.98,
+  // An enemy this close (hexes) is engaged regardless of odds — you're already
+  // in the fight; freezing point-blank would be absurd.
+  forceEngageRange: 2,
+  // On a *decline*, if the unit's current-hex threat exceeds this it holds and
+  // tucks to cover (don't feed the angle) instead of continuing to advance.
+  // Below it, declining just means "don't stop to fight" and movement proceeds.
+  holdThreatCutoff: 0.45,
+} as const;
+
+// --- Situational read (AI competence #3) ----------------------------------
+// A per-tick aggression delta from the round situation, fed through
+// modifiers.aggression (→ the #2 engage threshold + the push behavior). Press a
+// man-advantage; attackers escalate as the round timer runs down (defenders win
+// on timeout); post-plant inverts (attackers hold the plant, defenders must
+// retake before detonation). Deterministic, no RNG. Clamped by deltaCap.
+export const SITUATION = {
+  manAdvantageWeight: 8,            // aggression pts per net alive-unit advantage
+  attackerUrgencyStartFrac: 0.45,  // fraction of ROUND_TICK_LIMIT after which attackers escalate
+  attackerUrgencyMax: 25,          // max aggression pts added at the timer (pre-plant)
+  defenderPatience: -5,            // defenders slightly more passive pre-plant (timeout favors them)
+  postPlantAttacker: -12,          // attackers hold the plant, stop over-peeking
+  postPlantDefenderBase: 12,       // defenders must retake the site
+  postPlantDefenderUrgencyMax: 18, // extra retake urgency as detonation nears
+  deltaCap: 35,                    // clamp the total situational swing
+} as const;
+
 // Ticks between shots, per weapon. Snipers fire every 2 ticks (spec §5.3).
 export const FIRE_RATE: Record<Weapon, number> = {
   shotgun: 1,

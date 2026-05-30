@@ -21,6 +21,7 @@ import {
   CARD_EFFECTS,
   COVER_HIT_PENALTY_PP,
   DAMAGE,
+  FIRE_RATE,
   FIRST_SIGHT_HIT_PENALTY_PP,
   HEADSHOT,
   HIT_CLAMP,
@@ -418,4 +419,55 @@ export function resolveShot(
     damage = headshot ? dmg.head : dmg.body;
   }
   return { hit, headshot, damage, band: ctx.band, cover: ctx.crossesCover };
+}
+
+// Decision-time estimate of `shooter`'s expected damage per tick against
+// `target` at the current geometry — the input to the AI's engagement gate
+// (engage.ts). Routes through the real effective-stat seam, so the mark, traits,
+// cover, range, weapon and attributes all flow in; weighs head/body damage and
+// fire rate so a sniper's 2/4 every-2-ticks reads as the threat it is. The
+// engagement-progression ctx (firstShot / settle / peeker's) is approximated to
+// a neutral *settled* steady state — the AI is sizing up the duel before it
+// starts, and assuming the other side is settled is the appropriately cautious
+// read. Pure, no RNG. (Distinct from resolveShot, which uses the live per-tick
+// ctx; this is only a heuristic for "is this fight worth taking?")
+export function estimateEdpt(
+  shooter: Unit,
+  target: Unit,
+  map: MapDefinition,
+  buffs: readonly Buff[],
+  cardEffects: readonly ActiveCardEffect[],
+  currentTick: number,
+  lastAlive: boolean,
+): number {
+  const dist = hexDistance(shooter.pos, target.pos);
+  const markedTarget = cardEffects.some(
+    (e) =>
+      e.kind === 'mark_target' &&
+      e.team === shooter.team &&
+      e.targetId === target.id &&
+      (e.expiresAtTick === undefined || currentTick <= e.expiresAtTick),
+  );
+  const ctx: ShotContext = {
+    dist,
+    band: rangeBand(dist),
+    stationary: true,
+    crossesCover: shotCrossesCover(shooter, target, map),
+    stationaryTicks: SNIPER_SETTLED_TICKS,
+    engagementTicks: 2,
+    firstShot: false,
+    allyFiredRecently: false,
+    lastAlive,
+    adjacentToWall: false,
+    ticksIntoRound: currentTick,
+    markedTarget,
+    warderAnchorStationary: false,
+    spearheadFirstEngagement: false,
+    firstSightShot: false,
+  };
+  const hr = effectiveHitPct(shooter, ctx, buffs) / 100;
+  const hs = headshotPct(shooter, ctx, buffs) / 100;
+  const dmg = DAMAGE[shooter.weapon];
+  const expDamagePerShot = (1 - hs) * dmg.body + hs * dmg.head;
+  return (hr * expDamagePerShot) / FIRE_RATE[shooter.weapon];
 }

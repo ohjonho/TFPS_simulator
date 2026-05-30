@@ -91,6 +91,7 @@ export function startRound(state: GameState): GameState {
       modifiers: {
         ...u.modifiers,
         aggression: ROLE_AGGRESSION[u.role],
+        baseAggression: ROLE_AGGRESSION[u.role],
         retreatThresholdMod: 0,
       },
       // Pass 8: all card flags are per-round — clear at round start.
@@ -252,6 +253,7 @@ export function applyStrategies(
       modifiers: {
         ...u.modifiers,
         aggression: Math.max(0, Math.min(100, ROLE_AGGRESSION[u.role] + strat.aggressionMod)),
+        baseAggression: Math.max(0, Math.min(100, ROLE_AGGRESSION[u.role] + strat.aggressionMod)),
         retreatThresholdMod: strat.retreatThresholdMod,
       },
       directives,

@@ -59,7 +59,7 @@ export function createTeam(
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',
-    modifiers: { aggression: 50, offPosition: false, retreatThresholdMod: 0 },
+    modifiers: { aggression: 50, baseAggression: 50, offPosition: false, retreatThresholdMod: 0 },
     attributes: { ...NEUTRAL_ATTRIBUTES },
     cardFlags: {},
     directives: [],
