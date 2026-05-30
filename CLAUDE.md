@@ -68,6 +68,13 @@ before non-trivial work.
 - Use the validation harness in `src/game/batch.ts` for tuning. The
   strategy matrix + compliance test surface roster-composition effects
   on win rate.
+- **Ship the patch note with the change.** Any change a player can
+  observe in-game — new or changed behavior, UI, controls, balance — gets
+  a terse bullet in `PATCH_NOTES` (`src/ui/helpModal.ts`, the Help →
+  Patch notes tab): newest section on top, bump the version, explain
+  *why* not just what. That tab is the player's only changelog. A
+  player-facing change isn't done until its note is there — treat it like
+  the determinism check, non-negotiable, part of the same commit.
 
 ## Where things live
 
@@ -82,6 +89,8 @@ before non-trivial work.
   `src/game/draft.ts generatePool`.
 - **Headless harness** → `src/game/batch.ts`.
 - **The `__sim` dev hook** → `src/main.ts` (only mounted in DEV builds).
+- **Player-facing changelog** → `PATCH_NOTES` in `src/ui/helpModal.ts`
+  (update on every observable change — see Workflow).
 
 When uncertain about behavior, the cheapest path is: read `config.ts` for
 the numbers, read `types.ts` for the state shape, then jump to the file

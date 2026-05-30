@@ -313,6 +313,27 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.9.0 — smarter unit AI: pick your fights</h3>
+    <ul>
+      <li><strong>Odds-based engagements.</strong> Units no longer shoot at
+        anything they see. They weigh the duel — their hit chance at that
+        range versus the enemy's back at them, plus cover and any active
+        mark — and commit only when it's worth it, otherwise they hold cover
+        instead of feeding. <strong>Personality sets the risk appetite:</strong>
+        an Ego or Hot Head peeks the sniper anyway; a Composed, Patient, or
+        Sentinel unit waits for a cleaner angle.</li>
+      <li><strong>Respecting unseen angles.</strong> Units read map danger —
+        long sightlines and the last-known spots of enemies the team has
+        seen — and stop strolling blind into lanes they haven't cleared.</li>
+      <li><strong>Playing the clock and the spike.</strong> Attackers stop
+        holding for picks and commit to a site as the timer runs down (they
+        lose on timeout); after a plant the roles flip — defenders push to
+        retake while attackers hold the angle on the spike. Teams also press
+        a man-advantage and play safer when a player down.</li>
+      <li>Fixed a stale browser-tab title (it read &ldquo;Pass 1&rdquo;).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.8.2 — clean v0 package</h3>
     <ul>
       <li>Full spec rewrite (<code>docs/spec.md</code>) describing what
