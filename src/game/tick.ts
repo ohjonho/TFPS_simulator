@@ -39,9 +39,10 @@ import {
   findCoverWithLosTo,
   nearestFacing,
   nearestWallRetreatHex,
-  shouldEngage,
   shouldRetreat,
 } from './unit-ai.ts';
+import { assessEngagement } from './engage.ts';
+import { situationAggressionDelta } from './situation.ts';
 import { evaluateDirectives } from './directives.ts';
 import { resolveShot } from './combat.ts';
 import type { ShotContextInput } from './combat.ts';
@@ -57,6 +58,8 @@ import {
   MIN_ROUND_TICKS_FOR_HOLD_END,
   PLANT_TICKS,
   ROTATE_AFTER_HOLD_TICKS,
+  ROUND_TICK_LIMIT,
+  SITUATION,
   STAY_ENGAGED_TICKS,
   TRAITS,
 } from './config.ts';
@@ -94,6 +97,10 @@ export function stepTick(state: GameState): GameState {
   // interleave; lets compliance behavior change independently of combat
   // determinism. Consumed in stable unit order below.
   const complianceRng = createRng(hashSeed(state.seed, tick) ^ 0xC011A11);
+  // AI #2 — engagement-gate accept rolls. Separate stream again so the duel
+  // commit decision is independent of combat/compliance determinism. Consumed
+  // in stable unit order below.
+  const engageRng = createRng(hashSeed(state.seed, tick) ^ 0xE17A6E);
 
   // 2. AI decisions + 3. movement (per unit, stable order).
   for (const u of working) {
@@ -104,12 +111,26 @@ export function stepTick(state: GameState): GameState {
       continue;
     }
 
+    // AI #3 — fold the per-tick situational delta into aggression on top of the
+    // round's base (role+strategy) value. Reassign modifiers (don't mutate the
+    // shared object) so state.units stays untouched. This drives #2's engage
+    // threshold + the push behavior, so man-count / timer / plant pressure shape
+    // behavior without compounding across ticks.
+    u.modifiers = {
+      ...u.modifiers,
+      aggression: Math.max(0, Math.min(100,
+        u.modifiers.baseAggression + situationAggressionDelta(u, state, tick))),
+    };
+
     const visibleEnemies = enemiesVisibleTo(u, working, perUnit[u.id]);
     const seesEnemy = visibleEnemies.length > 0;
     const ticksSinceEnemySeen = seesEnemy ? 0 : prevAi.ticksSinceEnemySeen + 1;
 
     const retreat = shouldRetreat(u).retreat;
-    const engage = shouldEngage(u, visibleEnemies);
+    // AI #2 — odds-based, trait-modulated engagement gate (replaces the binary
+    // "any enemy visible → fight"). Picks the best target and decides whether
+    // the duel is worth committing to; declining while exposed sets holdForSafety.
+    const engage = assessEngagement(u, visibleEnemies, state, prevAi, engageRng, tick);
 
     // Pass 9 — evaluate per-unit directives. Survival (retreat) still trumps;
     // otherwise a directive can override engagement (suppressEngage), supply a
@@ -197,6 +218,15 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
+    // AI #2 — declined a fight while exposed: hold here (the cover-seek below
+    // tucks to cover) instead of advancing into the angle. Retreat, an engaged
+    // stick, and a committed directive move all still win; the plant-retake /
+    // post-plant overrides downstream can still pull the unit when it matters.
+    if (engage.holdForSafety && mode !== 'engaged' && mode !== 'retreating' && !directiveDecision?.target) {
+      mode = 'holding';
+      effectiveTarget = null;
+    }
+
     // Pass 7.7 — light stalemate breaker: a unit that's been idle for a long
     // stretch without seeing anyone re-targets to the mid centroid (where
     // contact is most likely). Applies to both sides equally.
@@ -262,6 +292,27 @@ export function stepTick(state: GameState): GameState {
             nextTargets[u.id] = coverHex;
           }
         }
+      }
+    }
+
+    // AI #3 — pre-plant time scramble: as the round timer runs down, attackers
+    // must take a site (timeout is their loss), so they commit to the nearest
+    // plant zone instead of holding angles or dueling for picks. Overrides the
+    // cautious hold; engaged and retreating units keep their action. Mirrors the
+    // post-plant retake. Aggression alone ("fight more") didn't reduce timeouts —
+    // attackers need the movement push to actually plant.
+    if (
+      !state.plant.planted &&
+      !retreat &&
+      mode !== 'engaged' &&
+      state.teamSide[u.team] === 'attacker' &&
+      tick >= SITUATION.attackerUrgencyStartFrac * ROUND_TICK_LIMIT
+    ) {
+      const site = nearestPlantTarget(u, state.map);
+      if (site && !sameHex(u.pos, site)) {
+        mode = 'moving';
+        effectiveTarget = site;
+        nextTargets[u.id] = site;
       }
     }
 
@@ -931,6 +982,23 @@ function midCentroid(state: GameState): HexCoord | null {
   });
   if (passableHexes.length === 0) return null;
   return passableHexes[Math.floor(passableHexes.length / 2)];
+}
+
+// AI #3 — nearest plantable site centroid, for the pre-plant time scramble.
+function nearestPlantTarget(unit: Unit, map: GameState['map']): HexCoord | null {
+  let best: HexCoord | null = null;
+  let bestD = Infinity;
+  for (const site of ['A', 'B'] as const) {
+    const hexes = map.sites[site].plantHexes;
+    if (hexes.length === 0) continue;
+    const centroid = hexes[Math.floor(hexes.length / 2)];
+    const d = hexDistance(unit.pos, centroid);
+    if (d < bestD) {
+      bestD = d;
+      best = centroid;
+    }
+  }
+  return best;
 }
 
 function aliveTeamCount(units: readonly Unit[], team: Unit['team']): number {

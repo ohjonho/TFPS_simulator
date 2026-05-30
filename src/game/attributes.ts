@@ -195,6 +195,7 @@ export function rollUnitMeta(
 
   u.modifiers = {
     aggression: ROLE_AGGRESSION[role],
+    baseAggression: ROLE_AGGRESSION[role],
     offPosition: role !== preferred,
     retreatThresholdMod: 0,
   };
