@@ -19,7 +19,7 @@
  * rows of the adjacent site rectangle).
  */
 
-import type { CellType, HexCoord } from './types';
+import type { CellType, HexCoord, SiteData } from './types';
 
 export const COLS = 30 as const;
 export const ROWS = 40 as const;
@@ -113,4 +113,146 @@ export function rect(
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Char-grid authoring pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Legend for `mapFromCharGrid`. One character per cell encodes geometry AND
+ * the named-region contract strategies depend on. `a`/`b` plant cells are also
+ * folded into the `a_site`/`b_site` regions. Site-center pillars are just `#`.
+ *
+ * Exported so the map editor (src/editor) builds its paint palette and cell
+ * colors from the same legend the parser consumes — one source of truth.
+ */
+// Richer vocabulary (locked contract, v1). Coarse parents (a_site/b_site,
+// a_main/b_main, mid) stay meaningful via the fold below — each fine sub-zone's
+// cells are merged into its parent so strategies referencing the parent see the
+// full footprint, while the sub-zones are available as distinct targets +
+// watch angles. Chokes/connectors are standalone (thin angle/rotate refs, not
+// hold zones). Sub-zone CellType is cosmetic (all passable) — picked so the
+// editor groups them sensibly: anchors/off-angles read as 'site', entries +
+// lane segments + chokes + connectors as 'open', mid sub-zones as 'mid'.
+export const CHAR_LEGEND: Record<string, { type: CellType; region?: string }> = {
+  '#': { type: 'wall' },
+  '.': { type: 'open' },
+  o: { type: 'cover' },
+  D: { type: 'def', region: 'def_spawn' },
+  X: { type: 'atk', region: 'atk_spawn' },
+
+  // A-side cluster.
+  A: { type: 'site', region: 'a_site' },
+  a: { type: 'plant', region: 'a_plant' },
+  e: { type: 'open', region: 'a_entry' },     // doorway attackers push through
+  n: { type: 'site', region: 'a_anchor' },    // defender hold pocket (deep/safe)
+  f: { type: 'site', region: 'a_off' },        // off-angle 1
+  g: { type: 'site', region: 'a_off2' },       // off-angle 2
+
+  // B-side cluster.
+  B: { type: 'site', region: 'b_site' },
+  b: { type: 'plant', region: 'b_plant' },
+  E: { type: 'open', region: 'b_entry' },
+  N: { type: 'site', region: 'b_anchor' },
+  F: { type: 'site', region: 'b_off' },
+  G: { type: 'site', region: 'b_off2' },
+
+  // Lanes (mains) split near (defender end) / far (attacker end).
+  '1': { type: 'open', region: 'a_main' },
+  '3': { type: 'open', region: 'a_main_near' },
+  '4': { type: 'open', region: 'a_main_far' },
+  '2': { type: 'open', region: 'b_main' },
+  '5': { type: 'open', region: 'b_main_near' },
+  '6': { type: 'open', region: 'b_main_far' },
+
+  // Mid + sub-zones.
+  M: { type: 'mid', region: 'mid' },
+  l: { type: 'mid', region: 'mid_left' },
+  r: { type: 'mid', region: 'mid_right' },
+  k: { type: 'mid', region: 'mid_choke' },
+
+  // Standalone chokes + rotational connectors (watch angles / rotate targets).
+  c: { type: 'open', region: 'a_choke' },
+  C: { type: 'open', region: 'b_choke' },
+  '7': { type: 'open', region: 'a_connector' },
+  '8': { type: 'open', region: 'b_connector' },
+};
+
+/** Passable-hex nearest the centroid of `pool` (avoids site pillars). */
+function centerOf(pool: readonly HexCoord[]): HexCoord {
+  if (pool.length === 0) return { col: 15, row: 20 };
+  const ac = pool.reduce((s, h) => s + h.col, 0) / pool.length;
+  const ar = pool.reduce((s, h) => s + h.row, 0) / pool.length;
+  let best = pool[0];
+  let bestD = Infinity;
+  for (const h of pool) {
+    const d = (h.col - ac) ** 2 + (h.row - ar) ** 2;
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  return best;
+}
+
+/**
+ * Build a map's grid + regions + sites + spawns from a ROWS×COLS character
+ * grid (see CHAR_LEGEND). Throws on a wrong row count, wrong row length, or
+ * an unknown char — so transcription mistakes name the exact bad cell instead
+ * of silently corrupting the map. This is the authoring path for new/organic
+ * maps (and the eventual paint editor's export target).
+ */
+export function mapFromCharGrid(rows: readonly string[]): {
+  grid: CellType[][];
+  regions: Record<string, HexCoord[]>;
+  sites: { A: SiteData; B: SiteData };
+  spawns: { defenders: HexCoord[]; attackers: HexCoord[] };
+} {
+  if (rows.length !== ROWS) {
+    throw new Error(`mapFromCharGrid: expected ${ROWS} rows, got ${rows.length}`);
+  }
+  const grid = makeGrid();
+  const regions: Record<string, HexCoord[]> = {};
+  for (let r = 0; r < ROWS; r++) {
+    const line = rows[r];
+    if (line.length !== COLS) {
+      throw new Error(`mapFromCharGrid: row ${r} is ${line.length} chars, expected ${COLS}`);
+    }
+    for (let c = 0; c < COLS; c++) {
+      const ch = line[c];
+      const entry = CHAR_LEGEND[ch];
+      if (!entry) throw new Error(`mapFromCharGrid: unknown char '${ch}' at row ${r}, col ${c}`);
+      grid[r][c] = entry.type;
+      if (entry.region) (regions[entry.region] ??= []).push({ col: c, row: r });
+    }
+  }
+
+  // Fold fine sub-zones into their coarse parent so strategies referencing the
+  // parent (a_site / a_main / mid) still see the full footprint, while the
+  // sub-zones remain available as distinct targets + watch angles. Chokes and
+  // connectors are intentionally NOT folded — they're thin standalone refs.
+  const fold = (parent: string, children: readonly string[]): void => {
+    const merged = [...(regions[parent] ?? [])];
+    for (const c of children) for (const h of regions[c] ?? []) merged.push(h);
+    if (merged.length > 0) regions[parent] = merged;
+  };
+  fold('a_site', ['a_plant', 'a_entry', 'a_anchor', 'a_off', 'a_off2']);
+  fold('b_site', ['b_plant', 'b_entry', 'b_anchor', 'b_off', 'b_off2']);
+  fold('a_main', ['a_main_near', 'a_main_far']);
+  fold('b_main', ['b_main_near', 'b_main_far']);
+  fold('mid', ['mid_left', 'mid_right', 'mid_choke']);
+
+  const aPlant = regions['a_plant'] ?? [];
+  const bPlant = regions['b_plant'] ?? [];
+
+  return {
+    grid,
+    regions,
+    sites: {
+      A: { hexes: regions['a_site'], plantHexes: aPlant, centerHex: centerOf(aPlant.length ? aPlant : regions['a_site']) },
+      B: { hexes: regions['b_site'], plantHexes: bPlant, centerHex: centerOf(bPlant.length ? bPlant : regions['b_site']) },
+    },
+    spawns: {
+      defenders: regions['def_spawn'] ?? [],
+      attackers: regions['atk_spawn'] ?? [],
+    },
+  };
 }

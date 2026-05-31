@@ -164,6 +164,72 @@ export function findCoverHoldHex(
   return best;
 }
 
+// Threat-aware hold positioning (Pillar B). When a unit settles into holding,
+// pick the best hex within `radius` of its current spot by scoring the threat
+// field against keeping LoS to the angle it should watch and staying put.
+// Decoupled from GameState: the caller supplies `threatOf` (a closure over
+// threat.ts/threatAt with the per-tick exposure + suspected hoisted) and the
+// resolved `angleHex` (directive facing, else enemy spawn). Pure +
+// deterministic — BFS frontier order is fixed; ties resolve to the lower-row,
+// lower-col hex; the unit's own hex is the baseline so a unit never moves to a
+// strictly-worse spot. `occupied` blocks hexes taken by other live units, so a
+// stacked strategy (5 on one site) naturally spreads to distinct safe hexes.
+export function findThreatAwareHoldHex(
+  unit: Unit,
+  map: MapDefinition,
+  occupied: ReadonlySet<string>,
+  threatOf: (h: HexCoord) => number,
+  angleHex: HexCoord | null,
+  radius: number,
+  weights: { safety: number; los: number; cover: number; dist: number },
+): HexCoord {
+  const here = unit.pos;
+  const selfKey = `${here.col},${here.row}`;
+  // Score: low threat is good; keeping LoS to the watch angle is good; cover on
+  // the threat side is good; distance from the current spot is bad.
+  const score = (h: HexCoord): number => {
+    const threat = threatOf(h);
+    const los = angleHex && isVisibleAlongLine(h, angleHex, map) ? 1 : 0;
+    const cover = angleHex ? sightlineCoverScore(h, map, angleHex) / 4 : 0;
+    const dist = hexDistance(h, here);
+    return (
+      -weights.safety * threat +
+      weights.los * los +
+      weights.cover * cover -
+      weights.dist * dist
+    );
+  };
+  let best = here;
+  let bestScore = score(here);
+  if (radius <= 0) return best;
+
+  // BFS up to `radius` hexes. Candidates are passable + unoccupied (except own
+  // hex). Strict > so the unit only relocates for a genuinely better hex; ties
+  // keep it put (or, among equal candidates, the first reached in BFS order).
+  const seen = new Set<string>([selfKey]);
+  let frontier: HexCoord[] = [here];
+  for (let depth = 0; depth < radius; depth++) {
+    const next: HexCoord[] = [];
+    for (const cur of frontier) {
+      for (const nb of neighbors(cur)) {
+        const key = `${nb.col},${nb.row}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!passableAt(map, nb)) continue;
+        next.push(nb); // expand through passable hexes even if occupied
+        if (key !== selfKey && occupied.has(key)) continue;
+        const s = score(nb);
+        if (s > bestScore) {
+          best = nb;
+          bestScore = s;
+        }
+      }
+    }
+    frontier = next;
+  }
+  return best;
+}
+
 // Sightline-aware cover scoring (Pass 7.8). Rank the candidate's 6 neighbors by
 // how close their bearing is to the threat bearing — the "front" neighbor is
 // the one in the threat's direction. A wall there fully blocks LoS (4); cover

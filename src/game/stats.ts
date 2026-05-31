@@ -96,11 +96,14 @@ function killerOf(
   return killer;
 }
 
-// VLR-style multikill bonus per spec §5.2 (3v3 scaled: 3K = ace).
-function multiKillBonus(kills: number): number {
-  if (kills <= 1) return 0;
-  if (kills === 2) return 0;
-  return ATTRIBUTES.performanceStats.acs.multikill3K;
+// VLR-style ace bonus per spec §5.2 — fires only on a full enemy-team wipe.
+// Generalized from the 3v3-hard-coded "3K" to "kills >= enemy team size" so it
+// scales with TEAM_SIZE (5v5 ace = 5 kills). `enemyCount` is the number of
+// opposing-team units, passed by the caller so symmetric and any future
+// asymmetric matchups both resolve correctly.
+function aceBonus(kills: number, enemyCount: number): number {
+  if (enemyCount <= 0) return 0;
+  return kills >= enemyCount ? ATTRIBUTES.performanceStats.acs.aceWipeBonus : 0;
 }
 
 // Compute per-unit stats for one round.
@@ -199,13 +202,14 @@ export function computeRoundStats(
     s.s = !diedThisRound.has(u.id);
   }
 
-  // ACS contribution: kills*200 + assists*50 + multikill bonus + damage.
+  // ACS contribution: kills*200 + assists*50 + ace (full-wipe) bonus + damage.
   for (const u of units) {
     const s = out[u.id];
     if (!s) continue;
+    const enemyCount = units.filter((x) => x.team !== u.team).length;
     s.acs = s.kills * cfg.acs.killValue
           + s.assists * cfg.acs.assistValue
-          + multiKillBonus(s.kills)
+          + aceBonus(s.kills, enemyCount)
           + s.damage * cfg.acs.damageMultiplier;
   }
 

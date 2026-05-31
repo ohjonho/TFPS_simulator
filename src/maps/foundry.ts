@@ -191,15 +191,20 @@ export const foundry: MapDefinition = {
   },
 
   spawns: {
-    // Compact central strips (Pass 7.6).
+    // Compact central strips. Phase 1a 5v5 bring-up — 5 cells/side in the open
+    // spawn strip (throwaway; Phase 2 redesigns these maps for 5).
     defenders: [
       { col: 12, row: 1 },
+      { col: 13, row: 1 },
       { col: 14, row: 1 },
+      { col: 16, row: 1 },
       { col: 17, row: 1 },
     ],
     attackers: [
       { col: 12, row: 38 },
+      { col: 13, row: 38 },
       { col: 14, row: 38 },
+      { col: 16, row: 38 },
       { col: 17, row: 38 },
     ],
   },

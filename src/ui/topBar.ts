@@ -14,7 +14,7 @@ export type TopBarCallbacks = {
   onTimeout: () => void;
   onToggleShowEnemies: () => void;
   showEnemiesPlanning: boolean;
-  onSetMap: (name: 'Foundry' | 'Atoll') => void;
+  onSetMap: (name: 'Foundry' | 'Atoll' | 'Canyon') => void;
   // Pass D — region-name overlay toggle (mirrors `R` keybind).
   onToggleRegionLabels: () => void;
   showRegionLabels: boolean;
@@ -39,10 +39,10 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   helpBtn.addEventListener('click', cb.onOpenHelp);
   host.appendChild(helpBtn);
 
-  // Map toggle (Foundry / Atoll). Switching starts a new match on that map.
+  // Map toggle (Foundry / Atoll / Canyon). Switching starts a new match.
   const mapName = document.createElement('div');
   mapName.className = 'map-name';
-  for (const m of ['Foundry', 'Atoll'] as const) {
+  for (const m of ['Foundry', 'Atoll', 'Canyon'] as const) {
     const b = document.createElement('button');
     b.textContent = m;
     if (state.map.name === m) b.classList.add('selected');

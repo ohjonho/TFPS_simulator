@@ -1,0 +1,319 @@
+/* Hex map editor — dark dev-tool theme, mirroring the game's palette feel. */
+
+:root {
+  --ed-bg: #0e1116;
+  --ed-panel: #161b22;
+  --ed-panel-2: #1c2230;
+  --ed-line: #2a3140;
+  --ed-text: #d8dee6;
+  --ed-dim: #8b97a7;
+  --ed-accent: #22d3ee;
+  --ed-ok: #34d399;
+  --ed-bad: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--ed-bg);
+  color: var(--ed-text);
+  font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+}
+
+#editor {
+  display: flex;
+  height: 100vh;
+}
+
+/* --- sidebar --- */
+
+.ed-sidebar {
+  width: 340px;
+  flex: 0 0 340px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 14px 16px 40px;
+  background: var(--ed-panel);
+  border-right: 1px solid var(--ed-line);
+}
+
+.ed-header h1 {
+  margin: 0 0 2px;
+  font-size: 17px;
+}
+
+.ed-sub {
+  margin: 0 0 6px;
+  color: var(--ed-dim);
+  font-size: 11px;
+}
+
+.ed-hover {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--ed-accent);
+}
+
+.ed-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ed-line);
+}
+
+.ed-section h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ed-dim);
+}
+
+/* --- palette --- */
+
+.ed-palette {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.ed-brush {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}
+
+.ed-brush.active {
+  outline: 2px solid var(--ed-accent);
+}
+
+.ed-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 1px solid;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 2px #000;
+}
+
+.ed-eraser {
+  margin-top: 6px;
+  width: 100%;
+}
+
+/* --- generic controls --- */
+
+button {
+  background: var(--ed-panel-2);
+  color: var(--ed-text);
+  border: 1px solid var(--ed-line);
+  border-radius: 4px;
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--ed-accent);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ed-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ed-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  font-size: 12px;
+  color: var(--ed-text);
+  cursor: pointer;
+}
+
+.ed-note {
+  margin: 6px 0 0;
+  color: var(--ed-dim);
+  font-size: 11px;
+}
+
+.ed-note.bad {
+  color: var(--ed-bad);
+}
+
+input[type='text'],
+select,
+textarea {
+  background: var(--ed-bg);
+  color: var(--ed-text);
+  border: 1px solid var(--ed-line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+input[type='file'] {
+  font-size: 11px;
+  color: var(--ed-dim);
+  margin-bottom: 8px;
+}
+
+/* --- range sliders --- */
+
+.ed-range {
+  display: grid;
+  grid-template-columns: 110px 1fr 44px;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.ed-rangelabel {
+  font-size: 11px;
+  color: var(--ed-dim);
+}
+
+.ed-rangeval {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-align: right;
+}
+
+.ed-range input[type='range'] {
+  width: 100%;
+}
+
+/* --- load / paste --- */
+
+.ed-paste {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
+/* --- validation --- */
+
+.ed-status {
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.ed-status.ok {
+  color: var(--ed-bg);
+  background: var(--ed-ok);
+}
+
+.ed-status.bad {
+  color: #fff;
+  background: var(--ed-bad);
+}
+
+.ed-checks {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.ed-checks li {
+  padding: 1px 0;
+}
+
+.ed-checks li.ok {
+  color: var(--ed-ok);
+}
+
+.ed-checks li.bad {
+  color: var(--ed-bad);
+}
+
+.ed-detail {
+  color: var(--ed-dim);
+}
+
+.ed-counts {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ed-dim);
+  word-break: break-word;
+}
+
+/* --- export --- */
+
+.ed-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ed-field span {
+  width: 70px;
+  color: var(--ed-dim);
+  font-size: 11px;
+}
+
+.ed-field input,
+.ed-field select {
+  flex: 1;
+}
+
+.ed-preview {
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  background: var(--ed-bg);
+  border: 1px solid var(--ed-line);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  white-space: pre;
+}
+
+/* --- canvas area --- */
+
+.ed-canvas {
+  flex: 1;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ed-canvas canvas {
+  cursor: crosshair;
+  background: var(--ed-bg);
+  box-shadow: 0 0 0 1px var(--ed-line);
+}

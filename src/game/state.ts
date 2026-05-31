@@ -37,6 +37,7 @@ import { createRng } from './rng.ts';
 // H3.4 — cards.ts removed; no deck/hand state to initialize.
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
+import { canyon } from '../maps/canyon.ts';
 import type { MapDefinition } from './types.ts';
 import { AI, RNG_SEED_DEFAULT } from './config.ts';
 import { startDraft } from './draft.ts';
@@ -59,7 +60,7 @@ export function buildInitialState(
   mode: MatchMode = 'draft',
   seed: number = RNG_SEED_DEFAULT,
 ): GameState {
-  const map = mapName === 'Atoll' ? atoll : foundry;
+  const map = mapName === 'Atoll' ? atoll : mapName === 'Canyon' ? canyon : foundry;
 
   if (mode === 'draft') {
     // Pass G — pre-planning draft phase: generate an 8-unit pool, return a

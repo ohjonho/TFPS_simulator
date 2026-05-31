@@ -746,7 +746,7 @@ if (import.meta.env.DEV) {
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
-    setMap: (name: 'Foundry' | 'Atoll') => {
+    setMap: (name: 'Foundry' | 'Atoll' | 'Canyon') => {
       clearPlanningUiState();
       state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);
