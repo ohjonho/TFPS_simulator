@@ -313,6 +313,20 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.15.0 — units stop watching their own backfield</h3>
+    <ul>
+      <li><strong>Holding units now watch the right way.</strong> A defender
+        pushed forward into a lane was sometimes told to watch a region behind it
+        (e.g. hold deep in A-main but face A-site), so it stared back at ground it
+        had already passed instead of the direction attackers actually come from —
+        and got caught looking the wrong way. Units now ignore a hold-angle that
+        points behind them and watch the threat approach instead (a tracked enemy
+        still overrides — if someone really is behind you, you turn). Sideways
+        lane and off-angle watches are unchanged. With longer fights (v0.14.0),
+        seeing the enemy first matters more, so this is a real edge.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.14.0 — longer fights, tactics matter more</h3>
     <ul>
       <li><strong>Units now have 4 HP (was 3).</strong> Fights last a beat

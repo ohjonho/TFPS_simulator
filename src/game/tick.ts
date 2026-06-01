@@ -67,7 +67,7 @@ import {
   TRAITS,
   UNIT_DEFAULTS,
 } from './config.ts';
-import { hexDistance } from './hex.ts';
+import { hexDistance, offsetToAxial } from './hex.ts';
 
 export function stepTick(state: GameState): GameState {
   const tick = state.tick + 1;
@@ -421,8 +421,14 @@ export function stepTick(state: GameState): GameState {
         // facing direction (used to silently fall through to movement dir).
         const tracked = state.tracking[u.id]?.lastKnownHex;
         const arrivedThisTick = effectiveTarget && sameHex(u.pos, effectiveTarget);
-        if (directiveFacing) {
-          u.facing = nearestFacing(u.pos, directiveFacing);
+        const approach = enemySpawnForSide(u, state);
+        // Pass F — skip a hold-angle that points behind the unit (own backfield);
+        // while moving, lead with the destination instead so the cone faces
+        // forward into the push rather than back where it came from.
+        const dirUsable = directiveFacing
+          && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
+        if (dirUsable) {
+          u.facing = nearestFacing(u.pos, directiveFacing!);
         } else if (tracked) {
           u.facing = nearestFacing(u.pos, tracked);
         } else if (effectiveTarget && !arrivedThisTick) {
@@ -430,7 +436,7 @@ export function stepTick(state: GameState): GameState {
         } else {
           // Arrived (or no target) — fall back to enemy spawn / mid centroid
           // so the cone doesn't keep staring at the last-traversed wall.
-          const fallback = enemySpawnForSide(u, state) ?? midCentroid(state);
+          const fallback = approach ?? midCentroid(state);
           if (fallback && !sameHex(fallback, u.pos)) {
             u.facing = nearestFacing(u.pos, fallback);
           }
@@ -460,10 +466,16 @@ export function stepTick(state: GameState): GameState {
       // (the directive author got it wrong, or the chosen hex moved with
       // a map redesign). Re-deriving from tracking/spawn/midCentroid each
       // tick beats staring at a wall forever.
-      const useDirective = directiveFacing && !isWallHex(state.map, directiveFacing);
+      // Pass F — also skip a directive facing that points BEHIND the unit on
+      // the enemy-approach axis (would stare at its own backfield). A tracked
+      // enemy still wins (real threat); otherwise watch the approach.
+      const approach = enemySpawnForSide(u, state);
+      const useDirective = directiveFacing
+        && !isWallHex(state.map, directiveFacing)
+        && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
       const threat = (useDirective ? directiveFacing : undefined)
         ?? state.tracking[u.id]?.lastKnownHex
-        ?? enemySpawnForSide(u, state)
+        ?? approach
         ?? midCentroid(state);
       if (threat && !sameHex(threat, u.pos)) {
         u.facing = nearestFacing(u.pos, threat);
@@ -994,6 +1006,23 @@ function enemySpawnForSide(unit: Unit, state: GameState): HexCoord | null {
   const spawns = state.map.spawns[oppositeSpawnKey];
   if (spawns.length === 0) return null;
   return spawns[Math.floor(spawns.length / 2)];
+}
+
+// A hold-angle that sits BEHIND the unit relative to the enemy-approach axis
+// (vector pos→enemySpawn) makes a settling unit stare at its own backfield —
+// e.g. a defender pushed forward into a_main but told to watch a_site (north),
+// so it watches the lane it already passed instead of the attacker approach.
+// Detected via the cube-space dot of (angle−pos)·(enemy−pos): < 0 ⇒ >90° apart
+// ⇒ behind. Sideways angles (dot ≈ 0, legitimate lane/flank watches) are kept;
+// callers fall back to watching the approach (or a tracked enemy) when behind.
+function holdAngleBehindApproach(pos: HexCoord, angle: HexCoord, enemy: HexCoord): boolean {
+  const p = offsetToAxial(pos.col, pos.row);
+  const a = offsetToAxial(angle.col, angle.row);
+  const e = offsetToAxial(enemy.col, enemy.row);
+  // axial (q,r) → cube (x = q, z = r, y = −q−r)
+  const vax = a.q - p.q, vaz = a.r - p.r, vay = -vax - vaz;
+  const vex = e.q - p.q, vez = e.r - p.r, vey = -vex - vez;
+  return vax * vex + vay * vey + vaz * vez < 0;
 }
 
 // Pass E m1 — is a hex a `wall` cell? Used to skip directive-supplied facings
