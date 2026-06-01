@@ -71,4 +71,7 @@ export const canyon: MapDefinition = {
   sites: parsed.sites,
   spawns: parsed.spawns,
   character: 'tight_corridors_asymmetric',
+  // Strategy-aware defender spawn optimization — measured +9pp def on Canyon's
+  // dense layout (config.SPAWN_SPREAD note). Opt-in; other maps leave it off.
+  optimizeSpawns: true,
 };

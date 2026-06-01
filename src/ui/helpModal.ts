@@ -313,6 +313,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.12.0 — two new 5v5 maps</h3>
+    <ul>
+      <li><strong>Foundryv2 + Atoll_v2</strong> are selectable from the map
+        toggle — ground-up redesigns of the old one-dimensional layouts, built on
+        the richer region vocabulary (site entries/anchors/off-angles, near/far
+        lane splits, a real mid choke, and rotational connectors). Foundryv2
+        plays close to balanced; Atoll_v2 is still attacker-leaning and a work in
+        progress (no cover placed yet). The originals remain for comparison.</li>
+      <li><strong>Canyon defenders spawn smarter.</strong> On Canyon, defenders
+        now start on the spot in their (large) spawn zone closest to where their
+        strategy sends them, instead of a fixed corner — closing the approach to
+        their hold. Noticeably steadies the defense on Canyon's dense layout.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.11.0 — units hold smarter angles</h3>
     <ul>
       <li><strong>Threat-aware positioning.</strong> When a unit settles to hold,

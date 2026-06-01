@@ -38,6 +38,8 @@ import { createRng } from './rng.ts';
 import { foundry } from '../maps/foundry.ts';
 import { atoll } from '../maps/atoll.ts';
 import { canyon } from '../maps/canyon.ts';
+import { foundryv2 } from '../maps/foundryv2.ts';
+import { atoll_v2 } from '../maps/atoll_v2.ts';
 import type { MapDefinition } from './types.ts';
 import { AI, RNG_SEED_DEFAULT } from './config.ts';
 import { startDraft } from './draft.ts';
@@ -60,7 +62,11 @@ export function buildInitialState(
   mode: MatchMode = 'draft',
   seed: number = RNG_SEED_DEFAULT,
 ): GameState {
-  const map = mapName === 'Atoll' ? atoll : mapName === 'Canyon' ? canyon : foundry;
+  const MAPS: Record<MapDefinition['name'], MapDefinition> = {
+    Foundry: foundry, Atoll: atoll, Canyon: canyon,
+    Foundryv2: foundryv2, Atoll_v2: atoll_v2,
+  };
+  const map = MAPS[mapName] ?? foundry;
 
   if (mode === 'draft') {
     // Pass G — pre-planning draft phase: generate an 8-unit pool, return a

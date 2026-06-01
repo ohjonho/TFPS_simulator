@@ -1143,6 +1143,11 @@ const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   // (entries/anchors/off-angles, near/far lane splits, mid left/right/choke).
   // Unlocks reuse the shared generic-region templates (which resolve on Canyon).
   Canyon:  [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
+  // Foundryv2 / Atoll_v2: redesigned on the richer vocabulary, so they share the
+  // rich-vocab baseline (CANYON_ATK/DEF) + the generic unlock templates. Drop in
+  // map-specific native sets here once each layout's balance is dialed in.
+  Foundryv2: [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
+  Atoll_v2:  [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
 };
 
 export function strategiesFor(side: Side, map: MapDefinition): Strategy[] {

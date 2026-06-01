@@ -199,6 +199,29 @@ export const POSITIONING = {
   wDist: 0.15,
 } as const;
 
+// --- Spawn placement -------------------------------------------------------
+// Two layers (see units.placeSpawns + match.applyStrategies):
+//
+// (1) SPAWN_SPREAD — fan the N units across the zone's back edge (one per ~column
+//     band) so a wide painted zone is used instead of only the first-N row-major
+//     corner. Pure + deterministic; A/B-flagged.
+//     DEFAULT OFF. The A/B harness showed fanning is a pure cost on the open
+//     map: both back-edge (−13pp def) and front-edge (−10pp) spreads tank
+//     Foundryv2 — spreading breaks the coordinated group-push it's balanced
+//     around — while helping nothing elsewhere (originals with 5-cell spawns are
+//     unaffected). These maps are balanced around the legacy placement; kept
+//     behind the flag for authored maps that specifically want a fanned start.
+//
+// (2) Per-map strategy-aware optimization lives on the MAP, not here:
+//     `MapDefinition.optimizeSpawns`. When true, applyStrategies relocates each
+//     DEFENDER onto the spawn-zone cell nearest its resolved target (closing its
+//     approach). Also a balance lever — helps defenders on dense maps
+//     (Canyon +~9pp) but hurts open-sightline maps, so it's opt-in per map
+//     (Canyon only for now) rather than global.
+export const SPAWN_SPREAD = {
+  enabled: false,
+} as const;
+
 // --- Engagement gate (AI competence #2) -----------------------------------
 // Whether a unit commits to a duel it can see, based on estimated odds
 // (expected-damage-per-tick share vs the target, from combat.estimateEdpt).
