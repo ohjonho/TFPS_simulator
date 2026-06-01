@@ -65,6 +65,7 @@ import {
   SITUATION,
   STAY_ENGAGED_TICKS,
   TRAITS,
+  UNIT_DEFAULTS,
 } from './config.ts';
 import { hexDistance } from './hex.ts';
 
@@ -872,7 +873,10 @@ function applyCardPostDamage(
     if (u.state !== 'alive') continue;
     const sources = sourcesByTeam[u.team] ?? [];
     const covered = sources.some((s) => hexDistance(u.pos, s.pos) <= (radii[s.id] ?? CARD_EFFECTS.guardianAura.radius));
-    const wantMax = 3 + (covered ? CARD_EFFECTS.guardianAura.maxHpBonus : 0);
+    // Base is the configured max HP (was a hard-coded 3, which silently
+    // overrode UNIT_DEFAULTS.maxHp every tick and capped all units at 3 —
+    // masked only because the config also happened to be 3).
+    const wantMax = UNIT_DEFAULTS.maxHp + (covered ? CARD_EFFECTS.guardianAura.maxHpBonus : 0);
     if (u.maxHp !== wantMax) {
       const delta = wantMax - u.maxHp;
       u.maxHp = wantMax;
