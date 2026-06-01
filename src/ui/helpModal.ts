@@ -320,7 +320,8 @@ const PATCH_NOTES = `
         the richer region vocabulary (site entries/anchors/off-angles, near/far
         lane splits, a real mid choke, and rotational connectors). Foundry II
         plays close to balanced; Atoll II is still attacker-leaning and a work in
-        progress (no cover placed yet). The originals remain for comparison.</li>
+        progress. Both now have a first pass of cover. The originals remain for
+        comparison.</li>
       <li><strong>Map picker polish.</strong> The map toggle shows tidier labels
         and a one-line description of each map on hover.</li>
       <li><strong>Canyon defenders spawn smarter.</strong> On Canyon, defenders
