@@ -29,6 +29,7 @@ import { resolveShot } from './game/combat.ts';
 import type { ShotContextInput } from './game/combat.ts';
 import { createRng } from './game/rng.ts';
 import { determinismCheck, runBatch, runComplianceTest, runSkirmish, runStrategyMatrix, runStrategyRound } from './game/batch.ts';
+import { runAiQuality, formatAiQuality } from './game/aiQuality.ts';
 import { ROLE_AGGRESSION, RNG_SEED_DEFAULT } from './game/config.ts';
 import { PlaybackLoop } from './game/loop.ts';
 import { DEBUG_KEY, REGION_LABEL_KEY } from './game/config.ts';
@@ -666,6 +667,16 @@ if (import.meta.env.DEV) {
         console.warn('Mismatched seeds:', det.mismatchedSeeds);
       }
       return { matrix, compliance, det };
+    },
+    // AI-quality probe — the three balance-independent signals (skill-pays /
+    // strategy structure / behavior proxies). Replaces the reflex of running a
+    // full matrix after every AI tweak; aggregate win% is a balance gate, run
+    // separately. Defaults to the canonical map (Foundry II). See aiQuality.ts.
+    aiQuality: (seeds = 20, map: Parameters<typeof runAiQuality>[1] = 'Foundryv2') => {
+      const report = runAiQuality(seeds, map);
+      // eslint-disable-next-line no-console
+      console.log(formatAiQuality(report));
+      return report;
     },
     // --- Pass 7 match-flow hooks ---
     pickStrategy: (id: string) =>
