@@ -6,45 +6,12 @@ import type { Facing, HexCoord, MapDefinition, Unit } from './types.ts';
 import { hexDistance, offsetToPixel } from './hex.ts';
 import { neighbors, passableAt, isCoverAdjacent, findPath } from './pathfind.ts';
 import { isVisibleAlongLine } from './vision.ts';
-import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE, RANGE } from './config.ts';
+import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
 
-// Pass 7.8 — target prioritization. Ranked tiebreakers:
-//   1. lowest HP first (secure the kill before it walks behind cover);
-//   2. sniper before others (peel off the highest-threat weapon class);
-//   3. closest (shorter range usually = higher hit %);
-//   4. lowest id (determinism).
-// Pre-Pass-7.8 this was just (3) + (4); the wounded-target-first rule makes
-// teams visibly finish kills instead of splitting fire across full-HP enemies.
-export function pickFiringTarget(unit: Unit, visibleEnemies: readonly Unit[]): string | null {
-  if (visibleEnemies.length === 0) return null;
-  const sorted = [...visibleEnemies].sort((a, b) => {
-    if (a.hp !== b.hp) return a.hp - b.hp;
-    const aSniper = a.weapon === 'sniper' ? 0 : 1;
-    const bSniper = b.weapon === 'sniper' ? 0 : 1;
-    if (aSniper !== bSniper) return aSniper - bSniper;
-    const da = hexDistance(unit.pos, a.pos);
-    const db = hexDistance(unit.pos, b.pos);
-    if (da !== db) return da - db;
-    return a.id < b.id ? -1 : 1;
-  });
-  return sorted[0].id;
-}
-
-export type EngagementDecision = { engage: boolean; targetId: string | null };
-
-export function shouldEngage(unit: Unit, visibleEnemies: readonly Unit[]): EngagementDecision {
-  if (visibleEnemies.length === 0) return { engage: false, targetId: null };
-  // F3 — shotguns only engage at short range. At medium / long their HR
-  // collapses to 30 / 5 %, so engaging dumps wasted shots into trades they
-  // can't win against rifles or snipers. Keep moving instead so they can
-  // close via cover; the cover-aware A* + their region target carries them.
-  if (unit.weapon === 'shotgun') {
-    const inRange = visibleEnemies.filter((e) => hexDistance(unit.pos, e.pos) <= RANGE.shortMax);
-    if (inRange.length === 0) return { engage: false, targetId: null };
-    return { engage: true, targetId: pickFiringTarget(unit, inRange) };
-  }
-  return { engage: true, targetId: pickFiringTarget(unit, visibleEnemies) };
-}
+// (Removed: pickFiringTarget / shouldEngage / EngagementDecision — the v0
+// binary "any enemy visible → fight" + closest-target picker. Superseded by the
+// odds-based engagement gate in engage.ts (assessEngagement), which does its
+// own target selection. Dead since that rewrite.)
 
 export type RetreatDecision = { retreat: boolean };
 

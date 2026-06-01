@@ -669,9 +669,8 @@ export function stepTick(state: GameState): GameState {
   // Pass 9 m3 — Mark Target trigger: for each unit with markTargetPending,
   // if their per-unit visibility includes a live enemy this tick, register a
   // mark_target effect on that enemy and clear the pending flag. First enemy
-  // wins (stable: lowest enemy id on tied distance — `pickFiringTarget`
-  // semantics). Reads post-move visibility so it fires the tick the contributor
-  // first sees an enemy.
+  // wins (stable: lowest enemy id on tied distance). Reads post-move visibility
+  // so it fires the tick the contributor first sees an enemy.
   const triggeredEffects = triggerPendingMarks(working, post.perUnit, postMove.cardEffects, tick);
 
   // Pass B — spike-plant update on the post-move state. May set roundResult

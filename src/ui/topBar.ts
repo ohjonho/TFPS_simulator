@@ -39,14 +39,26 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   helpBtn.addEventListener('click', cb.onOpenHelp);
   host.appendChild(helpBtn);
 
-  // Map toggle. Switching starts a new match.
+  // Map toggle. Switching starts a new match. Cleaner display labels + a
+  // one-line character tooltip per map (the bar now holds five).
   const mapName = document.createElement('div');
   mapName.className = 'map-name';
+  const MAP_LABEL: Record<string, string> = {
+    Foundry: 'Foundry', Atoll: 'Atoll', Canyon: 'Canyon',
+    Foundryv2: 'Foundry II', Atoll_v2: 'Atoll II',
+  };
+  const MAP_TIP: Record<string, string> = {
+    Foundry: 'Symmetric, open mid — the original.',
+    Atoll: 'Symmetric, maze A / dock B — the original.',
+    Canyon: 'Dense, winding, asymmetric pillar sites.',
+    Foundryv2: 'Open-sightlines redesign on the richer region vocabulary.',
+    Atoll_v2: 'Tight, asymmetric redesign (work in progress).',
+  };
   for (const m of ['Foundry', 'Atoll', 'Canyon', 'Foundryv2', 'Atoll_v2'] as const) {
     const b = document.createElement('button');
-    b.textContent = m;
+    b.textContent = MAP_LABEL[m] ?? m;
     if (state.map.name === m) b.classList.add('selected');
-    b.title = 'Switch map (starts a new match).';
+    b.title = `${MAP_TIP[m] ?? ''} (Switching starts a new match.)`;
     b.addEventListener('click', () => cb.onSetMap(m));
     mapName.appendChild(b);
   }
