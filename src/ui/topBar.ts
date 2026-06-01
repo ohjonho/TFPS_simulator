@@ -44,17 +44,15 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   const mapName = document.createElement('div');
   mapName.className = 'map-name';
   const MAP_LABEL: Record<string, string> = {
-    Foundry: 'Foundry', Atoll: 'Atoll', Canyon: 'Canyon',
-    Foundryv2: 'Foundry II', Atoll_v2: 'Atoll II',
+    Canyon: 'Canyon', Foundryv2: 'Foundry II', Atoll_v2: 'Atoll II',
   };
   const MAP_TIP: Record<string, string> = {
-    Foundry: 'Symmetric, open mid — the original.',
-    Atoll: 'Symmetric, maze A / dock B — the original.',
     Canyon: 'Dense, winding, asymmetric pillar sites.',
     Foundryv2: 'Open-sightlines redesign on the richer region vocabulary.',
     Atoll_v2: 'Tight, asymmetric redesign (work in progress).',
   };
-  for (const m of ['Foundry', 'Atoll', 'Canyon', 'Foundryv2', 'Atoll_v2'] as const) {
+  // Foundry / Atoll v1 retired — superseded by the II redesigns; not selectable.
+  for (const m of ['Foundryv2', 'Atoll_v2', 'Canyon'] as const) {
     const b = document.createElement('button');
     b.textContent = MAP_LABEL[m] ?? m;
     if (state.map.name === m) b.classList.add('selected');

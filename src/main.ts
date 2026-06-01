@@ -71,7 +71,8 @@ const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
 
 const shell = buildShell(root);
-let state: GameState = buildInitialState();
+// Open on Foundry II — the canonical live map (Foundry/Atoll v1 retired).
+let state: GameState = buildInitialState('Foundryv2');
 
 // Snapshot taken at the start of each round's resolution; used by Replay and
 // Back-to-Planning to restore the round's starting unit setup.

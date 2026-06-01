@@ -313,6 +313,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.16.0 — map roster trimmed to the live three</h3>
+    <ul>
+      <li><strong>Foundry and Atoll (the originals) retired from the picker.</strong>
+        They were one-dimensional and superseded by the Foundry II / Atoll II
+        redesigns. The picker now shows <strong>Foundry II, Atoll II, Canyon</strong>,
+        and the game opens on Foundry II. The old maps still exist in the build,
+        just aren't selectable.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.15.0 — units stop watching their own backfield</h3>
     <ul>
       <li><strong>Holding units now watch the right way.</strong> A defender
