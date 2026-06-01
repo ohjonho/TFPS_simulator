@@ -313,6 +313,25 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.14.0 — longer fights, tactics matter more</h3>
+    <ul>
+      <li><strong>Units now have 4 HP (was 3).</strong> Fights last a beat
+        longer — one extra rifle body-hit to down someone (snipers are unchanged:
+        still a one-shot headshot / two-shot body). This isn't a shooter-y HP
+        bump; it opens room for trades, refrags, and mid-fight repositioning, so
+        a round is decided by team play and angles, not just who has the best aim
+        in the first exchange.</li>
+      <li><strong>Aim is a little less swingy.</strong> Raw aim still wins
+        gunfights and is the #1 attribute — but it no longer dwarfs everything
+        else, so Game Sense, positioning, and especially Leadership/trading now
+        carry real weight. Drafting a great aimer still pays; drafting a great
+        <em>team</em> now also pays.</li>
+      <li><strong>Fixed:</strong> a long-standing bug silently capped every unit
+        at 3 HP regardless of the configured value (Guardian Aura housekeeping
+        used a hard-coded base) — so HP tuning had no effect until now.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.13.0 — Leadership matters (team trades)</h3>
     <ul>
       <li><strong>Comms / Leadership is now a real attribute.</strong> When a

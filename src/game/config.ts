@@ -30,7 +30,12 @@ export const LOADOUTS = {
 } as const;
 
 export const UNIT_DEFAULTS = {
-  maxHp: 3,
+  // Rebalance: 3→4. Longer TTK (one extra rifle body-hit; snipers still
+  // one-shot on headshot / two-shot body) opens trade windows and mid-fight
+  // repositioning, so coordination/positioning carry real weight instead of
+  // pure aim deciding the duel. Measured on Foundry II: Leadership gap
+  // +15→+25, Improvisation un-inerted, Discipline de-trapped, defenses evened.
+  maxHp: 4,
 } as const;
 
 // Team size (config knob). createTeam builds this many units per team from the
@@ -530,8 +535,8 @@ export const ATTRIBUTES = {
     max: 90,
   },
   formulas: {
-    aim: { multiplier: 0.2 },                                   // pp per (rating-50); contributes to HR
-    weaponAffinity: { multiplier: 0.1 },                        // pp per (rating-50); H1 — replaces per-weapon handling
+    aim: { multiplier: 0.13 },                                  // pp per (rating-50); contributes to HR. Rebalance: 0.2→0.13 to cut aim dominance (Mechanics gap was +80pp, swamping tactics) so positioning/first-contact carry comparable weight. Aim stays the #1 lever, not 2.3× everything.
+    weaponAffinity: { multiplier: 0.06 },                       // pp per (rating-50); H1 — replaces per-weapon handling. Rebalance: 0.1→0.06 (paired with aim cut).
     vision: {                                                   // H1 (was awareness)
       coneMultiplier: 0.4,                                      // deg per (rating-50); cone widens with vision
       coneCap: 20,                                              // ±deg cap
@@ -542,7 +547,7 @@ export const ATTRIBUTES = {
       withTraitMultiplier: 0.15,                                // stacks on Clutch trait
       withoutTraitMultiplier: 0.15,                             // default last-alive bonus
     },
-    headshot: { multiplier: 0.2 },                              // pp per (rating-50); linear HS contribution
+    headshot: { multiplier: 0.13 },                             // pp per (rating-50); linear HS contribution. Rebalance: 0.2→0.13 (reduces headshot-lethality swing that compounds aim dominance).
     reflexes: { firstShotMultiplier: 0.01 },                    // per (rating-50); scales First Shot trait magnitude
     mapIQ: { highThreshold: 70, lowThreshold: 30 },             // H1 — absorbs old `positioning`; widens cover-seek radius
   },
