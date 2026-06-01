@@ -47,8 +47,9 @@ export type StrategySlot = {
 };
 
 // A variant is a complete slot list (one slot per actual unit on the team,
-// typically 3 in v0). Strategies with multiple variants (Rush A/B) pick one
-// per round via the seeded RNG.
+// 5 at 5v5 — typically 4 rifle-pref + 1 sniper-pref to match LOADOUTS).
+// Strategies with multiple variants (Rush A/B) pick one per round via the
+// seeded RNG. Extra/short rosters degrade gracefully via assignSlots.
 export type StrategyVariant = StrategySlot[];
 
 export type Strategy = {
@@ -103,8 +104,8 @@ const peek = (peekRef: { region: string }, cover?: { region: string } | typeof o
 // they would have controlled isn't on the team / weapon mismatch).
 //
 // Units not picked by any slot get no directives + no target — they fall back
-// to legacy "hold position" behavior. In v0 every strategy defines 3 slots
-// for our 3-unit teams, so this only matters for degenerate cases.
+// to legacy "hold position" behavior. Every strategy defines 5 slots for our
+// 5-unit teams, so this only matters for degenerate (draft-skewed) cases.
 export function assignSlots(
   slots: readonly StrategySlot[],
   teamUnits: readonly Unit[],
@@ -152,17 +153,23 @@ const rifle: SlotPick = { preferWeapon: 'rifle' };                        // rif
 const FOUNDRY_ATK: Strategy[] = [
   {
     id: 'Execute', name: 'Execute', side: 'attacker',
-    description: 'Split push — 2 rifles commit one site (A or B); sniper anchors mid for crossfire & info.',
+    description: 'Split push — 3 rifles commit one site (A or B) while a 4th holds the main lane; sniper anchors mid for crossfire & info.',
     variants: [
       // Variant A: commit the A side. Pass B — entry + support target the
       // plant zone (cols 22-26 on Foundry) so attackers stand on plant hexes
       // and can plant the spike. The site centroid is on the site EDGE
       // (col 20), too far from the plant zone for the plant trigger to fire.
+      // 5v5: 3 rifles flood the plant, a 4th rifle holds a_main as a flank
+      // watch + extra trade body, sniper anchors mid for crossfire.
       [
         { id: 'entry',       pick: rifle, region: 'a_plant',
           directives: [commitSite(reg('a_plant')), peek(reg('a_site'))] },
         { id: 'support',     pick: rifle, region: 'a_plant',
           directives: [commitSite(reg('a_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',    pick: rifle, region: 'a_plant',
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 4)] },
+        { id: 'lane_watch',  pick: rifle, region: 'a_main', anchorOffset: 6, usePerimeterPath: true,
+          directives: [holdAngle(reg('a_site')), tradeFor('entry', 4)] },
         { id: 'mid_anchor',  pick: sniperPref, region: 'mid', anchorOffset: 4,
           directives: [holdAngle(reg('a_connector')), safeSniper(reg('a_connector')),
                        tradeFor('entry', 4), rotateOnContact(reg('a_site'), ['entry'], 3)] },
@@ -173,6 +180,10 @@ const FOUNDRY_ATK: Strategy[] = [
           directives: [commitSite(reg('b_plant')), peek(reg('b_site'))] },
         { id: 'support',     pick: rifle, region: 'b_plant',
           directives: [commitSite(reg('b_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',    pick: rifle, region: 'b_plant',
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 4)] },
+        { id: 'lane_watch',  pick: rifle, region: 'b_main', anchorOffset: 6, usePerimeterPath: true,
+          directives: [holdAngle(reg('b_site')), tradeFor('entry', 4)] },
         { id: 'mid_anchor',  pick: sniperPref, region: 'mid', anchorOffset: 4,
           directives: [holdAngle(reg('b_squeeze')), safeSniper(reg('b_squeeze')),
                        tradeFor('entry', 4), rotateOnContact(reg('b_site'), ['entry'], 3)] },
@@ -184,15 +195,20 @@ const FOUNDRY_ATK: Strategy[] = [
   },
   {
     id: 'Rush', name: 'Rush', side: 'attacker',
-    description: 'All-in on one site (A or B) up the main lane. Fast, no mid presence.',
+    description: 'All-in on one site (A or B) — four rifles flood the main lane, sniper trails for cleanup. Fast, no mid presence.',
     variants: [
       // Variant A: rush A site via A-main (perimeter forces the right edge).
-      // Pass B — lead + support hit the plant zone for plant; cleanup sniper
-      // stays one row back (anchorOffset 2) for cover-aware angle on the entry.
+      // Pass B — leads hit the plant zone for plant; cleanup sniper stays one
+      // row back (anchorOffset 2) for cover-aware angle on the entry. 5v5:
+      // four rifles flood, daisy-chained trades so a fallen lead is avenged.
       [
         { id: 'lead',     pick: rifle,      region: 'a_plant', usePerimeterPath: true,
           directives: [commitSite(reg('a_plant')), peek(reg('a_site'))] },
         { id: 'support',  pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
           directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
         { id: 'cleanup',  pick: sniperPref, region: 'a_site', usePerimeterPath: true, anchorOffset: 2,
           directives: [commitSite(reg('a_site')), safeSniper(reg('a_site')), tradeFor('lead', 5)] },
@@ -202,6 +218,10 @@ const FOUNDRY_ATK: Strategy[] = [
         { id: 'lead',     pick: rifle,      region: 'b_plant', usePerimeterPath: true,
           directives: [commitSite(reg('b_plant')), peek(reg('b_site'))] },
         { id: 'support',  pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
           directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
         { id: 'cleanup',  pick: sniperPref, region: 'b_site', usePerimeterPath: true, anchorOffset: 2,
           directives: [commitSite(reg('b_site')), safeSniper(reg('b_site')), tradeFor('lead', 5)] },
@@ -213,13 +233,19 @@ const FOUNDRY_ATK: Strategy[] = [
   },
   {
     id: 'Control', name: 'Control', side: 'attacker',
-    description: 'Slow info — rifles flank deep A-main + B-main; sniper anchors mid for long picks.',
+    description: 'Slow info — two rifles flank deep A-main, two deep B-main; sniper anchors mid for long picks.',
     variants: [[
       { id: 'flank_a',    pick: rifle,      region: 'a_main', anchorOffset: 12, usePerimeterPath: true,
         directives: [holdAngle(reg('a_site')), rotateOnContact(reg('b_site'), ['flank_b'], 4),
                      rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+      { id: 'flank_a2',   pick: rifle,      region: 'a_main', anchorOffset: 9, usePerimeterPath: true,
+        directives: [holdAngle(reg('a_site')), tradeFor('flank_a', 4),
+                     rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
       { id: 'flank_b',    pick: rifle,      region: 'b_main', anchorOffset: 12, usePerimeterPath: true,
         directives: [holdAngle(reg('b_site')), rotateOnContact(reg('a_site'), ['flank_a'], 4),
+                     rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+      { id: 'flank_b2',   pick: rifle,      region: 'b_main', anchorOffset: 9, usePerimeterPath: true,
+        directives: [holdAngle(reg('b_site')), tradeFor('flank_b', 4),
                      rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
       { id: 'mid_sniper', pick: sniperPref, region: 'mid',    anchorOffset: 8,
         directives: [holdAngle(enemySpawn), safeSniper(enemySpawn), tradeFor('flank_a', 5)] },
@@ -239,16 +265,21 @@ const FOUNDRY_ATK: Strategy[] = [
 const FOUNDRY_DEF: Strategy[] = [
   {
     id: 'Hold', name: 'Hold', side: 'defender',
-    description: 'Even split — rifle anchors A, rifle anchors B, sniper holds back-mid covering both lanes. No site bias.',
+    description: 'Even split — two rifles anchor A, two anchor B, sniper holds back-mid covering both lanes. No site bias.',
     variants: [
       // Single variant — Hold "splits the team evenly" (per user direction).
       // Sniper sits at the back of mid where they can swing toward either
-      // main lane on contact; rifles anchor each site's edge.
+      // main lane on contact; two rifles anchor each site (a near + a deep
+      // angle) so a single peek can't clear the post.
       [
         { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
           directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
+        { id: 'a_deep',   pick: rifle,      region: 'a_site', anchorOffset: 3,
+          directives: [holdAngle(reg('a_main')), tradeFor('a_anchor', 4)] },
         { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
           directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
+        { id: 'b_deep',   pick: rifle,      region: 'b_site', anchorOffset: 3,
+          directives: [holdAngle(reg('b_main')), tradeFor('b_anchor', 4)] },
         { id: 'mid',      pick: sniperPref, region: 'mid',    anchorOffset: 6,
           directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
       ],
@@ -259,23 +290,31 @@ const FOUNDRY_DEF: Strategy[] = [
   },
   {
     id: 'Stack', name: 'Stack', side: 'defender',
-    description: 'Cluster sniper + rifle on one site (A or B); third holds mid for rotates.',
+    description: 'Cluster on one site (A or B) — sniper + two rifles stack for crossfire; one holds mid, one watches the off-site for rotates.',
     variants: [
       [
         { id: 'a_sniper', pick: sniperPref, region: 'a_site', anchorOffset: 1,
           directives: [safeSniper(reg('a_main')), tradeFor('a_anchor', 5)] },
         { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
           directives: [holdAngle(reg('a_main')), tradeFor('a_sniper', 5)] },
+        { id: 'a_support', pick: rifle,     region: 'a_site', anchorOffset: 2,
+          directives: [holdAngle(reg('a_main')), tradeFor('a_anchor', 5)] },
         { id: 'mid',      pick: rifle,      region: 'mid',    anchorOffset: 6,
           directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'b_site', anchorOffset: 2,
+          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
       ],
       [
         { id: 'b_sniper', pick: sniperPref, region: 'b_site', anchorOffset: 1,
           directives: [safeSniper(reg('b_main')), tradeFor('b_anchor', 5)] },
         { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
           directives: [holdAngle(reg('b_main')), tradeFor('b_sniper', 5)] },
+        { id: 'b_support', pick: rifle,     region: 'b_site', anchorOffset: 2,
+          directives: [holdAngle(reg('b_main')), tradeFor('b_anchor', 5)] },
         { id: 'mid',      pick: rifle,      region: 'mid',    anchorOffset: 6,
           directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['b_anchor'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'a_site', anchorOffset: 2,
+          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
       ],
     ],
     fallbackRegion: 'mid',
@@ -284,15 +323,20 @@ const FOUNDRY_DEF: Strategy[] = [
   },
   {
     id: 'Pressure', name: 'Pressure', side: 'defender',
-    description: 'Push mid off spawn — two rifles contest the mid corridor; sniper holds the long mid lane from behind.',
+    description: 'Push mid off spawn — four rifles contest the mid corridor; sniper holds the long mid lane from behind.',
     variants: [
-      // Single variant — "pushes mid" (per user direction). Both rifles
-      // forward in mid; sniper anchors back-mid for long sightline.
+      // Single variant — "pushes mid" (per user direction). Four rifles
+      // forward in mid in two trade pairs; sniper anchors back-mid for the
+      // long sightline.
       [
         { id: 'mid_push',  pick: rifle,      region: 'mid', anchorOffset: 2,
           directives: [peek(reg('mid')), holdAngle(enemySpawn), tradeFor('mid_support', 4)] },
+        { id: 'mid_push2', pick: rifle,      region: 'mid', anchorOffset: 2,
+          directives: [peek(reg('mid')), holdAngle(enemySpawn), tradeFor('mid_support2', 4)] },
         { id: 'mid_support', pick: rifle,    region: 'mid', anchorOffset: 4,
           directives: [holdAngle(enemySpawn), tradeFor('mid_push', 4)] },
+        { id: 'mid_support2', pick: rifle,   region: 'mid', anchorOffset: 5,
+          directives: [holdAngle(enemySpawn), tradeFor('mid_push2', 4)] },
         { id: 'mid_sniper', pick: sniperPref, region: 'mid', anchorOffset: 8,
           directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid'), ['mid_push'], 3)] },
       ],
@@ -312,13 +356,17 @@ const FOUNDRY_DEF: Strategy[] = [
 const ATOLL_ATK: Strategy[] = [
   {
     id: 'Execute', name: 'Execute', side: 'attacker',
-    description: 'Split push — 2 rifles commit one site (A maze or B dock); sniper anchors courtyard.',
+    description: 'Split push — 3 rifles commit one site (A maze or B dock) while a 4th holds the main lane; sniper anchors courtyard.',
     variants: [
       [
         { id: 'entry',       pick: rifle, region: 'a_plant',
           directives: [commitSite(reg('a_plant')), peek(reg('a_site'))] },
         { id: 'support',     pick: rifle, region: 'a_plant',
           directives: [commitSite(reg('a_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',    pick: rifle, region: 'a_plant',
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 4)] },
+        { id: 'lane_watch',  pick: rifle, region: 'a_main', anchorOffset: 6, usePerimeterPath: true,
+          directives: [holdAngle(reg('a_site')), tradeFor('entry', 4)] },
         { id: 'mid_anchor',  pick: sniperPref, region: 'mid_courtyard', anchorOffset: 4,
           directives: [holdAngle(reg('a_site')), safeSniper(reg('a_site')),
                        tradeFor('entry', 4), rotateOnContact(reg('a_site'), ['entry'], 3)] },
@@ -328,6 +376,10 @@ const ATOLL_ATK: Strategy[] = [
           directives: [commitSite(reg('b_plant')), peek(reg('b_site'))] },
         { id: 'support',     pick: rifle, region: 'b_plant',
           directives: [commitSite(reg('b_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',    pick: rifle, region: 'b_plant',
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 4)] },
+        { id: 'lane_watch',  pick: rifle, region: 'b_main', anchorOffset: 6, usePerimeterPath: true,
+          directives: [holdAngle(reg('b_site')), tradeFor('entry', 4)] },
         { id: 'mid_anchor',  pick: sniperPref, region: 'mid_courtyard', anchorOffset: 4,
           directives: [holdAngle(reg('b_site')), safeSniper(reg('b_site')),
                        tradeFor('entry', 4), rotateOnContact(reg('b_site'), ['entry'], 3)] },
@@ -339,12 +391,16 @@ const ATOLL_ATK: Strategy[] = [
   },
   {
     id: 'Rush', name: 'Rush', side: 'attacker',
-    description: 'All-in on one site (A maze or B dock) up the main lane. No mid presence.',
+    description: 'All-in on one site (A maze or B dock) — four rifles flood the main lane, sniper trails. No mid presence.',
     variants: [
       [
         { id: 'lead',     pick: rifle,      region: 'a_plant', usePerimeterPath: true,
           directives: [commitSite(reg('a_plant')), peek(reg('a_site'))] },
         { id: 'support',  pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
           directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
         { id: 'cleanup',  pick: sniperPref, region: 'a_site', usePerimeterPath: true, anchorOffset: 2,
           directives: [commitSite(reg('a_site')), safeSniper(reg('a_site')), tradeFor('lead', 5)] },
@@ -353,6 +409,10 @@ const ATOLL_ATK: Strategy[] = [
         { id: 'lead',     pick: rifle,      region: 'b_plant', usePerimeterPath: true,
           directives: [commitSite(reg('b_plant')), peek(reg('b_site'))] },
         { id: 'support',  pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
           directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
         { id: 'cleanup',  pick: sniperPref, region: 'b_site', usePerimeterPath: true, anchorOffset: 2,
           directives: [commitSite(reg('b_site')), safeSniper(reg('b_site')), tradeFor('lead', 5)] },
@@ -364,13 +424,19 @@ const ATOLL_ATK: Strategy[] = [
   },
   {
     id: 'Control', name: 'Control', side: 'attacker',
-    description: 'Slow info — rifles flank deep A-main + B-main; sniper anchors courtyard.',
+    description: 'Slow info — two rifles flank deep A-main, two deep B-main; sniper anchors courtyard.',
     variants: [[
       { id: 'flank_a',    pick: rifle,      region: 'a_main', anchorOffset: 12, usePerimeterPath: true,
         directives: [holdAngle(reg('a_site')), rotateOnContact(reg('b_site'), ['flank_b'], 4),
                      rotateOnContact(reg('mid_courtyard'), ['mid_sniper'], 4)] },
+      { id: 'flank_a2',   pick: rifle,      region: 'a_main', anchorOffset: 9, usePerimeterPath: true,
+        directives: [holdAngle(reg('a_site')), tradeFor('flank_a', 4),
+                     rotateOnContact(reg('mid_courtyard'), ['mid_sniper'], 4)] },
       { id: 'flank_b',    pick: rifle,      region: 'b_main', anchorOffset: 12, usePerimeterPath: true,
         directives: [holdAngle(reg('b_site')), rotateOnContact(reg('a_site'), ['flank_a'], 4),
+                     rotateOnContact(reg('mid_courtyard'), ['mid_sniper'], 4)] },
+      { id: 'flank_b2',   pick: rifle,      region: 'b_main', anchorOffset: 9, usePerimeterPath: true,
+        directives: [holdAngle(reg('b_site')), tradeFor('flank_b', 4),
                      rotateOnContact(reg('mid_courtyard'), ['mid_sniper'], 4)] },
       { id: 'mid_sniper', pick: sniperPref, region: 'mid_courtyard', anchorOffset: 8,
         directives: [holdAngle(enemySpawn), safeSniper(enemySpawn), tradeFor('flank_a', 5)] },
@@ -384,14 +450,18 @@ const ATOLL_ATK: Strategy[] = [
 const ATOLL_DEF: Strategy[] = [
   {
     id: 'Hold', name: 'Hold', side: 'defender',
-    description: 'Even split — rifle anchors A, rifle anchors B, sniper holds back-courtyard. No site bias.',
+    description: 'Even split — two rifles anchor A, two anchor B, sniper holds back-courtyard. No site bias.',
     variants: [
       // Single variant — "splits the team evenly" (per user direction).
       [
         { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
           directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
+        { id: 'a_deep',   pick: rifle,      region: 'a_site', anchorOffset: 3,
+          directives: [holdAngle(reg('a_main')), tradeFor('a_anchor', 4)] },
         { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
           directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
+        { id: 'b_deep',   pick: rifle,      region: 'b_site', anchorOffset: 3,
+          directives: [holdAngle(reg('b_main')), tradeFor('b_anchor', 4)] },
         { id: 'mid',      pick: sniperPref, region: 'mid_courtyard', anchorOffset: 6,
           directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
       ],
@@ -402,23 +472,31 @@ const ATOLL_DEF: Strategy[] = [
   },
   {
     id: 'Stack', name: 'Stack', side: 'defender',
-    description: 'Cluster sniper + rifle on one site (A or B); third holds courtyard for rotates.',
+    description: 'Cluster on one site (A or B) — sniper + two rifles stack for crossfire; one holds courtyard, one watches the off-site.',
     variants: [
       [
         { id: 'a_sniper', pick: sniperPref, region: 'a_site', anchorOffset: 1,
           directives: [safeSniper(reg('a_main')), tradeFor('a_anchor', 5)] },
         { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 1,
           directives: [holdAngle(reg('a_main')), tradeFor('a_sniper', 5)] },
+        { id: 'a_support', pick: rifle,     region: 'a_site', anchorOffset: 2,
+          directives: [holdAngle(reg('a_main')), tradeFor('a_anchor', 5)] },
         { id: 'mid',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 6,
           directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'b_site', anchorOffset: 2,
+          directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
       ],
       [
         { id: 'b_sniper', pick: sniperPref, region: 'b_site', anchorOffset: 1,
           directives: [safeSniper(reg('b_main')), tradeFor('b_anchor', 5)] },
         { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 1,
           directives: [holdAngle(reg('b_main')), tradeFor('b_sniper', 5)] },
+        { id: 'b_support', pick: rifle,     region: 'b_site', anchorOffset: 2,
+          directives: [holdAngle(reg('b_main')), tradeFor('b_anchor', 5)] },
         { id: 'mid',      pick: rifle,      region: 'mid_courtyard', anchorOffset: 6,
           directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['b_anchor'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'a_site', anchorOffset: 2,
+          directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
       ],
     ],
     fallbackRegion: 'mid_courtyard',
@@ -427,14 +505,18 @@ const ATOLL_DEF: Strategy[] = [
   },
   {
     id: 'Pressure', name: 'Pressure', side: 'defender',
-    description: 'Push courtyard off spawn — two rifles contest mid; sniper holds back-mid long lane.',
+    description: 'Push courtyard off spawn — four rifles contest mid; sniper holds back-mid long lane.',
     variants: [
       // Single variant — "pushes mid" (per user direction).
       [
         { id: 'mid_push',    pick: rifle,      region: 'mid_courtyard', anchorOffset: 2,
           directives: [peek(reg('mid_courtyard')), holdAngle(enemySpawn), tradeFor('mid_support', 4)] },
+        { id: 'mid_push2',   pick: rifle,      region: 'mid_courtyard', anchorOffset: 2,
+          directives: [peek(reg('mid_courtyard')), holdAngle(enemySpawn), tradeFor('mid_support2', 4)] },
         { id: 'mid_support', pick: rifle,      region: 'mid_courtyard', anchorOffset: 4,
           directives: [holdAngle(enemySpawn), tradeFor('mid_push', 4)] },
+        { id: 'mid_support2', pick: rifle,     region: 'mid_courtyard', anchorOffset: 5,
+          directives: [holdAngle(enemySpawn), tradeFor('mid_push2', 4)] },
         { id: 'mid_sniper',  pick: sniperPref, region: 'mid_courtyard', anchorOffset: 8,
           directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_courtyard'), ['mid_push'], 3)] },
       ],
@@ -497,13 +579,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Sentinel — locked positions, no rotation. The "fortress hold".
       {
         id: 'Anchor_Hold', name: 'Anchor Hold', side: 'defender',
-        description: 'Sentinel-themed lockdown — each defender hard-anchors a single angle. No rotations; trades positioning agility for max-stationary HR.',
+        description: 'Sentinel-themed lockdown — five defenders hard-anchor fixed angles (two per site + sniper mid). No rotations; trades agility for max-stationary HR.',
         variants: [[
-          { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 2,
+          { id: 'a_anchor',  pick: rifle,      region: 'a_site', anchorOffset: 2,
             directives: [holdAngle(reg('a_main'))] },
-          { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 2,
+          { id: 'a_anchor2', pick: rifle,      region: 'a_site', anchorOffset: 1,
+            directives: [holdAngle(reg('a_main'))] },
+          { id: 'b_anchor',  pick: rifle,      region: 'b_site', anchorOffset: 2,
             directives: [holdAngle(reg('b_main'))] },
-          { id: 'mid_lock', pick: sniperPref, region: 'mid',    anchorOffset: 8,
+          { id: 'b_anchor2', pick: rifle,      region: 'b_site', anchorOffset: 1,
+            directives: [holdAngle(reg('b_main'))] },
+          { id: 'mid_lock',  pick: sniperPref, region: 'mid',    anchorOffset: 8,
             directives: [safeSniper(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -512,22 +598,30 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Trader — stacked crossfire on one site; both rifles trade for each other.
       {
         id: 'Crossfire_Lockdown', name: 'Crossfire Lockdown', side: 'defender',
-        description: 'Trader-themed cluster — two rifles stack one site for crossfire trades; sniper holds back-mid covering the other.',
+        description: 'Trader-themed cluster — three rifles stack one site for crossfire trades; sniper holds back-mid + a rifle watches the other site.',
         variants: [
           [
-            { id: 'a_lead',   pick: rifle,      region: 'a_site', anchorOffset: 1,
+            { id: 'a_lead',    pick: rifle,      region: 'a_site', anchorOffset: 1,
               directives: [holdAngle(reg('a_main')), tradeFor('a_support', 5)] },
-            { id: 'a_support', pick: rifle,     region: 'a_site', anchorOffset: 2,
+            { id: 'a_support', pick: rifle,      region: 'a_site', anchorOffset: 2,
               directives: [holdAngle(reg('a_main')), tradeFor('a_lead', 5)] },
-            { id: 'mid_back', pick: sniperPref, region: 'mid',    anchorOffset: 6,
+            { id: 'a_third',   pick: rifle,      region: 'a_site', anchorOffset: 1,
+              directives: [holdAngle(reg('a_main')), tradeFor('a_support', 5)] },
+            { id: 'b_watch',   pick: rifle,      region: 'b_site', anchorOffset: 2,
+              directives: [holdAngle(reg('b_main')), rotateOnContact(reg('a_site'), ['a_lead'], 4)] },
+            { id: 'mid_back',  pick: sniperPref, region: 'mid',    anchorOffset: 6,
               directives: [safeSniper(reg('b_main')), rotateOnContact(reg('b_site'), ['a_lead'], 3)] },
           ],
           [
-            { id: 'b_lead',   pick: rifle,      region: 'b_site', anchorOffset: 1,
+            { id: 'b_lead',    pick: rifle,      region: 'b_site', anchorOffset: 1,
               directives: [holdAngle(reg('b_main')), tradeFor('b_support', 5)] },
-            { id: 'b_support', pick: rifle,     region: 'b_site', anchorOffset: 2,
+            { id: 'b_support', pick: rifle,      region: 'b_site', anchorOffset: 2,
               directives: [holdAngle(reg('b_main')), tradeFor('b_lead', 5)] },
-            { id: 'mid_back', pick: sniperPref, region: 'mid',    anchorOffset: 6,
+            { id: 'b_third',   pick: rifle,      region: 'b_site', anchorOffset: 1,
+              directives: [holdAngle(reg('b_main')), tradeFor('b_support', 5)] },
+            { id: 'a_watch',   pick: rifle,      region: 'a_site', anchorOffset: 2,
+              directives: [holdAngle(reg('a_main')), rotateOnContact(reg('b_site'), ['b_lead'], 4)] },
+            { id: 'mid_back',  pick: sniperPref, region: 'mid',    anchorOffset: 6,
               directives: [safeSniper(reg('a_main')), rotateOnContact(reg('a_site'), ['b_lead'], 3)] },
           ],
         ],
@@ -537,12 +631,16 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Clutch — fall back, conserve numbers, win 1v3s.
       {
         id: 'Last_Stand_Defense', name: 'Last Stand Defense', side: 'defender',
-        description: 'Clutch-themed retreat-and-survive — defenders hold deep positions, trading site control for high HP retention and Clutch-trait late-game odds.',
+        description: 'Clutch-themed retreat-and-survive — defenders hold deep positions (two per site), trading site control for HP retention and Clutch late-game odds.',
         variants: [[
-          { id: 'deep_a', pick: rifle,      region: 'a_site', anchorOffset: 4,
+          { id: 'deep_a',  pick: rifle,      region: 'a_site', anchorOffset: 4,
             directives: [holdAngle(reg('a_main')), tradeFor('deep_mid', 4)] },
-          { id: 'deep_b', pick: rifle,      region: 'b_site', anchorOffset: 4,
+          { id: 'deep_a2', pick: rifle,      region: 'a_site', anchorOffset: 5,
+            directives: [holdAngle(reg('a_main')), tradeFor('deep_a', 4)] },
+          { id: 'deep_b',  pick: rifle,      region: 'b_site', anchorOffset: 4,
             directives: [holdAngle(reg('b_main')), tradeFor('deep_mid', 4)] },
+          { id: 'deep_b2', pick: rifle,      region: 'b_site', anchorOffset: 5,
+            directives: [holdAngle(reg('b_main')), tradeFor('deep_b', 4)] },
           { id: 'deep_mid', pick: sniperPref, region: 'mid',  anchorOffset: 10,
             directives: [safeSniper(enemySpawn)] },
         ]],
@@ -552,14 +650,18 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Big Brain — fake one site, swing the other. Defender Mind_Games.
       {
         id: 'Mind_Games', name: 'Mind Games (D)', side: 'defender',
-        description: 'Big Brain-themed fake — defenders show A early then rotate to B (or vice versa). Requires high Discipline to execute the swing cleanly.',
+        description: 'Big Brain-themed fake — two defenders show A early then rotate to B where two more hold. Requires high Discipline to execute the swing cleanly.',
         variants: [
           [
-            { id: 'fake', pick: rifle,      region: 'a_site', anchorOffset: 1,
+            { id: 'fake',  pick: rifle,      region: 'a_site', anchorOffset: 1,
               directives: [peek(reg('a_main')), rotateOnContact(reg('b_site'), ['fake'], 5)] },
-            { id: 'real', pick: rifle,      region: 'b_site', anchorOffset: 3,
+            { id: 'fake2', pick: rifle,      region: 'a_site', anchorOffset: 2,
+              directives: [peek(reg('a_main')), rotateOnContact(reg('b_site'), ['fake'], 5)] },
+            { id: 'real',  pick: rifle,      region: 'b_site', anchorOffset: 3,
               directives: [holdAngle(reg('b_main'))] },
-            { id: 'mid',  pick: sniperPref, region: 'mid',    anchorOffset: 4,
+            { id: 'real2', pick: rifle,      region: 'b_site', anchorOffset: 2,
+              directives: [holdAngle(reg('b_main')), tradeFor('real', 4)] },
+            { id: 'mid',   pick: sniperPref, region: 'mid',    anchorOffset: 4,
               directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['fake'], 3)] },
           ],
         ],
@@ -569,13 +671,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Composed — slow steady spread; rewards Composure attribute.
       {
         id: 'Hold_Composure', name: 'Composed Hold', side: 'defender',
-        description: 'Composed-themed steady hold — defenders spread to standard angles but with conservative ranges. Composure trait keeps HR retention high under pressure.',
+        description: 'Composed-themed steady hold — defenders spread to standard angles (two per site) with conservative ranges. Composure keeps HR retention high under pressure.',
         variants: [[
-          { id: 'a_anchor', pick: rifle,      region: 'a_site', anchorOffset: 2,
+          { id: 'a_anchor',  pick: rifle,      region: 'a_site', anchorOffset: 2,
             directives: [holdAngle(reg('a_main'))] },
-          { id: 'b_anchor', pick: rifle,      region: 'b_site', anchorOffset: 2,
+          { id: 'a_anchor2', pick: rifle,      region: 'a_site', anchorOffset: 1,
+            directives: [holdAngle(reg('a_main'))] },
+          { id: 'b_anchor',  pick: rifle,      region: 'b_site', anchorOffset: 2,
             directives: [holdAngle(reg('b_main'))] },
-          { id: 'mid',      pick: sniperPref, region: 'mid',    anchorOffset: 5,
+          { id: 'b_anchor2', pick: rifle,      region: 'b_site', anchorOffset: 1,
+            directives: [holdAngle(reg('b_main'))] },
+          { id: 'mid',       pick: sniperPref, region: 'mid',    anchorOffset: 5,
             directives: [safeSniper(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -584,23 +690,31 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Leader — stack all 3 on one site for aura overlap (H3 hero passive).
       {
         id: 'Coordinated_Lockdown', name: 'Coordinated Lockdown', side: 'defender',
-        description: 'Leader-themed cluster — all 3 stack one site for aura overlap + crossfire trades. Loses the other site if attackers split.',
+        description: 'Leader-themed cluster — all 5 stack one site for aura overlap + crossfire trades. Loses the other site entirely if attackers split.',
         variants: [
           [
-            { id: 'a_cap', pick: sniperPref, region: 'a_site', anchorOffset: 2,
+            { id: 'a_cap',   pick: sniperPref, region: 'a_site', anchorOffset: 2,
               directives: [safeSniper(reg('a_main')), tradeFor('a_left', 4)] },
-            { id: 'a_left', pick: rifle,     region: 'a_site', anchorOffset: 1,
+            { id: 'a_left',  pick: rifle,     region: 'a_site', anchorOffset: 1,
               directives: [holdAngle(reg('a_main')), tradeFor('a_right', 4)] },
-            { id: 'a_right', pick: rifle,    region: 'a_site', anchorOffset: 1,
+            { id: 'a_right', pick: rifle,     region: 'a_site', anchorOffset: 1,
               directives: [holdAngle(reg('a_main')), tradeFor('a_left', 4)] },
+            { id: 'a_back',  pick: rifle,     region: 'a_site', anchorOffset: 3,
+              directives: [holdAngle(reg('a_main')), tradeFor('a_cap', 4)] },
+            { id: 'a_front', pick: rifle,     region: 'a_site', anchorOffset: 1,
+              directives: [peek(reg('a_main')), tradeFor('a_left', 4)] },
           ],
           [
-            { id: 'b_cap', pick: sniperPref, region: 'b_site', anchorOffset: 2,
+            { id: 'b_cap',   pick: sniperPref, region: 'b_site', anchorOffset: 2,
               directives: [safeSniper(reg('b_main')), tradeFor('b_left', 4)] },
-            { id: 'b_left', pick: rifle,     region: 'b_site', anchorOffset: 1,
+            { id: 'b_left',  pick: rifle,     region: 'b_site', anchorOffset: 1,
               directives: [holdAngle(reg('b_main')), tradeFor('b_right', 4)] },
-            { id: 'b_right', pick: rifle,    region: 'b_site', anchorOffset: 1,
+            { id: 'b_right', pick: rifle,     region: 'b_site', anchorOffset: 1,
               directives: [holdAngle(reg('b_main')), tradeFor('b_left', 4)] },
+            { id: 'b_back',  pick: rifle,     region: 'b_site', anchorOffset: 3,
+              directives: [holdAngle(reg('b_main')), tradeFor('b_cap', 4)] },
+            { id: 'b_front', pick: rifle,     region: 'b_site', anchorOffset: 1,
+              directives: [peek(reg('b_main')), tradeFor('b_left', 4)] },
           ],
         ],
         fallbackRegion: 'mid',
@@ -609,13 +723,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Roamer — mobile defenders rotate between sites continuously.
       {
         id: 'Rotate_Stack', name: 'Rotating Stack', side: 'defender',
-        description: 'Roamer-themed mobility — defenders rotate between sites instead of holding. Bad against fast pushes; good against patient attacks.',
+        description: 'Roamer-themed mobility — defenders rotate between sites in pairs instead of holding. Bad against fast pushes; good against patient attacks.',
         variants: [[
-          { id: 'rotator_a', pick: rifle,    region: 'a_site', anchorOffset: 1,
+          { id: 'rotator_a',  pick: rifle,    region: 'a_site', anchorOffset: 1,
             directives: [peek(reg('a_main')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
-          { id: 'rotator_b', pick: rifle,    region: 'b_site', anchorOffset: 1,
+          { id: 'rotator_a2', pick: rifle,    region: 'a_site', anchorOffset: 2,
+            directives: [peek(reg('a_main')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
+          { id: 'rotator_b',  pick: rifle,    region: 'b_site', anchorOffset: 1,
             directives: [peek(reg('b_main')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
-          { id: 'mid',       pick: sniperPref, region: 'mid',  anchorOffset: 4,
+          { id: 'rotator_b2', pick: rifle,    region: 'b_site', anchorOffset: 2,
+            directives: [peek(reg('b_main')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
+          { id: 'mid',        pick: sniperPref, region: 'mid',  anchorOffset: 4,
             directives: [safeSniper(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -624,11 +742,15 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Paranoid — defenders spread VERY wide to cover every angle.
       {
         id: 'Wide_Watch', name: 'Wide Watch', side: 'defender',
-        description: 'Paranoid-themed coverage — defenders spread to opposite extreme angles. No two defenders can cover each other; trades trade-potential for surprise denial.',
+        description: 'Paranoid-themed coverage — defenders spread to opposite extreme angles down both mains. Wide map coverage; little trade potential.',
         variants: [[
           { id: 'a_far',  pick: rifle,      region: 'a_main', anchorOffset: 10,
             directives: [holdAngle(reg('a_site'))] },
+          { id: 'a_far2', pick: rifle,      region: 'a_main', anchorOffset: 6,
+            directives: [holdAngle(reg('a_site'))] },
           { id: 'b_far',  pick: rifle,      region: 'b_main', anchorOffset: 10,
+            directives: [holdAngle(reg('b_site'))] },
+          { id: 'b_far2', pick: rifle,      region: 'b_main', anchorOffset: 6,
             directives: [holdAngle(reg('b_site'))] },
           { id: 'mid',    pick: sniperPref, region: 'mid',    anchorOffset: 2,
             directives: [safeSniper(enemySpawn)] },
@@ -639,11 +761,15 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Patient — stay deep, accept round-timer wins, Patient trait bonus.
       {
         id: 'Slow_Burn', name: 'Slow Burn', side: 'defender',
-        description: 'Patient-themed wait-out — defenders hold deep + safe positions, banking on the round timer + Patient trait late-tick HR bonus.',
+        description: 'Patient-themed wait-out — defenders hold deep + safe positions (two per site), banking on the round timer + Patient late-tick HR bonus.',
         variants: [[
-          { id: 'deep_a', pick: rifle,      region: 'a_site', anchorOffset: 5,
+          { id: 'deep_a',  pick: rifle,      region: 'a_site', anchorOffset: 5,
             directives: [holdAngle(reg('a_main'))] },
-          { id: 'deep_b', pick: rifle,      region: 'b_site', anchorOffset: 5,
+          { id: 'deep_a2', pick: rifle,      region: 'a_site', anchorOffset: 4,
+            directives: [holdAngle(reg('a_main'))] },
+          { id: 'deep_b',  pick: rifle,      region: 'b_site', anchorOffset: 5,
+            directives: [holdAngle(reg('b_main'))] },
+          { id: 'deep_b2', pick: rifle,      region: 'b_site', anchorOffset: 4,
             directives: [holdAngle(reg('b_main'))] },
           { id: 'deep_mid', pick: sniperPref, region: 'mid',  anchorOffset: 12,
             directives: [safeSniper(enemySpawn)] },
@@ -656,22 +782,30 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Run-n-Gun — fast site rush, no hesitation, sniper trails.
       {
         id: 'Mobile_Push', name: 'Mobile Push', side: 'attacker',
-        description: 'Run-n-Gun-themed fast push — all 3 attackers run a single lane direct to plant; no hesitation, no mid play. Sniper trails behind for cleanup.',
+        description: 'Run-n-Gun-themed fast push — four attackers run a single lane direct to plant; no hesitation, no mid play. Sniper trails behind for cleanup.',
         variants: [
           [
-            { id: 'lead',    pick: rifle,      region: 'a_plant',
+            { id: 'lead',     pick: rifle,      region: 'a_plant',
               directives: [commitSite(reg('a_plant'))] },
-            { id: 'support', pick: rifle,      region: 'a_plant',
+            { id: 'support',  pick: rifle,      region: 'a_plant',
               directives: [commitSite(reg('a_plant')), tradeFor('lead', 4)] },
-            { id: 'trail',   pick: sniperPref, region: 'a_site', anchorOffset: 2,
+            { id: 'support2', pick: rifle,      region: 'a_plant',
+              directives: [commitSite(reg('a_plant')), tradeFor('support', 4)] },
+            { id: 'support3', pick: rifle,      region: 'a_plant',
+              directives: [commitSite(reg('a_plant')), tradeFor('lead', 4)] },
+            { id: 'trail',    pick: sniperPref, region: 'a_site', anchorOffset: 2,
               directives: [commitSite(reg('a_site')), safeSniper(reg('a_main'))] },
           ],
           [
-            { id: 'lead',    pick: rifle,      region: 'b_plant',
+            { id: 'lead',     pick: rifle,      region: 'b_plant',
               directives: [commitSite(reg('b_plant'))] },
-            { id: 'support', pick: rifle,      region: 'b_plant',
+            { id: 'support',  pick: rifle,      region: 'b_plant',
               directives: [commitSite(reg('b_plant')), tradeFor('lead', 4)] },
-            { id: 'trail',   pick: sniperPref, region: 'b_site', anchorOffset: 2,
+            { id: 'support2', pick: rifle,      region: 'b_plant',
+              directives: [commitSite(reg('b_plant')), tradeFor('support', 4)] },
+            { id: 'support3', pick: rifle,      region: 'b_plant',
+              directives: [commitSite(reg('b_plant')), tradeFor('lead', 4)] },
+            { id: 'trail',    pick: sniperPref, region: 'b_site', anchorOffset: 2,
               directives: [commitSite(reg('b_site')), safeSniper(reg('b_main'))] },
           ],
         ],
@@ -681,13 +815,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Lurker — perimeter approach, arrive late but unscoped (with H3 invisibility hook later).
       {
         id: 'Patient_Flank', name: 'Patient Flank', side: 'attacker',
-        description: 'Lurker-themed perimeter — attackers take the long route around the map edge. Arrives late but avoids the main lanes entirely.',
+        description: 'Lurker-themed perimeter — four attackers take the long route around the map edge. Arrives late but avoids the main lanes entirely.',
         variants: [
           [
             { id: 'lurk_lead',  pick: rifle,      region: 'a_plant', usePerimeterPath: true,
               directives: [commitSite(reg('a_plant'))] },
             { id: 'lurk_trail', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
               directives: [commitSite(reg('a_plant')), tradeFor('lurk_lead', 5)] },
+            { id: 'lurk_third', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+              directives: [commitSite(reg('a_plant')), tradeFor('lurk_trail', 5)] },
+            { id: 'watch',      pick: rifle,      region: 'a_main',  usePerimeterPath: true, anchorOffset: 4,
+              directives: [holdAngle(reg('a_site')), tradeFor('lurk_lead', 5)] },
             { id: 'support',    pick: sniperPref, region: 'mid',     usePerimeterPath: true, anchorOffset: 4,
               directives: [safeSniper(reg('a_main')), tradeFor('lurk_lead', 5)] },
           ],
@@ -696,6 +834,10 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
               directives: [commitSite(reg('b_plant'))] },
             { id: 'lurk_trail', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
               directives: [commitSite(reg('b_plant')), tradeFor('lurk_lead', 5)] },
+            { id: 'lurk_third', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+              directives: [commitSite(reg('b_plant')), tradeFor('lurk_trail', 5)] },
+            { id: 'watch',      pick: rifle,      region: 'b_main',  usePerimeterPath: true, anchorOffset: 4,
+              directives: [holdAngle(reg('b_site')), tradeFor('lurk_lead', 5)] },
             { id: 'support',    pick: sniperPref, region: 'mid',     usePerimeterPath: true, anchorOffset: 4,
               directives: [safeSniper(reg('b_main')), tradeFor('lurk_lead', 5)] },
           ],
@@ -706,13 +848,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Entry — Vanguard leads, allies follow 2 ticks behind (timed commit).
       {
         id: 'Coordinated_Execute', name: 'Coordinated Execute', side: 'attacker',
-        description: 'Entry-themed timed commit — entry fragger leads, support trades, sniper anchors mid for crossfire. Higher discipline than Execute baseline.',
+        description: 'Entry-themed timed commit — entry fragger leads, two traders follow, a flanker watches the lane, sniper anchors mid. Higher discipline than Execute baseline.',
         variants: [
           [
             { id: 'entry',   pick: rifle,      region: 'a_plant',
               directives: [commitSite(reg('a_plant')), peek(reg('a_site'))] },
             { id: 'trader',  pick: rifle,      region: 'a_plant',
               directives: [commitSite(reg('a_plant')), tradeFor('entry', 3)] },
+            { id: 'trader2', pick: rifle,      region: 'a_plant',
+              directives: [commitSite(reg('a_plant')), tradeFor('trader', 3)] },
+            { id: 'flank',   pick: rifle,      region: 'a_main', usePerimeterPath: true, anchorOffset: 4,
+              directives: [holdAngle(reg('a_site')), tradeFor('entry', 4)] },
             { id: 'anchor',  pick: sniperPref, region: 'mid', anchorOffset: 4,
               directives: [safeSniper(reg('a_main')), tradeFor('entry', 4)] },
           ],
@@ -721,6 +867,10 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
               directives: [commitSite(reg('b_plant')), peek(reg('b_site'))] },
             { id: 'trader',  pick: rifle,      region: 'b_plant',
               directives: [commitSite(reg('b_plant')), tradeFor('entry', 3)] },
+            { id: 'trader2', pick: rifle,      region: 'b_plant',
+              directives: [commitSite(reg('b_plant')), tradeFor('trader', 3)] },
+            { id: 'flank',   pick: rifle,      region: 'b_main', usePerimeterPath: true, anchorOffset: 4,
+              directives: [holdAngle(reg('b_site')), tradeFor('entry', 4)] },
             { id: 'anchor',  pick: sniperPref, region: 'mid', anchorOffset: 4,
               directives: [safeSniper(reg('b_main')), tradeFor('entry', 4)] },
           ],
@@ -731,13 +881,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Ego — every unit picks own angle. Low compliance is the point.
       {
         id: 'Solo_Frag', name: 'Solo Frag', side: 'attacker',
-        description: 'Ego-themed freelancing — each attacker picks their own angle and engages independently. High Aim wins; low Discipline penalty is the trade.',
+        description: 'Ego-themed freelancing — each attacker picks their own angle across the map and engages independently. High Aim wins; low Discipline penalty is the trade.',
         variants: [[
-          { id: 'frag_a', pick: rifle,      region: 'a_main', anchorOffset: 4,
+          { id: 'frag_a',  pick: rifle,      region: 'a_main', anchorOffset: 4,
             directives: [peek(reg('a_site'))] },
-          { id: 'frag_b', pick: rifle,      region: 'b_main', anchorOffset: 4,
+          { id: 'frag_a2', pick: rifle,      region: 'a_plant',
+            directives: [peek(reg('a_site'))] },
+          { id: 'frag_b',  pick: rifle,      region: 'b_main', anchorOffset: 4,
             directives: [peek(reg('b_site'))] },
-          { id: 'frag_m', pick: sniperPref, region: 'mid',    anchorOffset: 2,
+          { id: 'frag_b2', pick: rifle,      region: 'b_plant',
+            directives: [peek(reg('b_site'))] },
+          { id: 'frag_m',  pick: sniperPref, region: 'mid',    anchorOffset: 2,
             directives: [holdAngle(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -746,13 +900,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Lone Wolf — split-3-ways push, no shared trades.
       {
         id: 'Scatter_Push', name: 'Scatter Push', side: 'attacker',
-        description: 'Lone Wolf-themed split — all three attackers go separate sites/angles. No teammate trades; pure pressure across the whole map.',
+        description: 'Lone Wolf-themed split — attackers go separate sites/angles. No teammate trades; pure pressure across the whole map.',
         variants: [[
-          { id: 'split_a', pick: rifle,      region: 'a_plant',
+          { id: 'split_a',  pick: rifle,      region: 'a_plant',
             directives: [commitSite(reg('a_plant'))] },
-          { id: 'split_b', pick: rifle,      region: 'b_plant',
+          { id: 'split_a2', pick: rifle,      region: 'a_main', anchorOffset: 4,
+            directives: [peek(reg('a_site'))] },
+          { id: 'split_b',  pick: rifle,      region: 'b_plant',
             directives: [commitSite(reg('b_plant'))] },
-          { id: 'split_m', pick: sniperPref, region: 'mid',    anchorOffset: 4,
+          { id: 'split_b2', pick: rifle,      region: 'b_main', anchorOffset: 4,
+            directives: [peek(reg('b_site'))] },
+          { id: 'split_m',  pick: sniperPref, region: 'mid',    anchorOffset: 4,
             directives: [holdAngle(enemySpawn), safeSniper(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -761,13 +919,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Hot Head — fast peeks, take fights early.
       {
         id: 'Aggressive_Peek', name: 'Aggressive Peek', side: 'attacker',
-        description: 'Hot Head-themed pressure — attackers push forward fast and peek aggressively from mid-map. Trades plant focus for early frags.',
+        description: 'Hot Head-themed pressure — four attackers push forward fast and peek aggressively from mid-map. Trades plant focus for early frags.',
         variants: [[
-          { id: 'peek_a', pick: rifle,      region: 'mid', anchorOffset: -4,
+          { id: 'peek_a',  pick: rifle,      region: 'mid', anchorOffset: -4,
             directives: [peek(reg('a_main')), holdAngle(reg('a_site'))] },
-          { id: 'peek_b', pick: rifle,      region: 'mid', anchorOffset: -4,
+          { id: 'peek_a2', pick: rifle,      region: 'mid', anchorOffset: -4,
+            directives: [peek(reg('a_main')), holdAngle(reg('a_site'))] },
+          { id: 'peek_b',  pick: rifle,      region: 'mid', anchorOffset: -4,
             directives: [peek(reg('b_main')), holdAngle(reg('b_site'))] },
-          { id: 'peek_m', pick: sniperPref, region: 'mid', anchorOffset: 2,
+          { id: 'peek_b2', pick: rifle,      region: 'mid', anchorOffset: -4,
+            directives: [peek(reg('b_main')), holdAngle(reg('b_site'))] },
+          { id: 'peek_m',  pick: sniperPref, region: 'mid', anchorOffset: 2,
             directives: [safeSniper(enemySpawn)] },
         ]],
         fallbackRegion: 'mid',
@@ -776,13 +938,17 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
       // Big Brain — fake one site, swing the other. Attacker Mind_Games.
       {
         id: 'Mind_Games', name: 'Mind Games (A)', side: 'attacker',
-        description: 'Big Brain-themed fake — attackers show A early then swing all 3 to B (or vice versa). Punishes defender over-rotations.',
+        description: 'Big Brain-themed fake — two attackers show A early then swing to B where two more commit. Punishes defender over-rotations.',
         variants: [
           [
             { id: 'feint',  pick: rifle,      region: 'a_main', anchorOffset: 6,
               directives: [peek(reg('a_site')), rotateOnContact(reg('b_plant'), ['feint'], 4)] },
+            { id: 'feint2', pick: rifle,      region: 'a_main', anchorOffset: 6,
+              directives: [peek(reg('a_site')), rotateOnContact(reg('b_plant'), ['feint'], 4)] },
             { id: 'real',   pick: rifle,      region: 'b_plant', usePerimeterPath: true,
               directives: [commitSite(reg('b_plant'))] },
+            { id: 'real2',  pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+              directives: [commitSite(reg('b_plant')), tradeFor('real', 5)] },
             { id: 'anchor', pick: sniperPref, region: 'mid', anchorOffset: 4,
               directives: [safeSniper(reg('b_main')), tradeFor('real', 5)] },
           ],
@@ -794,12 +960,194 @@ function buildUnlocks(_mapName: MapDefinition['name']): { atk: Strategy[]; def: 
   };
 }
 
+// --- Canyon ----------------------------------------------------------------
+// Canyon-native baseline playbook exploiting the richer vocabulary: site
+// entries + anchors + off-angles, near/far main-lane splits, and mid left/right
+// + the central choke. FIRST-PASS DRAFT against the heuristic zone placement —
+// references only zones currently painted (off2/chokes/connectors are not yet
+// placed, so they're avoided to prevent null-centroid drops). Sharpen once
+// Canyon's zones are hand-refined. The trait-unlocked set reuses the shared
+// (generic-region) templates, which resolve fine on Canyon.
+const CANYON_ATK: Strategy[] = [
+  {
+    id: 'Execute', name: 'Execute', side: 'attacker',
+    description: 'Split push — 3 rifles breach one site through its entry while a 4th holds the far main; sniper anchors the mid choke for crossfire.',
+    variants: [
+      [
+        { id: 'entry',      pick: rifle, region: 'a_plant',
+          directives: [commitSite(reg('a_plant')), peek(reg('a_entry'))] },
+        { id: 'support',    pick: rifle, region: 'a_plant',
+          directives: [commitSite(reg('a_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',   pick: rifle, region: 'a_plant',
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 4)] },
+        { id: 'lane',       pick: rifle, region: 'a_main_far', usePerimeterPath: true,
+          directives: [holdAngle(reg('a_entry')), tradeFor('entry', 4)] },
+        { id: 'mid_anchor', pick: sniperPref, region: 'mid', anchorOffset: 4,
+          directives: [holdAngle(reg('mid_choke')), safeSniper(reg('mid_choke')),
+                       tradeFor('entry', 4), rotateOnContact(reg('a_site'), ['entry'], 3)] },
+      ],
+      [
+        { id: 'entry',      pick: rifle, region: 'b_plant',
+          directives: [commitSite(reg('b_plant')), peek(reg('b_entry'))] },
+        { id: 'support',    pick: rifle, region: 'b_plant',
+          directives: [commitSite(reg('b_plant')), tradeFor('entry', 4)] },
+        { id: 'support2',   pick: rifle, region: 'b_plant',
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 4)] },
+        { id: 'lane',       pick: rifle, region: 'b_main_far', usePerimeterPath: true,
+          directives: [holdAngle(reg('b_entry')), tradeFor('entry', 4)] },
+        { id: 'mid_anchor', pick: sniperPref, region: 'mid', anchorOffset: 4,
+          directives: [holdAngle(reg('mid_choke')), safeSniper(reg('mid_choke')),
+                       tradeFor('entry', 4), rotateOnContact(reg('b_site'), ['entry'], 3)] },
+      ],
+    ],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Execute.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Execute.retreatThreshold,
+  },
+  {
+    id: 'Rush', name: 'Rush', side: 'attacker',
+    description: 'All-in on one site — four rifles flood the main lane to the plant, sniper trails for cleanup. No mid presence.',
+    variants: [
+      [
+        { id: 'lead',     pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), peek(reg('a_entry'))] },
+        { id: 'support',  pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'a_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('a_plant')), tradeFor('lead', 5)] },
+        { id: 'cleanup',  pick: sniperPref, region: 'a_entry', usePerimeterPath: true, anchorOffset: 2,
+          directives: [commitSite(reg('a_site')), safeSniper(reg('a_main_near')), tradeFor('lead', 5)] },
+      ],
+      [
+        { id: 'lead',     pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), peek(reg('b_entry'))] },
+        { id: 'support',  pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
+        { id: 'support2', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('support', 5)] },
+        { id: 'support3', pick: rifle,      region: 'b_plant', usePerimeterPath: true,
+          directives: [commitSite(reg('b_plant')), tradeFor('lead', 5)] },
+        { id: 'cleanup',  pick: sniperPref, region: 'b_entry', usePerimeterPath: true, anchorOffset: 2,
+          directives: [commitSite(reg('b_site')), safeSniper(reg('b_main_near')), tradeFor('lead', 5)] },
+      ],
+    ],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Rush.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Rush.retreatThreshold,
+  },
+  {
+    id: 'Control', name: 'Control', side: 'attacker',
+    description: 'Slow info — two rifles take the far end of each main lane; sniper holds the mid choke for long picks. Rotate to a site on team contact.',
+    variants: [[
+      { id: 'flank_a',    pick: rifle,      region: 'a_main_far', anchorOffset: 4, usePerimeterPath: true,
+        directives: [holdAngle(reg('a_entry')), rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+      { id: 'flank_a2',   pick: rifle,      region: 'a_main_far', usePerimeterPath: true,
+        directives: [holdAngle(reg('a_entry')), tradeFor('flank_a', 4)] },
+      { id: 'flank_b',    pick: rifle,      region: 'b_main_far', anchorOffset: 4, usePerimeterPath: true,
+        directives: [holdAngle(reg('b_entry')), rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+      { id: 'flank_b2',   pick: rifle,      region: 'b_main_far', usePerimeterPath: true,
+        directives: [holdAngle(reg('b_entry')), tradeFor('flank_b', 4)] },
+      { id: 'mid_sniper', pick: sniperPref, region: 'mid_choke', anchorOffset: 6,
+        directives: [holdAngle(enemySpawn), safeSniper(enemySpawn), tradeFor('flank_a', 5)] },
+    ]],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Control.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Control.retreatThreshold,
+  },
+];
+
+const CANYON_DEF: Strategy[] = [
+  {
+    id: 'Hold', name: 'Hold', side: 'defender',
+    description: 'Even split — a rifle anchors each site watching its entry, with a flank watcher on the lane; sniper holds the mid choke. Rotations flow through the connectors. No site bias.',
+    variants: [[
+      { id: 'a_anchor', pick: rifle,      region: 'a_anchor', anchorOffset: 1,
+        directives: [holdAngle(reg('a_entry')), rotateOnContact(reg('b_site'), ['b_anchor'], 4)] },
+      { id: 'a_flank',  pick: rifle,      region: 'a_off',
+        directives: [holdAngle(reg('a_main_near')), tradeFor('a_anchor', 4)] },
+      { id: 'b_anchor', pick: rifle,      region: 'b_anchor', anchorOffset: 1,
+        directives: [holdAngle(reg('b_entry')), rotateOnContact(reg('a_site'), ['a_anchor'], 4)] },
+      { id: 'b_flank',  pick: rifle,      region: 'b_off',
+        directives: [holdAngle(reg('b_main_near')), tradeFor('b_anchor', 4)] },
+      { id: 'mid',      pick: sniperPref, region: 'mid_choke', anchorOffset: 4,
+        directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['a_anchor'], 3)] },
+    ]],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Hold.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Hold.retreatThreshold,
+  },
+  {
+    id: 'Stack', name: 'Stack', side: 'defender',
+    description: 'Cluster on one site — sniper + two rifles hold the anchor & off-angle for crossfire; one holds mid choke, one watches the off-site for rotates.',
+    variants: [
+      [
+        { id: 'a_sniper', pick: sniperPref, region: 'a_anchor', anchorOffset: 1,
+          directives: [safeSniper(reg('a_main_near')), tradeFor('a_hold', 5)] },
+        { id: 'a_hold',   pick: rifle,      region: 'a_anchor', anchorOffset: 1,
+          directives: [holdAngle(reg('a_entry')), tradeFor('a_sniper', 5)] },
+        { id: 'a_flank',  pick: rifle,      region: 'a_off',
+          directives: [holdAngle(reg('a_main_near')), tradeFor('a_hold', 5)] },
+        { id: 'mid',      pick: rifle,      region: 'mid_choke', anchorOffset: 2,
+          directives: [holdAngle(enemySpawn), rotateOnContact(reg('a_site'), ['a_hold'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'b_anchor', anchorOffset: 1,
+          directives: [holdAngle(reg('b_entry')), rotateOnContact(reg('a_site'), ['a_hold'], 4)] },
+      ],
+      [
+        { id: 'b_sniper', pick: sniperPref, region: 'b_anchor', anchorOffset: 1,
+          directives: [safeSniper(reg('b_main_near')), tradeFor('b_hold', 5)] },
+        { id: 'b_hold',   pick: rifle,      region: 'b_anchor', anchorOffset: 1,
+          directives: [holdAngle(reg('b_entry')), tradeFor('b_sniper', 5)] },
+        { id: 'b_flank',  pick: rifle,      region: 'b_off',
+          directives: [holdAngle(reg('b_main_near')), tradeFor('b_hold', 5)] },
+        { id: 'mid',      pick: rifle,      region: 'mid_choke', anchorOffset: 2,
+          directives: [holdAngle(enemySpawn), rotateOnContact(reg('b_site'), ['b_hold'], 3)] },
+        { id: 'offsite',  pick: rifle,      region: 'a_anchor', anchorOffset: 1,
+          directives: [holdAngle(reg('a_entry')), rotateOnContact(reg('b_site'), ['b_hold'], 4)] },
+      ],
+    ],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Stack.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Stack.retreatThreshold,
+  },
+  {
+    id: 'Pressure', name: 'Pressure', side: 'defender',
+    description: 'Push mid off spawn — four rifles contest the choke from the left/right approaches; sniper holds the long mid lane from behind.',
+    variants: [[
+      { id: 'mid_push',   pick: rifle,      region: 'mid_choke',
+        directives: [peek(reg('mid_choke')), holdAngle(enemySpawn), tradeFor('mid_left', 4)] },
+      { id: 'mid_push2',  pick: rifle,      region: 'mid_choke',
+        directives: [peek(reg('mid_choke')), holdAngle(enemySpawn), tradeFor('mid_right', 4)] },
+      { id: 'mid_left',   pick: rifle,      region: 'mid_left', anchorOffset: 2,
+        directives: [holdAngle(enemySpawn), tradeFor('mid_push', 4)] },
+      { id: 'mid_right',  pick: rifle,      region: 'mid_right', anchorOffset: 2,
+        directives: [holdAngle(enemySpawn), tradeFor('mid_push2', 4)] },
+      { id: 'mid_sniper', pick: sniperPref, region: 'mid', anchorOffset: 8,
+        directives: [safeSniper(enemySpawn), rotateOnContact(reg('mid_choke'), ['mid_push'], 3)] },
+    ]],
+    fallbackRegion: 'mid',
+    aggressionMod: STRATEGY_MODS.Pressure.aggression,
+    retreatThresholdMod: STRATEGY_MODS.Pressure.retreatThreshold,
+  },
+];
+
 const FOUNDRY_UNLOCKS = buildUnlocks('Foundry');
 const ATOLL_UNLOCKS = buildUnlocks('Atoll');
+const CANYON_UNLOCKS = buildUnlocks('Canyon');
 
 const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   Foundry: [...FOUNDRY_ATK, ...FOUNDRY_DEF, ...FOUNDRY_UNLOCKS.atk, ...FOUNDRY_UNLOCKS.def],
   Atoll:   [...ATOLL_ATK,   ...ATOLL_DEF,   ...ATOLL_UNLOCKS.atk,   ...ATOLL_UNLOCKS.def],
+  // Canyon: native baseline (CANYON_ATK/DEF) built on the richer vocabulary
+  // (entries/anchors/off-angles, near/far lane splits, mid left/right/choke).
+  // Unlocks reuse the shared generic-region templates (which resolve on Canyon).
+  Canyon:  [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
+  // Foundryv2 / Atoll_v2: redesigned on the richer vocabulary, so they share the
+  // rich-vocab baseline (CANYON_ATK/DEF) + the generic unlock templates. Drop in
+  // map-specific native sets here once each layout's balance is dialed in.
+  Foundryv2: [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
+  Atoll_v2:  [...CANYON_ATK, ...CANYON_DEF, ...CANYON_UNLOCKS.atk, ...CANYON_UNLOCKS.def],
 };
 
 export function strategiesFor(side: Side, map: MapDefinition): Strategy[] {

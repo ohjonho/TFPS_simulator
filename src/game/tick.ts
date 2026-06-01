@@ -37,11 +37,13 @@ import {
 import {
   findCoverHoldHex,
   findCoverWithLosTo,
+  findThreatAwareHoldHex,
   nearestFacing,
   nearestWallRetreatHex,
   shouldRetreat,
 } from './unit-ai.ts';
 import { assessEngagement } from './engage.ts';
+import { staticExposure, suspectedEnemyHexes, threatAt } from './threat.ts';
 import { situationAggressionDelta } from './situation.ts';
 import { evaluateDirectives } from './directives.ts';
 import { resolveShot } from './combat.ts';
@@ -57,6 +59,7 @@ import {
   FIRE_RATE,
   MIN_ROUND_TICKS_FOR_HOLD_END,
   PLANT_TICKS,
+  POSITIONING,
   ROTATE_AFTER_HOLD_TICKS,
   ROUND_TICK_LIMIT,
   SITUATION,
@@ -101,6 +104,16 @@ export function stepTick(state: GameState): GameState {
   // commit decision is independent of combat/compliance determinism. Consumed
   // in stable unit order below.
   const engageRng = createRng(hashSeed(state.seed, tick) ^ 0xE17A6E);
+
+  // Hoist the per-tick threat inputs once (stable across the tick) for the
+  // threat-aware hold positioner below. staticExposure is map-cached; suspected
+  // is computed per team. Both are pure/deterministic — no RNG, no per-unit
+  // recompute. Only used when POSITIONING.enabled.
+  const exposure = staticExposure(state.map);
+  const suspectedByTeam: Record<Team, HexCoord[]> = {
+    defenders: suspectedEnemyHexes(state, 'defenders'),
+    attackers: suspectedEnemyHexes(state, 'attackers'),
+  };
 
   // 2. AI decisions + 3. movement (per unit, stable order).
   for (const u of working) {
@@ -316,29 +329,46 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
-    // Pass 7.6 cover-seek: if we'd still hold, see if a neighbor hex offers
-    // better defensive geometry (wall- or cover-adjacent). Shuffle there if
-    // so, and commit the cover hex as the unit's region target so subsequent
-    // ticks don't oscillate back to the strategy centroid. Pass 7.8: pass the
-    // enemy spawn as the threat bearing so cover scoring prefers hexes where
-    // a wall sits between the unit and where shots will come from (not just
-    // any wall-adjacent — which leaves units hugging walls facing nothing).
+    // Pass 7.6 / Pillar B — cover-seek on hold: if we'd still hold, relocate to
+    // a better hex nearby and commit it as the unit's target so subsequent ticks
+    // don't oscillate back to the strategy centroid. POSITIONING.enabled routes
+    // through the threat-aware selector (pick the safest hex that keeps LoS to
+    // the watch angle — emergent fine positioning from a coarse region label);
+    // OFF falls back to the legacy spawn-bearing wall-cover shuffle so the
+    // harness can A/B the lever (the inert-AI law demands we prove it moves
+    // outcomes).
     if (mode === 'holding') {
-      const threat = enemySpawnForSide(u, state) ?? undefined;
-      // F2 / H1 — Map IQ (formerly Positioning) widens the cover-seek search.
-      // Very low (≤30) → no shuffle (hold wherever you landed); default (~50)
-      // → radius 1 (pre-F2 behavior); high (≥70) → radius 2 (find a great
-      // cover spot 2 hexes away). H1 collapsed Positioning into Map IQ.
+      // F2 / H1 — Map IQ (formerly Positioning) widens the search: low → tight,
+      // mid → default, high → wider (find a better spot a few hexes away).
       const pos = u.attributes.mapIQ;
-      const searchRadius =
-        pos >= ATTRIBUTES.formulas.mapIQ.highThreshold ? 2 :
-        pos <= ATTRIBUTES.formulas.mapIQ.lowThreshold ? 0 :
-        1;
-      const cover = findCoverHoldHex(u, state.map, claimed, threat, searchRadius);
-      if (!sameHex(cover, u.pos)) {
+      const high = pos >= ATTRIBUTES.formulas.mapIQ.highThreshold;
+      const low = pos <= ATTRIBUTES.formulas.mapIQ.lowThreshold;
+      let hold: HexCoord;
+      if (POSITIONING.enabled) {
+        // Watch angle = the directive's facing if any, else the enemy-spawn
+        // bearing. The selector keeps LoS to it while minimizing threat.
+        const angleHex = directiveFacing ?? enemySpawnForSide(u, state) ?? null;
+        const radius = high ? POSITIONING.radiusHighIQ
+          : low ? POSITIONING.radiusLowIQ
+          : POSITIONING.radiusMidIQ;
+        const team = u.team;
+        const threatOf = (h: HexCoord) =>
+          threatAt(state, team, h, exposure, suspectedByTeam[team]);
+        hold = findThreatAwareHoldHex(u, state.map, claimed, threatOf, angleHex, radius, {
+          safety: POSITIONING.wSafety,
+          los: POSITIONING.wLos,
+          cover: POSITIONING.wCover,
+          dist: POSITIONING.wDist,
+        });
+      } else {
+        const threat = enemySpawnForSide(u, state) ?? undefined;
+        const searchRadius = high ? 2 : low ? 0 : 1;
+        hold = findCoverHoldHex(u, state.map, claimed, threat, searchRadius);
+      }
+      if (!sameHex(hold, u.pos)) {
         mode = 'moving';
-        effectiveTarget = cover;
-        nextTargets[u.id] = cover;
+        effectiveTarget = hold;
+        nextTargets[u.id] = hold;
       }
     }
 
@@ -639,9 +669,8 @@ export function stepTick(state: GameState): GameState {
   // Pass 9 m3 — Mark Target trigger: for each unit with markTargetPending,
   // if their per-unit visibility includes a live enemy this tick, register a
   // mark_target effect on that enemy and clear the pending flag. First enemy
-  // wins (stable: lowest enemy id on tied distance — `pickFiringTarget`
-  // semantics). Reads post-move visibility so it fires the tick the contributor
-  // first sees an enemy.
+  // wins (stable: lowest enemy id on tied distance). Reads post-move visibility
+  // so it fires the tick the contributor first sees an enemy.
   const triggeredEffects = triggerPendingMarks(working, post.perUnit, postMove.cardEffects, tick);
 
   // Pass B — spike-plant update on the post-move state. May set roundResult

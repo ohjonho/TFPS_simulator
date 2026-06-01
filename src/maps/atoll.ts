@@ -183,14 +183,19 @@ export const atoll: MapDefinition = {
   },
 
   spawns: {
+    // Phase 1a 5v5 bring-up — 5 cells/side (throwaway; Phase 2 redesigns).
     defenders: [
       { col: 12, row: 1 },
+      { col: 13, row: 1 },
       { col: 14, row: 1 },
+      { col: 16, row: 1 },
       { col: 17, row: 1 },
     ],
     attackers: [
       { col: 12, row: 38 },
+      { col: 13, row: 38 },
       { col: 14, row: 38 },
+      { col: 16, row: 38 },
       { col: 17, row: 38 },
     ],
   },

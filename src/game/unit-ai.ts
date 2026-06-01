@@ -6,45 +6,12 @@ import type { Facing, HexCoord, MapDefinition, Unit } from './types.ts';
 import { hexDistance, offsetToPixel } from './hex.ts';
 import { neighbors, passableAt, isCoverAdjacent, findPath } from './pathfind.ts';
 import { isVisibleAlongLine } from './vision.ts';
-import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE, RANGE } from './config.ts';
+import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
 
-// Pass 7.8 — target prioritization. Ranked tiebreakers:
-//   1. lowest HP first (secure the kill before it walks behind cover);
-//   2. sniper before others (peel off the highest-threat weapon class);
-//   3. closest (shorter range usually = higher hit %);
-//   4. lowest id (determinism).
-// Pre-Pass-7.8 this was just (3) + (4); the wounded-target-first rule makes
-// teams visibly finish kills instead of splitting fire across full-HP enemies.
-export function pickFiringTarget(unit: Unit, visibleEnemies: readonly Unit[]): string | null {
-  if (visibleEnemies.length === 0) return null;
-  const sorted = [...visibleEnemies].sort((a, b) => {
-    if (a.hp !== b.hp) return a.hp - b.hp;
-    const aSniper = a.weapon === 'sniper' ? 0 : 1;
-    const bSniper = b.weapon === 'sniper' ? 0 : 1;
-    if (aSniper !== bSniper) return aSniper - bSniper;
-    const da = hexDistance(unit.pos, a.pos);
-    const db = hexDistance(unit.pos, b.pos);
-    if (da !== db) return da - db;
-    return a.id < b.id ? -1 : 1;
-  });
-  return sorted[0].id;
-}
-
-export type EngagementDecision = { engage: boolean; targetId: string | null };
-
-export function shouldEngage(unit: Unit, visibleEnemies: readonly Unit[]): EngagementDecision {
-  if (visibleEnemies.length === 0) return { engage: false, targetId: null };
-  // F3 — shotguns only engage at short range. At medium / long their HR
-  // collapses to 30 / 5 %, so engaging dumps wasted shots into trades they
-  // can't win against rifles or snipers. Keep moving instead so they can
-  // close via cover; the cover-aware A* + their region target carries them.
-  if (unit.weapon === 'shotgun') {
-    const inRange = visibleEnemies.filter((e) => hexDistance(unit.pos, e.pos) <= RANGE.shortMax);
-    if (inRange.length === 0) return { engage: false, targetId: null };
-    return { engage: true, targetId: pickFiringTarget(unit, inRange) };
-  }
-  return { engage: true, targetId: pickFiringTarget(unit, visibleEnemies) };
-}
+// (Removed: pickFiringTarget / shouldEngage / EngagementDecision — the v0
+// binary "any enemy visible → fight" + closest-target picker. Superseded by the
+// odds-based engagement gate in engage.ts (assessEngagement), which does its
+// own target selection. Dead since that rewrite.)
 
 export type RetreatDecision = { retreat: boolean };
 
@@ -157,6 +124,72 @@ export function findCoverHoldHex(
           bestScore = s;
         }
         next.push(nb);
+      }
+    }
+    frontier = next;
+  }
+  return best;
+}
+
+// Threat-aware hold positioning (Pillar B). When a unit settles into holding,
+// pick the best hex within `radius` of its current spot by scoring the threat
+// field against keeping LoS to the angle it should watch and staying put.
+// Decoupled from GameState: the caller supplies `threatOf` (a closure over
+// threat.ts/threatAt with the per-tick exposure + suspected hoisted) and the
+// resolved `angleHex` (directive facing, else enemy spawn). Pure +
+// deterministic — BFS frontier order is fixed; ties resolve to the lower-row,
+// lower-col hex; the unit's own hex is the baseline so a unit never moves to a
+// strictly-worse spot. `occupied` blocks hexes taken by other live units, so a
+// stacked strategy (5 on one site) naturally spreads to distinct safe hexes.
+export function findThreatAwareHoldHex(
+  unit: Unit,
+  map: MapDefinition,
+  occupied: ReadonlySet<string>,
+  threatOf: (h: HexCoord) => number,
+  angleHex: HexCoord | null,
+  radius: number,
+  weights: { safety: number; los: number; cover: number; dist: number },
+): HexCoord {
+  const here = unit.pos;
+  const selfKey = `${here.col},${here.row}`;
+  // Score: low threat is good; keeping LoS to the watch angle is good; cover on
+  // the threat side is good; distance from the current spot is bad.
+  const score = (h: HexCoord): number => {
+    const threat = threatOf(h);
+    const los = angleHex && isVisibleAlongLine(h, angleHex, map) ? 1 : 0;
+    const cover = angleHex ? sightlineCoverScore(h, map, angleHex) / 4 : 0;
+    const dist = hexDistance(h, here);
+    return (
+      -weights.safety * threat +
+      weights.los * los +
+      weights.cover * cover -
+      weights.dist * dist
+    );
+  };
+  let best = here;
+  let bestScore = score(here);
+  if (radius <= 0) return best;
+
+  // BFS up to `radius` hexes. Candidates are passable + unoccupied (except own
+  // hex). Strict > so the unit only relocates for a genuinely better hex; ties
+  // keep it put (or, among equal candidates, the first reached in BFS order).
+  const seen = new Set<string>([selfKey]);
+  let frontier: HexCoord[] = [here];
+  for (let depth = 0; depth < radius; depth++) {
+    const next: HexCoord[] = [];
+    for (const cur of frontier) {
+      for (const nb of neighbors(cur)) {
+        const key = `${nb.col},${nb.row}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!passableAt(map, nb)) continue;
+        next.push(nb); // expand through passable hexes even if occupied
+        if (key !== selfKey && occupied.has(key)) continue;
+        const s = score(nb);
+        if (s > bestScore) {
+          best = nb;
+          bestScore = s;
+        }
       }
     }
     frontier = next;

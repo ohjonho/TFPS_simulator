@@ -313,6 +313,59 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.12.0 — two new 5v5 maps</h3>
+    <ul>
+      <li><strong>Foundry II + Atoll II</strong> are selectable from the map
+        toggle — ground-up redesigns of the old one-dimensional layouts, built on
+        the richer region vocabulary (site entries/anchors/off-angles, near/far
+        lane splits, a real mid choke, and rotational connectors). Foundry II
+        plays close to balanced; Atoll II is still attacker-leaning and a work in
+        progress (no cover placed yet). The originals remain for comparison.</li>
+      <li><strong>Map picker polish.</strong> The map toggle shows tidier labels
+        and a one-line description of each map on hover.</li>
+      <li><strong>Canyon defenders spawn smarter.</strong> On Canyon, defenders
+        now start on the spot in their (large) spawn zone closest to where their
+        strategy sends them, instead of a fixed corner — closing the approach to
+        their hold. Noticeably steadies the defense on Canyon's dense layout.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.11.0 — units hold smarter angles</h3>
+    <ul>
+      <li><strong>Threat-aware positioning.</strong> When a unit settles to hold,
+        it no longer just tucks behind the nearest wall facing spawn — it now
+        scans nearby hexes and picks the one that's safest from where enemies
+        could be shooting from (long sightlines + last-known positions) while
+        still keeping eyes on the angle it's supposed to watch. Smarter players
+        (higher Map IQ) scan wider for a better spot. Net effect: defenders hold
+        less-exposed angles and stacked players spread to distinct cover instead
+        of clumping on one tile.</li>
+      <li><strong>Canyon gets its own playbook.</strong> Canyon no longer borrows
+        Foundry's strategies — it now has native plays built on its specific
+        geometry (site entries, defender anchors + off-angles, near/far lane
+        splits, and the central mid choke). Each strategy reads differently on
+        Canyon now instead of all playing the same.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.10.0 — 5v5: full squads</h3>
+    <ul>
+      <li><strong>Teams are now five per side.</strong> Each roster fields
+        four riflers + one sniper (drafts pick 5 from a 14-unit pool). Every
+        strategy has been re-authored to deploy all five — no more two units
+        freelancing with no job.</li>
+      <li><strong>Deeper playbooks.</strong> Attacking executes now send three
+        riflers onto the plant with a lane-watcher and a mid sniper; rushes
+        flood four bodies down one lane. Defensively, Hold anchors two players
+        per site, Stack clusters three with a mid + off-site watcher, and
+        Pressure pushes four into mid. The trait-unlocked strategies scaled the
+        same way (e.g. Coordinated Lockdown stacks all five on one site).</li>
+      <li><strong>Ace = full wipe.</strong> The end-of-round multikill bonus now
+        triggers on wiping the whole enemy team (5 kills at 5v5), not a
+        hard-coded 3.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.9.0 — smarter unit AI: pick your fights</h3>
     <ul>
       <li><strong>Odds-based engagements.</strong> Units no longer shoot at

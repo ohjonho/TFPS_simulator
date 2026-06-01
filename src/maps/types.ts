@@ -56,7 +56,7 @@ export type SiteData = {
 // ---------------------------------------------------------------------------
 
 export type MapDefinition = {
-  name: 'Foundry' | 'Atoll';
+  name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2';
   /** Always 30 — the grid is fixed for v0. */
   width: 30;
   /** Always 40 — the grid is fixed for v0. */
@@ -77,4 +77,12 @@ export type MapDefinition = {
     attackers: HexCoord[];
   };
   character: 'open_sightlines' | 'tight_corridors_asymmetric';
+  /**
+   * Opt-in strategy-aware spawn optimization (match.applyStrategies). When true,
+   * defenders relocate onto the spawn-zone cell nearest their resolved target,
+   * closing the approach. Per-map because it's a balance lever — helps on dense
+   * maps, hurts on open-sightline ones (see config.SPAWN_SPREAD note). Defaults
+   * to off when omitted.
+   */
+  optimizeSpawns?: boolean;
 };

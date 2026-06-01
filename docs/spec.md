@@ -587,7 +587,8 @@ Pure functions consuming `(events, units, roundIndex?)`:
 
 ACS formula:
 `acs = perRoundAvg(killValue × kills + assistValue × assists +
-multikill3K × (k≥3 ? 1 : 0) + damageMultiplier × damage)`.
+aceWipeBonus × (kills ≥ enemyTeamSize ? 1 : 0) + damageMultiplier × damage)`.
+The ace bonus fires only on a full enemy-team wipe (3 kills at 3v3, 5 at 5v5).
 
 Round-end + match-end modals render these directly
 (`ui/roundEndPanel.ts`, `ui/matchEndScoreboard.ts`).

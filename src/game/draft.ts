@@ -20,6 +20,7 @@ import { DRAFT, RANDOMIZE_ATTRIBUTES, LOADOUT_POOL, UNIT_DEFAULTS } from './conf
 import { rollUnitMeta } from './attributes.ts';
 import { createRng, type Rng } from './rng.ts';
 import { buildStateFromUnits } from './state.ts';
+import { placeSpawns } from './units.ts';
 
 // Pointy-top facing index. Defenders look down-right, attackers look up-right —
 // the spawn-frame cones point toward the enemy half. Movement overrides this
@@ -293,15 +294,17 @@ export function finalizeDraft(state: GameState): GameState {
     const facing = team === 'defenders' ? DEFENDER_FACING : ATTACKER_FACING;
     const spawns = team === 'defenders' ? map.spawns.defenders : map.spawns.attackers;
     const teamPickIds = byTeam[team];
+    // Round-1 finalize: defenders north (forward +row), attackers south (−row).
+    const positions = placeSpawns(spawns, teamPickIds.length, team === 'defenders' ? 1 : -1);
     for (let i = 0; i < teamPickIds.length; i++) {
       const poolUnit = pool.find((u) => u.id === teamPickIds[i]);
       if (!poolUnit) continue;
-      if (i >= spawns.length) break; // safety: shouldn't happen at 3 picks vs 3 spawns
+      if (i >= positions.length) break; // safety: shouldn't happen at 5 picks vs 5+ spawns
       finalUnits.push({
         ...poolUnit,
         id: `${idPrefix}${i + 1}`,
         team,
-        pos: spawns[i],
+        pos: positions[i],
         facing,
         hp: poolUnit.maxHp,
         state: 'alive',

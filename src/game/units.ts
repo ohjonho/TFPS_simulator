@@ -2,7 +2,45 @@
 // Pass 1: traits are null, HP is full, facing points toward enemy side.
 
 import type { Attributes, Facing, HexCoord, Team, Unit, Weapon } from './types.ts';
-import { LOADOUTS, UNIT_DEFAULTS } from './config.ts';
+import { LOADOUTS, SPAWN_SPREAD, UNIT_DEFAULTS } from './config.ts';
+
+// Choose `count` spawn cells (in unit order) from a team's spawn pool. With
+// SPAWN_SPREAD on, fan the units across the zone's BACK EDGE — the deepest cell
+// per column (away from the enemy) — so a wide painted zone is used (lateral
+// width) WITHOUT pushing units forward into exposure (front-fanning measured
+// −10pp def on open Foundryv2). `forward` is +1 when the zone faces south
+// (defenders, north half) or −1 when it faces north (attackers, south half).
+// Pure + deterministic. Off (or pool ≤ count) → the legacy first-N row-major.
+export function placeSpawns(
+  pool: readonly HexCoord[],
+  count: number,
+  forward: number,
+): HexCoord[] {
+  if (!SPAWN_SPREAD.enabled || pool.length <= count) {
+    return Array.from({ length: count }, (_, i) => pool[Math.min(i, pool.length - 1)]);
+  }
+  // Back-edge cell per column (least forward — deepest, away from the enemy).
+  const byCol = new Map<number, HexCoord>();
+  for (const c of pool) {
+    const cur = byCol.get(c.col);
+    if (!cur || forward * c.row < forward * cur.row) byCol.set(c.col, c);
+  }
+  let line = [...byCol.values()].sort((a, b) => a.col - b.col);
+  // Tall/narrow zone with fewer columns than units: fall back to the column-
+  // sorted full pool so there are always ≥ count distinct cells.
+  if (line.length < count) {
+    line = [...pool].sort((a, b) => (a.col - b.col) || (forward * a.row - forward * b.row));
+  }
+  const out: HexCoord[] = [];
+  const used = new Set<number>();
+  for (let i = 0; i < count; i++) {
+    let idx = count <= 1 ? 0 : Math.round((i * (line.length - 1)) / (count - 1));
+    while (used.has(idx)) idx = (idx + 1) % line.length;
+    used.add(idx);
+    out.push(line[idx]);
+  }
+  return out;
+}
 
 // Neutral baseline used at construction; overwritten by assignAttributes at
 // match start. All 50s = zero effect once attributes are wired into combat,
@@ -40,12 +78,14 @@ export function createTeam(
   }
   const idPrefix = team === 'defenders' ? 'D' : 'A';
   const facing = team === 'defenders' ? DEFENDER_FACING : ATTACKER_FACING;
-  // Take the first N spawn cells in source order (left-to-right within a row).
+  // Round-1 build: defenders are on the north side (forward = +row), attackers
+  // south (−row). placeSpawns fans them across the zone's leading edge.
+  const positions = placeSpawns(spawns, slotCount, team === 'defenders' ? 1 : -1);
   return loadouts.map((weapon, i): Unit => ({
     id: `${idPrefix}${i + 1}`,
     team,
     weapon,
-    pos: spawns[i],
+    pos: positions[i],
     hp: UNIT_DEFAULTS.maxHp,
     maxHp: UNIT_DEFAULTS.maxHp,
     facing,

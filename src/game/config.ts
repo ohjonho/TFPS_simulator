@@ -25,13 +25,19 @@ export const HEX = {
 // Loadouts are pre-assigned in v0. Index 0/1/2 maps to unit slot 1/2/3 on each
 // team. Pass 1 uses 2 rifles + 1 sniper per team per the prompt.
 export const LOADOUTS = {
-  defenders: ['rifle', 'rifle', 'sniper'],
-  attackers: ['rifle', 'rifle', 'sniper'],
+  defenders: ['rifle', 'rifle', 'rifle', 'rifle', 'sniper'],
+  attackers: ['rifle', 'rifle', 'rifle', 'rifle', 'sniper'],
 } as const;
 
 export const UNIT_DEFAULTS = {
   maxHp: 3,
 } as const;
+
+// Team size (config knob). createTeam builds this many units per team from the
+// LOADOUTS list + the map's spawn cells. INVARIANT: LOADOUTS[team].length,
+// DRAFT.picksPerTeam, and every map's spawns per side must all equal this.
+// Flip here (with matching LOADOUTS / spawns) to A/B 3v3 vs 5v5.
+export const TEAM_SIZE = 5;
 
 // Per-CellType fill + stroke. Palette lifted from the HTML prototype's COL/STR
 // tables so the rendered map matches the prototype and all 8 types read as
@@ -161,6 +167,59 @@ export const THREAT = {
   // clean angle dominates the static lane danger.
   dynamicLosWeight: 2,
   distanceFalloff: 0.08,
+} as const;
+
+// --- Threat-aware in-region positioning (AI competence — Pillar B) ---------
+// When a unit settles into 'holding', instead of the legacy ≤2-hex spawn-bearing
+// cover shuffle (findCoverHoldHex) it scores nearby candidate hexes by the
+// threat field (threat.ts) — picking the safest hex that still keeps line of
+// sight to the angle it should watch and stays near its assigned spot. This is
+// the lever that turns a coarse region label into a good actual position, so
+// fine positioning emerges without hand-labeling every hex.
+//
+// `enabled` is an A/B flag: the inert-AI law demands we PROVE a positioning
+// change moves outcomes, so the harness probes ON vs OFF. Pure + deterministic
+// (threatAt has no RNG; candidate iteration is fixed-order).
+export const POSITIONING = {
+  enabled: true,
+  // Candidate search radius (hexes) from the unit's hold spot, by Map IQ band
+  // (ATTRIBUTES.formulas.mapIQ thresholds). Low IQ holds tight; high IQ scans
+  // wider for a better angle — keeps Map IQ meaningful.
+  radiusLowIQ: 1,
+  radiusMidIQ: 2,
+  radiusHighIQ: 3,
+  // Score weights. safety pulls toward low-threat hexes (the dominant term);
+  // los rewards keeping a clean sightline to the watch angle (load-bearing —
+  // without it the safest hex is hiding facing a wall); cover rewards
+  // sightline-blocking geometry on the threat side; dist gently penalizes
+  // straying from the assigned spot so units don't wander out of position.
+  wSafety: 1.0,
+  wLos: 0.6,
+  wCover: 0.25,
+  wDist: 0.15,
+} as const;
+
+// --- Spawn placement -------------------------------------------------------
+// Two layers (see units.placeSpawns + match.applyStrategies):
+//
+// (1) SPAWN_SPREAD — fan the N units across the zone's back edge (one per ~column
+//     band) so a wide painted zone is used instead of only the first-N row-major
+//     corner. Pure + deterministic; A/B-flagged.
+//     DEFAULT OFF. The A/B harness showed fanning is a pure cost on the open
+//     map: both back-edge (−13pp def) and front-edge (−10pp) spreads tank
+//     Foundryv2 — spreading breaks the coordinated group-push it's balanced
+//     around — while helping nothing elsewhere (originals with 5-cell spawns are
+//     unaffected). These maps are balanced around the legacy placement; kept
+//     behind the flag for authored maps that specifically want a fanned start.
+//
+// (2) Per-map strategy-aware optimization lives on the MAP, not here:
+//     `MapDefinition.optimizeSpawns`. When true, applyStrategies relocates each
+//     DEFENDER onto the spawn-zone cell nearest its resolved target (closing its
+//     approach). Also a balance lever — helps defenders on dense maps
+//     (Canyon +~9pp) but hurts open-sightline maps, so it's opt-in per map
+//     (Canyon only for now) rather than global.
+export const SPAWN_SPREAD = {
+  enabled: false,
 } as const;
 
 // --- Engagement gate (AI competence #2) -----------------------------------
@@ -500,7 +559,10 @@ export const ATTRIBUTES = {
     acs: {
       killValue: 200,
       assistValue: 50,
-      multikill3K: 400,                                         // 3v3-scaled (3K = ace)
+      // Ace bonus: fires when a unit kills the ENTIRE enemy team in one round.
+      // Team-size-agnostic — the threshold is the enemy team's unit count
+      // (TEAM_SIZE), not a hard-coded 3. At 3v3 an ace = 3K; at 5v5 = 5K.
+      aceWipeBonus: 400,
       damageMultiplier: 1,
     },
     assistWindowTicks: 5,
@@ -636,11 +698,11 @@ export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
 // forced into a degenerate roster — resample loadouts up to maxComposeRetries
 // before accepting whatever the pool ended up with.
 export const DRAFT = {
-  poolSize: 8,
-  picksPerTeam: 3,
+  poolSize: 14,
+  picksPerTeam: 5,
   // 'P' = player, 'A' = AI. Resolved to actual team identities by startDraft
-  // using the player team. Snake = P-A-A-P-P-A (player picks 1st + 4th + 5th).
-  snakeOrder: ['P', 'A', 'A', 'P', 'P', 'A'] as readonly ('P' | 'A')[],
+  // using the player team. 10-pick snake (5 each): P-A-A-P-P-A-A-P-P-A.
+  snakeOrder: ['P', 'A', 'A', 'P', 'P', 'A', 'A', 'P', 'P', 'A'] as readonly ('P' | 'A')[],
   minPerWeapon: 2,
   maxComposeRetries: 32,
 } as const;

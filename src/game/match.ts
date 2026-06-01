@@ -44,7 +44,41 @@ import {
   ROLE_AGGRESSION,
   UNIT_DEFAULTS,
 } from './config.ts';
+import { hexDistance } from './hex.ts';
+import { placeSpawns } from './units.ts';
 import type { Rng } from './rng.ts';
+
+// Strategy-aware spawn placement (SPAWN_PLACEMENT). DEFENDERS ONLY: the
+// row-major generic spawn already drops attackers at the forward edge of their
+// zone but defenders at the BACK edge, so only defenders start sub-optimally.
+// Each defender takes the spawn-zone cell nearest where its strategy sends it
+// (`targets[u.id]`) — closing the approach to its hold. Measured: optimizing
+// attackers too just speeds their plant-rush and tips balanced maps, while this
+// asymmetric form gives defenders the gain without that side effect. Pure +
+// deterministic: nearest by hex distance; ties resolve to the pool's row-major-
+// earliest cell (strict <); one cell per unit, greedy in team order; a unit
+// with no target takes the first free cell. Returns unitId → spawn hex.
+function optimizeSpawns(
+  teamUnits: readonly Unit[],
+  targets: Record<string, HexCoord | null>,
+  pool: readonly HexCoord[],
+): Record<string, HexCoord> {
+  const out: Record<string, HexCoord> = {};
+  const used = new Set<string>();
+  for (const u of teamUnits) {
+    const t = targets[u.id];
+    let best: HexCoord | null = null;
+    let bestD = Infinity;
+    for (const cell of pool) {
+      const k = `${cell.col},${cell.row}`;
+      if (used.has(k)) continue;
+      const d = t ? hexDistance(cell, t) : 0;
+      if (d < bestD) { bestD = d; best = cell; }
+    }
+    if (best) { out[u.id] = best; used.add(`${best.col},${best.row}`); }
+  }
+  return out;
+}
 
 // Returns the spawn list this team should occupy this round, based on its
 // current side (attacker → attackers spawns, defender → defenders spawns).
@@ -65,12 +99,18 @@ export function startRound(state: GameState): GameState {
   const nextTracking: Record<string, TrackEntry | null> = {};
   const nextPrevPos: Record<string, HexCoord> = {};
 
-  // Index of each unit within its team for spawn assignment.
+  // Fan each team across its current-side spawn zone (placeSpawns) — same
+  // deterministic placement createTeam uses, so round transitions match.
+  const teamCounts: Record<Team, number> = { defenders: 0, attackers: 0 };
+  for (const u of state.units) teamCounts[u.team]++;
+  const teamPositions: Record<Team, HexCoord[]> = {
+    defenders: placeSpawns(spawnsFor(state, 'defenders'), teamCounts.defenders, state.teamSide.defenders === 'defender' ? 1 : -1),
+    attackers: placeSpawns(spawnsFor(state, 'attackers'), teamCounts.attackers, state.teamSide.attackers === 'defender' ? 1 : -1),
+  };
   const teamIndex: Record<Team, number> = { defenders: 0, attackers: 0 };
   for (const u of state.units) {
-    const spawns = spawnsFor(state, u.team);
     const idx = teamIndex[u.team]++;
-    const pos = spawns[Math.min(idx, spawns.length - 1)];
+    const pos = teamPositions[u.team][idx];
     // Pass E2 — reset facing per the unit's CURRENT side so the spawn-frame
     // cone points at the enemy half after halftime. Defenders (top half)
     // look down via facing 5 (SE); attackers (bottom half) look up via
@@ -261,18 +301,44 @@ export function applyStrategies(
     });
   }
 
+  // Strategy-aware spawn placement: relocate each unit to the spawn-zone cell
+  // nearest its resolved target, then refresh its move/prevPos so the sim
+  // doesn't read the relocation as a tick-1 teleport. Per team (each uses its
+  // current side's spawn pool). Off → units keep startRound's first-N cells.
+  let placedUnits = nextUnits;
+  const nextMoves = { ...state.moves };
+  const nextPrevPos = { ...state.prevPos };
+  if (state.map.optimizeSpawns) {
+    const posById: Record<string, HexCoord> = {};
+    for (const team of [playerTeam, aiTeam]) {
+      // Only the defending side optimizes — attackers already spawn forward.
+      if (state.teamSide[team] !== 'defender') continue;
+      const teamUnits = nextUnits.filter((u) => u.team === team);
+      Object.assign(posById, optimizeSpawns(teamUnits, nextTargets, state.map.spawns.defenders));
+    }
+    placedUnits = nextUnits.map((u) => {
+      const p = posById[u.id];
+      if (!p) return u;
+      nextMoves[u.id] = blankMove(p);
+      nextPrevPos[u.id] = { ...p };
+      return { ...u, pos: { ...p } };
+    });
+  }
+
   // H3.3 — always-on hero passive effects. Each hero on the roster
   // contributes one entry to cardEffects regardless of any card being
   // played (Angelic → guardian aura, Techy → tactical scan at round start,
   // Cursed → mark-on-first-spot trigger flag set per unit above). Builds a
   // fresh list per round; H3.4 will drop the cards-on-top layer entirely.
-  const heroEffects = computeHeroPassiveEffects(nextUnits, state.tick);
+  const heroEffects = computeHeroPassiveEffects(placedUnits, state.tick);
 
   return {
     ...state,
     phase: 'resolution',
-    units: nextUnits,
+    units: placedUnits,
     targets: nextTargets,
+    moves: nextMoves,
+    prevPos: nextPrevPos,
     playerStrategy: playerStrategyId,
     aiStrategy: aiStrategyId,
     cardEffects: heroEffects,
