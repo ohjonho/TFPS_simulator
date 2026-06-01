@@ -10,7 +10,7 @@
  *   M mid (l left / r right / k mid_choke) · c a_choke · C b_choke
  *   7 a_connector · 8 b_connector
  *
- * Skeleton pass — regions placed, no cover (o) yet.
+ * v3 — cover (o) hand-refined toward the sites + key angles.
  */
 import type { MapDefinition } from './types';
 import { mapFromCharGrid } from './gridUtils';
@@ -27,21 +27,21 @@ const ROWS: string[] = [
   '#.....########....#######....#', // 8
   'nnnnnnnn777777...88######....#', // 9
   'n#naan#nn777777..888######....', // 10
-  'g#aaa#AA######...8888#####....', // 11
-  'g#aaa#AA######...#8888NNNNN...', // 12
-  'g#aaa#AA#####...##88NNNNNNNNFF', // 13
-  'gg#aaa#ff####...####8GGoBB###F', // 14
-  'AAAAAAff####...######GGbbbbbbF', // 15
-  'eeee##ff####...#########bbbbbB', // 16
-  '3o3#########...######BBBBBBoBB', // 17
-  '3333#########...#####BBB##BBBB', // 18
+  'g#aao#AA######o..8888#####....', // 11
+  'g#oaa#AA######...#8888NNNNN...', // 12
+  'gAaaa#AA#####...##88NNNNNNNNFF', // 13
+  'ggAaaaAff####...####8GGoBo###F', // 14
+  'ooAAAoff####...######GGbbobboF', // 15
+  'eeee##ff####..o#########bbbbbB', // 16
+  '3o3#########...######BBBBBBBBB', // 17
+  '3333#########...#####BBBB#BBBB', // 18
   '3333ccc######...####EEE###EEEE', // 19
-  '#3o33ccc######...###rrr####5o5', // 20
+  '#3o33ccc######o..###rro####o55', // 20
   '#333#ccc######kkk##rrr#####555', // 21
   '#####ccc######kkkk#rrr#####555', // 22
   '###444#######kkkkkrrr####5555#', // 23
   '###4o44######oo##korr###CCC5##', // 24
-  '###4444#####ooo##rrr###CCC####', // 25
+  '###4444#####ooo##rrr###CCCo###', // 25
   '###4444llllllMM###rr####CCC###', // 26
   '##44o4lllllllMM##rr######666##', // 27
   '###4444######MMMMMr#######666#', // 28
