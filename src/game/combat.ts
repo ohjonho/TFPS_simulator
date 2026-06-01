@@ -21,6 +21,7 @@ import {
   CARD_EFFECTS,
   COVER_HIT_PENALTY_PP,
   DAMAGE,
+  COMMS,
   FIRE_RATE,
   FIRST_SIGHT_HIT_PENALTY_PP,
   HEADSHOT,
@@ -195,6 +196,13 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
       if (ctx.ticksIntoRound > TRAITS.patient.afterTick) pp += TRAITS.patient.hitPp;
       break;
     default: break;
+  }
+  // Phase 3 — team-trade coordination scaled by Leadership (comms). When a
+  // teammate just fired (a live engagement to trade into), HR shifts by comms
+  // relative to neutral. Applies to every unit (stacks with the Trader trait),
+  // making Leadership mechanically real. Measurement-gated (config.COMMS).
+  if (COMMS.enabled && ctx.allyFiredRecently) {
+    pp += (unit.attributes.comms - 50) * COMMS.tradeScalePerPt;
   }
   return pp;
 }

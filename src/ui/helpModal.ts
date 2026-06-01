@@ -313,6 +313,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.13.0 — Leadership matters (team trades)</h3>
+    <ul>
+      <li><strong>Comms / Leadership is now a real attribute.</strong> When a
+        teammate has just fired — a fight to trade into — every unit's hit chance
+        shifts by its Leadership: high-Leadership rosters convert trades, low ones
+        fumble them. At 5v5 (unlike 3v3, where team coordination was inert) this
+        swings rounds by ~9–10pp for a high-Leadership team. Drafting for
+        Leadership now pays off; it has no effect at the flat-50 debug baseline.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.12.0 — two new 5v5 maps</h3>
     <ul>
       <li><strong>Foundry II + Atoll II</strong> are selectable from the map

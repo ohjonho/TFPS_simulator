@@ -222,6 +222,19 @@ export const SPAWN_SPREAD = {
   enabled: false,
 } as const;
 
+// --- Team-trade coordination (Phase 3 — Leadership / comms) -----------------
+// Makes the comms (Leadership) attribute mechanically real. When a teammate has
+// fired recently (ctx.allyFiredRecently — an engagement to trade into), a unit's
+// hit chance shifts by its comms relative to neutral (50): high-Leadership
+// rosters convert trades, low ones fumble them. Stacks with the Trader trait's
+// flat bonus. `enabled` A/B-flags the whole mechanism. MEASUREMENT-GATED — kept
+// only if comms-high vs comms-low rosters show a non-inert win-rate gap at 5v5
+// (team coordination was inert at 3v3; more bodies may revive it).
+export const COMMS = {
+  enabled: true,
+  tradeScalePerPt: 0.3, // HR pp per comms point off 50 (±12 at comms 90 / 10)
+} as const;
+
 // --- Engagement gate (AI competence #2) -----------------------------------
 // Whether a unit commits to a duel it can see, based on estimated odds
 // (expected-damage-per-tick share vs the target, from combat.estimateEdpt).
