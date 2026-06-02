@@ -678,7 +678,13 @@ export const PLANT_TICKS = 2;
 // Pass B iteration: 15 → 20 ticks. Gives defenders more rotation time to
 // actually reach the planted site and defuse (zero defuses across 450 rounds
 // at 15-tick suggested defenders couldn't get there in time).
-export const DETONATION_TICKS = 20;
+// v0.21.0: 20 → 25. The attacker bias is structural (defenders split across
+// two sites + mid while attackers concentrate), so combat tweaks barely move
+// it — extra fuse is a rotation/retake-window lever instead. Measured +4.5pp
+// defender win across the three live maps (Foundry +2, Atoll +5, Canyon +6 —
+// the dense map where retakes were arriving at the detonation wire). Banked as
+// a partial step toward the ~50/50 target.
+export const DETONATION_TICKS = 25;
 // v0.19.0 — 4 → 3. The no-shoot channel lock makes defusing a genuine
 // commitment (a defuser can't trade for itself); the shorter timer partly
 // offsets the added exposure.

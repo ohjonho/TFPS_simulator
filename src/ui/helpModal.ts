@@ -313,6 +313,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.21.0 — longer fuse, more time to retake</h3>
+    <ul>
+      <li><strong>The spike now takes longer to detonate (25 ticks, up from 20).</strong>
+        Defenders were too attacker-favored on every map — and the root cause is
+        positional: attackers concentrate on one site while defenders have to
+        cover the whole map, so the defense keeps arriving at the bombsite a step
+        late. A longer fuse gives the defense more time to rotate in and retake.
+        It's a partial fix (more is coming for how defenders rotate and hold), but
+        on its own it measurably swings rounds back toward the defense — most of
+        all on Canyon, where retakes were landing right as the spike went off.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.20.0 — a cornered aggressive defender fights before defusing</h3>
     <ul>
       <li><strong>When an aggressive or Ego defender is the last one alive, it
