@@ -116,6 +116,36 @@ export function stepTick(state: GameState): GameState {
     attackers: suspectedEnemyHexes(state, 'attackers'),
   };
 
+  // Pass F — post-plant retake coordination (hoisted once per tick). Designate
+  // ONE defuser (the alive defender nearest the spike) so the rest can COVER
+  // instead of all piling onto the hex, and precompute whether the plant is
+  // contested (a defuse is blocked while any attacker stands on it). The lone
+  // retaker was either dueling a step short of a clear spike, or solo-defusing
+  // and getting traded one tick before completion. Pure/deterministic — no RNG.
+  const defenderTeamId: Team =
+    state.teamSide.defenders === 'defender' ? 'defenders' : 'attackers';
+  let plantHexList: HexCoord[] = [];
+  let plantClear = false;
+  let defuserId: string | null = null;
+  if (state.plant.planted) {
+    const attackerTeamId: Team = defenderTeamId === 'defenders' ? 'attackers' : 'defenders';
+    const psite = state.plant.planted.site;
+    plantHexList = psite === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
+    const onPlant = (p: HexCoord) => plantHexList.some((h) => sameHex(h, p));
+    // The defuser only commits onto the spike when no attacker stands on it (a
+    // defuse is blocked otherwise); when contested it clears the angle first.
+    plantClear = !working.some(
+      (u) => u.team === attackerTeamId && u.state === 'alive' && onPlant(u.pos),
+    );
+    let bestD = Infinity;
+    for (const u of working) {
+      if (u.team !== defenderTeamId || u.state !== 'alive' || shouldRetreat(u).retreat) continue;
+      let d = Infinity;
+      for (const h of plantHexList) d = Math.min(d, hexDistance(u.pos, h));
+      if (d < bestD) { bestD = d; defuserId = u.id; }
+    }
+  }
+
   // 2. AI decisions + 3. movement (per unit, stable order).
   for (const u of working) {
     prevPos[u.id] = u.pos;
@@ -259,23 +289,39 @@ export function stepTick(state: GameState): GameState {
       }
     }
 
-    // Pass B — defender retake on plant. Once the spike is down, every
-    // alive defender not actively engaged re-targets to the planted site
-    // so someone actually arrives to defuse (matrix run after initial
-    // Pass B showed zero defuses across 450 rounds — defenders just stayed
-    // in position). Engaged defenders keep shooting (the enemy may be the
-    // one blocking the plant zone). Retreat (HP 1) still wins.
-    if (state.plant.planted && !retreat && mode !== 'engaged') {
-      const defTeam: Team = state.teamSide.defenders === 'defender' ? 'defenders' : 'attackers';
-      if (u.team === defTeam) {
-        const site = state.plant.planted.site;
-        const plantHexes = site === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
-        if (plantHexes.length > 0) {
-          const retakeTarget = plantHexes[Math.floor(plantHexes.length / 2)];
-          if (!sameHex(u.pos, retakeTarget)) {
-            mode = 'moving';
-            effectiveTarget = retakeTarget;
-          }
+    // Pass F — coordinated defender retake on plant (was Pass B's "everyone
+    // pile onto the spike", which produced zero defuses). One designated defuser
+    // commits onto the spike; the rest take a covered angle with LoS to it and
+    // trade for the defuser. The commit overrides engage/hold only when the
+    // spike is clear of attackers (it can't be defused otherwise); contested,
+    // the defuser clears the angle first. Retreat (HP 1) still wins.
+    if (state.plant.planted && plantHexList.length > 0 && !retreat && u.team === defenderTeamId) {
+      if (u.id === defuserId) {
+        // Nearest plant hex. When clear, commit (override engage) and — once on
+        // the hex — target self so movement is a no-op and the cover-seek can't
+        // pull it back off the spike. When contested, approach and let engage
+        // clear the blockers first.
+        let goal = plantHexList[0];
+        let gd = Infinity;
+        for (const h of plantHexList) { const d = hexDistance(u.pos, h); if (d < gd) { gd = d; goal = h; } }
+        const onPlant = plantHexList.some((h) => sameHex(h, u.pos));
+        if (plantClear) {
+          mode = 'moving';
+          effectiveTarget = onPlant ? u.pos : goal;
+        } else if (mode !== 'engaged') {
+          mode = 'moving';
+          effectiveTarget = goal;
+        }
+        nextTargets[u.id] = effectiveTarget ?? u.pos;
+      } else if (mode !== 'engaged') {
+        // Coverer — hold a covered angle with LoS to the spike to trade for the
+        // defuser, instead of crowding onto the hex.
+        const center = plantHexList[Math.floor(plantHexList.length / 2)];
+        const cover = findCoverWithLosTo(u, center, state.map, claimed);
+        if (cover && !sameHex(u.pos, cover)) {
+          mode = 'moving';
+          effectiveTarget = cover;
+          nextTargets[u.id] = cover;
         }
       }
     }

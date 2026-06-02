@@ -313,6 +313,18 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.17.0 — defenders retake and defuse</h3>
+    <ul>
+      <li><strong>Defenders now actually retake the spike.</strong> After a plant,
+        one defender commits to the defuse while the rest hold covered angles to
+        trade for them — previously defenders never attempted a defuse, handing
+        attackers free detonations even when defenders were alive and ahead. This
+        swings post-plant rounds back toward the defense on the open maps (Foundry
+        II / Atoll II ~+3pp each). Canyon's dense layout makes retakes arrive too
+        late regardless — a known gap we'll tackle separately.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.16.0 — map roster trimmed to the live three</h3>
     <ul>
       <li><strong>Foundry and Atoll (the originals) retired from the picker.</strong>
