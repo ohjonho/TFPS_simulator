@@ -28,6 +28,7 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
+import { CHANNEL_COMMIT } from './config.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
 // adhere); ±0.4 per Discipline pt; ±0.2 per Composure pt; demanding
@@ -64,6 +65,18 @@ export function compliancePct(
   if (p < COMPLIANCE.min) p = COMPLIANCE.min;
   if (p > COMPLIANCE.max) p = COMPLIANCE.max;
   return p;
+}
+
+// v0.19.0 — commitment check for staying on a plant/defuse channel through
+// retreat HP. Deterministic discipline gate (no roll): reuses the
+// Tenacity/Composure compliance curve at a neutral strategy threshold under
+// enemy-visible pressure. true → the unit holds the channel; false → it bails.
+export function holdsChannelUnderRetreat(unit: Unit): boolean {
+  return compliancePct(
+    unit,
+    CHANNEL_COMMIT.strategyThreshold,
+    CHANNEL_COMMIT.underFirePressure,
+  ) >= CHANNEL_COMMIT.minComplyPct;
 }
 
 // Look up the strategy assigned to the unit's team (player or AI side).

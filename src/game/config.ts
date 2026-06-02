@@ -670,12 +670,31 @@ export const AI_STRATEGY_EXPLORATION = 2;
 // plant hexes. Once the spike is down, DETONATION_TICKS later the attacker
 // team wins. Defenders can defuse by standing on the planted site's plant
 // hexes for DEFUSE_TICKS contiguous ticks with no attacker present.
+// v0.19.0 — the channeling unit (planter or defuser) is now committed: it
+// cannot move or shoot while its timer runs (enforced in tick.ts). A
+// committed unit that drops to retreat HP holds the channel or bails per
+// CHANNEL_COMMIT below.
 export const PLANT_TICKS = 2;
 // Pass B iteration: 15 → 20 ticks. Gives defenders more rotation time to
 // actually reach the planted site and defuse (zero defuses across 450 rounds
 // at 15-tick suggested defenders couldn't get there in time).
 export const DETONATION_TICKS = 20;
-export const DEFUSE_TICKS = 4;
+// v0.19.0 — 4 → 3. The no-shoot channel lock makes defusing a genuine
+// commitment (a defuser can't trade for itself); the shorter timer partly
+// offsets the added exposure.
+export const DEFUSE_TICKS = 3;
+
+// v0.19.0 — channel commitment. A unit already planting/defusing that drops
+// to retreat HP holds the channel (finishing under fire) instead of bailing
+// iff its discipline clears `minComplyPct`. Deterministic — no roll: evaluated
+// via compliancePct (Tenacity/Composure) at a neutral strategy threshold under
+// enemy-visible pressure, so gritty units clutch the defuse and flaky ones run.
+// Raise `minComplyPct` to make commitment rarer (more bailing).
+export const CHANNEL_COMMIT = {
+  strategyThreshold: 50,
+  underFirePressure: -15,
+  minComplyPct: 70,
+} as const;
 
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous

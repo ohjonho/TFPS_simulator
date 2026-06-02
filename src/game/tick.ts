@@ -45,7 +45,7 @@ import {
 import { assessEngagement } from './engage.ts';
 import { staticExposure, suspectedEnemyHexes, threatAt } from './threat.ts';
 import { situationAggressionDelta } from './situation.ts';
-import { evaluateDirectives } from './directives.ts';
+import { evaluateDirectives, holdsChannelUnderRetreat } from './directives.ts';
 import { resolveShot } from './combat.ts';
 import type { ShotContextInput } from './combat.ts';
 import { createRng } from './rng.ts';
@@ -170,7 +170,13 @@ export function stepTick(state: GameState): GameState {
     const seesEnemy = visibleEnemies.length > 0;
     const ticksSinceEnemySeen = seesEnemy ? 0 : prevAi.ticksSinceEnemySeen + 1;
 
-    const retreat = shouldRetreat(u).retreat;
+    // v0.19.0 — channel commitment. A unit already planting/defusing (committed
+    // on a prior tick) that hits retreat HP holds the channel iff its discipline
+    // clears the bar; otherwise it bails and is free to retreat-move (below).
+    const isChanneling =
+      state.plant.planting?.unitId === u.id || state.plant.defusing?.unitId === u.id;
+    const retreat = shouldRetreat(u).retreat
+      && !(isChanneling && holdsChannelUnderRetreat(u));
     // AI #2 — odds-based, trait-modulated engagement gate (replaces the binary
     // "any enemy visible → fight"). Picks the best target and decides whether
     // the duel is worth committing to; declining while exposed sets holdForSafety.
@@ -424,7 +430,10 @@ export function stepTick(state: GameState): GameState {
     // unit stays put even if moving/retreating was decided. The cardFlag is
     // cleared by match.startRound at round start, so it's per-round automatic.
     const delayedUntil = u.cardFlags.delayedMoveUntilTick ?? -1;
-    const moveSuppressedByDelay = tick < delayedUntil;
+    // v0.19.0 — a committed channeler that is holding (not bailing) is locked
+    // onto its hex; only a bail (retreat) releases it to run off the spike.
+    const moveSuppressed =
+      tick < delayedUntil || (isChanneling && !retreat);
 
     // Movement for moving/retreating units (engaged/holding stay put). Block
     // moves into hexes claimed by other live units (Pass 7.7). Pass 7.8: when
@@ -432,7 +441,7 @@ export function stepTick(state: GameState): GameState {
     // fixes the "stuck behind a teammate" clustering when two units share a
     // path through a chokepoint. Pass 8: Slow Flank uses the perimeter
     // variant of A* so the route hugs the map edge.
-    if (effectiveTarget && (mode === 'moving' || mode === 'retreating') && !moveSuppressedByDelay) {
+    if (effectiveTarget && (mode === 'moving' || mode === 'retreating') && !moveSuppressed) {
       let move = ensurePathToward(nextMoves[u.id], u.pos, effectiveTarget, state, !!u.cardFlags.slowFlank);
       let result = advanceUnit(u, move);
       const oldKey = `${u.pos.col},${u.pos.row}`;
@@ -551,6 +560,16 @@ export function stepTick(state: GameState): GameState {
     };
   }
 
+  // v0.19.0 — no-shoot channel lock. A unit actively planting/defusing this
+  // tick (resolved on post-move positions, matching updatePlantState's
+  // channeler) cannot fire: a defuser can't trade for itself, a planter can't
+  // peek mid-plant. Coverers (not on the spike) are unaffected and still trade.
+  const atkTeamId: Team = defenderTeamId === 'defenders' ? 'attackers' : 'defenders';
+  const channelers = resolveChannelers(working, state.plant, state.map, atkTeamId, defenderTeamId);
+  const channelingNow = new Set<string>();
+  if (channelers.planterId) channelingNow.add(channelers.planterId);
+  if (channelers.defuserId) channelingNow.add(channelers.defuserId);
+
   // 4. Fire/damage — nested-roll combat (§7.2). One seeded RNG per tick,
   // consumed in stable unit order; damage applied simultaneously below.
   const rng = createRng(hashSeed(state.seed, tick));
@@ -562,6 +581,11 @@ export function stepTick(state: GameState): GameState {
   for (const u of working) {
     if (u.state !== 'alive') continue;
     const ai = newAi[u.id];
+    // v0.19.0 — committed to a plant/defuse channel: no shooting this tick.
+    if (channelingNow.has(u.id)) {
+      ai.shotClock = 0;
+      continue;
+    }
     if (ai.mode !== 'engaged') {
       ai.shotClock = 0; // ready to fire the instant it engages
       continue;
@@ -770,60 +794,81 @@ type PlantUpdate = {
   events: GameEvent[];
   roundResult: { winner: Team } | null;
 };
-function updatePlantState(state: GameState, tick: number): PlantUpdate {
-  const events: GameEvent[] = [];
-  let roundResult: { winner: Team } | null = null;
-  const map = state.map;
-
-  // Per-site plant-hex sets keyed by "col,row" for O(1) lookup.
+// v0.19.0 — who is eligible to plant / defuse RIGHT NOW given positions? Shared
+// by the no-shoot lock (tick body, post-move/pre-fire) and the timer
+// (updatePlantState, post-fire) so the two never disagree about the channeler.
+//   Plant:  alive attacker on a site's plant hexes with no alive defender there
+//           (site A before B — deterministic tie-break).
+//   Defuse: spike down, alive defender on the planted site's plant hexes with
+//           no alive attacker there (attackers block). At most one of each.
+function resolveChannelers(
+  units: readonly Unit[],
+  plant: PlantState,
+  map: GameState['map'],
+  atkTeam: Team,
+  defTeam: Team,
+): { planterId: string | null; planterSite: 'A' | 'B' | null; defuserId: string | null } {
   const plantHexes: Record<'A' | 'B', Set<string>> = {
     A: new Set(map.sites.A.plantHexes.map((h) => `${h.col},${h.row}`)),
     B: new Set(map.sites.B.plantHexes.map((h) => `${h.col},${h.row}`)),
   };
   const posKey = (u: Unit) => `${u.pos.col},${u.pos.row}`;
+  const aliveAtk = units.filter((u) => u.team === atkTeam && u.state === 'alive');
+  const aliveDef = units.filter((u) => u.team === defTeam && u.state === 'alive');
+
+  if (plant.planted === null) {
+    for (const site of ['A', 'B'] as const) {
+      if (aliveDef.some((d) => plantHexes[site].has(posKey(d)))) continue;
+      const planter = aliveAtk.find((a) => plantHexes[site].has(posKey(a)));
+      if (planter) return { planterId: planter.id, planterSite: site, defuserId: null };
+    }
+    return { planterId: null, planterSite: null, defuserId: null };
+  }
+  const site = plant.planted.site;
+  if (aliveAtk.some((a) => plantHexes[site].has(posKey(a)))) {
+    return { planterId: null, planterSite: null, defuserId: null };
+  }
+  const defuser = aliveDef.find((d) => plantHexes[site].has(posKey(d)));
+  return { planterId: null, planterSite: null, defuserId: defuser ? defuser.id : null };
+}
+
+function updatePlantState(state: GameState, tick: number): PlantUpdate {
+  const events: GameEvent[] = [];
+  let roundResult: { winner: Team } | null = null;
 
   // Resolve teams from current side assignment.
   const atkTeam: Team = state.teamSide.defenders === 'attacker' ? 'defenders' : 'attackers';
   const defTeam: Team = atkTeam === 'defenders' ? 'attackers' : 'defenders';
-  const aliveAtk = state.units.filter((u) => u.team === atkTeam && u.state === 'alive');
-  const aliveDef = state.units.filter((u) => u.team === defTeam && u.state === 'alive');
+  const { planterId, planterSite, defuserId } =
+    resolveChannelers(state.units, state.plant, state.map, atkTeam, defTeam);
 
   let nextPlant: PlantState = state.plant;
 
   if (state.plant.planted === null) {
-    // No spike down. Look for the first eligible planter — alive attacker on
-    // a plant hex of a site with no alive defender on the same site's plant
-    // hexes. Site A is checked before B for deterministic tie-break.
-    let chosen: { planter: Unit; site: 'A' | 'B' } | null = null;
-    for (const site of ['A', 'B'] as const) {
-      const defOnSite = aliveDef.some((d) => plantHexes[site].has(posKey(d)));
-      if (defOnSite) continue;
-      const planter = aliveAtk.find((a) => plantHexes[site].has(posKey(a)));
-      if (planter) { chosen = { planter, site }; break; }
-    }
-    if (chosen) {
+    if (planterId && planterSite) {
+      const planter = state.units.find((u) => u.id === planterId)!;
       const cur = state.plant.planting;
-      const continuing = cur !== null && cur.unitId === chosen.planter.id && cur.site === chosen.site;
+      const continuing = cur !== null && cur.unitId === planterId && cur.site === planterSite;
       // Pass C2 — Reckless Push planter plants `plantTicksReduction` ticks
       // faster (min 1). Read from the planter's cardFlags at decision time.
       const effectivePlantTicks = Math.max(
         1,
-        PLANT_TICKS - (chosen.planter.cardFlags.recklessPush ? CARD_EFFECTS.recklessPush.plantTicksReduction : 0),
+        PLANT_TICKS - (planter.cardFlags.recklessPush ? CARD_EFFECTS.recklessPush.plantTicksReduction : 0),
       );
       if (continuing && tick - cur.startedAtTick >= effectivePlantTicks) {
         nextPlant = {
-          planted: { site: chosen.site, plantedAtTick: tick },
+          planted: { site: planterSite, plantedAtTick: tick },
           planting: null,
           defusing: null,
         };
-        events.push({ tick, roundIndex: state.round, type: 'plant', unit: chosen.planter.id, site: chosen.site });
+        events.push({ tick, roundIndex: state.round, type: 'plant', unit: planterId, site: planterSite });
       } else if (continuing) {
         // Already counted; keep ticking — next tick will hit the threshold.
         nextPlant = state.plant;
       } else {
         nextPlant = {
           ...state.plant,
-          planting: { unitId: chosen.planter.id, site: chosen.site, startedAtTick: tick },
+          planting: { unitId: planterId, site: planterSite, startedAtTick: tick },
         };
       }
     } else {
@@ -838,29 +883,24 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
       events.push({ tick, roundIndex: state.round, type: 'detonate', site });
       roundResult = { winner: atkTeam };
       nextPlant = state.plant; // keep planted record for kill-feed reference
-    } else {
-      // Defuse: alive defender on the site's plant hexes, no alive attacker
-      // on the same plant hexes (attackers block defuse).
-      const atkOnSite = aliveAtk.some((a) => plantHexes[site].has(posKey(a)));
-      const defuser = atkOnSite ? null : aliveDef.find((d) => plantHexes[site].has(posKey(d)));
-      if (defuser) {
-        const cur = state.plant.defusing;
-        const continuing = cur !== null && cur.unitId === defuser.id;
-        if (continuing && tick - cur.startedAtTick >= DEFUSE_TICKS) {
-          events.push({ tick, roundIndex: state.round, type: 'defuse', unit: defuser.id });
-          roundResult = { winner: defTeam };
-          nextPlant = { planted: null, planting: null, defusing: null };
-        } else if (continuing) {
-          nextPlant = state.plant;
-        } else {
-          nextPlant = {
-            ...state.plant,
-            defusing: { unitId: defuser.id, startedAtTick: tick },
-          };
-        }
+    } else if (defuserId) {
+      const cur = state.plant.defusing;
+      const continuing = cur !== null && cur.unitId === defuserId;
+      if (continuing && tick - cur.startedAtTick >= DEFUSE_TICKS) {
+        events.push({ tick, roundIndex: state.round, type: 'defuse', unit: defuserId });
+        roundResult = { winner: defTeam };
+        nextPlant = { planted: null, planting: null, defusing: null };
+      } else if (continuing) {
+        nextPlant = state.plant;
       } else {
-        nextPlant = { ...state.plant, defusing: null };
+        nextPlant = {
+          ...state.plant,
+          defusing: { unitId: defuserId, startedAtTick: tick },
+        };
       }
+    } else {
+      // No eligible defuser (none on the spike, or an attacker is blocking).
+      nextPlant = { ...state.plant, defusing: null };
     }
   }
 

@@ -313,6 +313,22 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.19.0 — planting and defusing are real commitments</h3>
+    <ul>
+      <li><strong>A unit planting or defusing can no longer move or shoot while
+        the timer runs.</strong> Previously a defuser sitting on the spike could
+        trade shots to defend itself; now it's locked in place and exposed — so a
+        defuse is a genuine gamble you have to clear the area for first. The same
+        applies to the planter. <strong>Defuse time drops from 4 ticks to 3</strong>
+        to partly offset the added risk.</li>
+      <li><strong>Discipline decides whether a unit commits.</strong> When a unit
+        already on the spike is shot down to its last health, whether it holds and
+        finishes under fire or bails depends on its Tenacity and Composure — gritty
+        players clutch the defuse, flaky ones run. Stepping onto the spike is now a
+        decision with real follow-through.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.17.0 — defenders retake and defuse</h3>
     <ul>
       <li><strong>Defenders now actually retake the spike.</strong> After a plant,
