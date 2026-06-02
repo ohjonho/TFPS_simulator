@@ -329,6 +329,19 @@ const PATCH_NOTES = `
     </ul>
   </section>
   <section>
+    <h3>v0.18.0 — Canyon reworked (v3)</h3>
+    <ul>
+      <li><strong>Canyon's geometry was reshaped to give the defense a fighting
+        chance.</strong> Both sites were expanded and given more cover to hold
+        from, and several chokes were narrowed so defenders can actually anchor an
+        angle instead of getting overrun the instant attackers arrive. The dense
+        old layout left defenders bottom-of-the-pack; the rework lifts their
+        average round win rate from ~19% to ~24%, with Hold now trading evenly vs
+        a straight Execute and Pressure hard-countering Control. Fast Rush pushes
+        are still the open problem against a static hold.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.17.0 — defenders retake and defuse</h3>
     <ul>
       <li><strong>Defenders now actually retake the spike.</strong> After a plant,
