@@ -313,6 +313,22 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.22.0 — defenders collapse onto the site under attack</h3>
+    <ul>
+      <li><strong>When defenders read which site the attackers are committing to,
+        the off-site defenders now rotate in to meet them.</strong> The old
+        defense set up across both sites and mid and then mostly stayed put — so
+        the attackers, who pick one site and hit it together, kept arriving a
+        man up while three defenders sat alive on the other side of the map. Now,
+        once the defense collectively sees enough attackers piling onto a site,
+        the players not holding it converge to defend or retake it — while one
+        watcher stays back on the quiet site so a fake-and-switch can't stroll in
+        for a free plant. It's a big step toward fixing defenders being
+        chronically outnumbered at the bombsite — they still arrive a little
+        short, but far less than before.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.21.0 — longer fuse, more time to retake</h3>
     <ul>
       <li><strong>The spike now takes longer to detonate (25 ticks, up from 20).</strong>

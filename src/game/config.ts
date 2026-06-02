@@ -716,6 +716,28 @@ export const POST_PLANT_HUNT = {
   egoTraits: ['Ego', 'Hot Head'] as readonly string[],
 };
 
+// v0.22.0 — defensive collapse-on-commit (pre-plant). The attacker bias is
+// structural: defenders split across two sites + mid while attackers
+// concentrate, so the defense arrives at the contested site a man short
+// (measured ~2.5 attackers vs ~0.2 defenders on-site at the plant, with ~3
+// defenders alive but elsewhere). When the defense collectively SEES at least
+// `commitThreshold` attackers committing to one site (and more than the other),
+// the off-site defenders converge on it — keeping `minWatchers` nearest the
+// quiet site so a fake-and-switch can't walk in free.
+//   `readRadius`: an attacker counts toward a site when it's within this many
+//     hexes of that site's centroid AND closer to it than the other site —
+//     wide enough to catch the push out in the approach (entry/choke/main), so
+//     the collapse fires early enough for off-site defenders to actually arrive
+//     (a tight centroid-only read triggered when attackers were already on-site).
+//   `siteRadius`: a converging defender stops overriding once this close to the
+//     target, handing back to the legacy hold/engage instead of pinning deep.
+export const DEFENSIVE_COLLAPSE = {
+  readRadius: 14,
+  siteRadius: 7,
+  commitThreshold: 2,
+  minWatchers: 1,
+} as const;
+
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous
 // tick ("first sight"), the first shot takes this HR penalty. Models the

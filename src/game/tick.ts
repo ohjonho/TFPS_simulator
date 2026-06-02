@@ -54,6 +54,7 @@ import {
   AI,
   ATTRIBUTES,
   CARD_EFFECTS,
+  DEFENSIVE_COLLAPSE,
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
@@ -144,6 +145,53 @@ export function stepTick(state: GameState): GameState {
       let d = Infinity;
       for (const h of plantHexList) d = Math.min(d, hexDistance(u.pos, h));
       if (d < bestD) { bestD = d; defuserId = u.id; }
+    }
+  }
+
+  // Tier 1 (v0.22.0) — defensive collapse-on-commit (pre-plant only; post-plant
+  // the Pass F retake above owns it). The defense splits across two sites + mid
+  // while attackers concentrate, so it reaches the contested site a man short.
+  // Read the committed site from the defense's COLLECTIVE current vision —
+  // attackers any alive defender can see, bucketed by site centroid — and pull
+  // the off-site defenders onto it, keeping `minWatchers` nearest the quiet
+  // site so a fake-and-switch can't walk in free. Pure/deterministic — no RNG.
+  let collapseHex: HexCoord | null = null;
+  const collapseExempt = new Set<string>();
+  if (!state.plant.planted) {
+    const cenA = state.map.sites.A.centerHex;
+    const cenB = state.map.sites.B.centerHex;
+    const seenAtk = new Map<string, HexCoord>();
+    for (const def of working) {
+      if (def.team !== defenderTeamId || def.state !== 'alive') continue;
+      for (const atk of enemiesVisibleTo(def, working, perUnit[def.id])) seenAtk.set(atk.id, atk.pos);
+    }
+    let nearA = 0;
+    let nearB = 0;
+    for (const pos of seenAtk.values()) {
+      const dA = hexDistance(pos, cenA);
+      const dB = hexDistance(pos, cenB);
+      // Attribute each seen attacker to the site it's committing to — nearer
+      // of the two, and within the (wide) read radius — so an attacker out in
+      // the approach already counts, but mid traffic equidistant to both is not
+      // double-counted toward a phantom commit.
+      if (dA <= DEFENSIVE_COLLAPSE.readRadius && dA < dB) nearA++;
+      else if (dB <= DEFENSIVE_COLLAPSE.readRadius && dB < dA) nearB++;
+    }
+    let collapseSite: 'A' | 'B' | null = null;
+    if (nearA >= DEFENSIVE_COLLAPSE.commitThreshold && nearA > nearB) { collapseSite = 'A'; collapseHex = cenA; }
+    else if (nearB >= DEFENSIVE_COLLAPSE.commitThreshold && nearB > nearA) { collapseSite = 'B'; collapseHex = cenB; }
+    if (collapseSite) {
+      const quietHex = collapseSite === 'A' ? cenB : cenA;
+      const aliveDef = working
+        .filter((u) => u.team === defenderTeamId && u.state === 'alive')
+        .sort((a, b) => {
+          const da = hexDistance(a.pos, quietHex);
+          const db = hexDistance(b.pos, quietHex);
+          return da !== db ? da - db : a.id.localeCompare(b.id);
+        });
+      for (let k = 0; k < Math.min(DEFENSIVE_COLLAPSE.minWatchers, aliveDef.length); k++) {
+        collapseExempt.add(aliveDef[k].id);
+      }
     }
   }
 
@@ -294,6 +342,20 @@ export function stepTick(state: GameState): GameState {
         effectiveTarget = midGoal;
         nextTargets[u.id] = midGoal;
       }
+    }
+
+    // Tier 1 (v0.22.0) — collapse onto the committed site (pre-plant). An
+    // off-site defender abandons its static hold and converges on the read site
+    // so the defense isn't a man short at the plant / retake. Engaged units keep
+    // fighting; the quiet-site watcher(s) (collapseExempt) stay; retreat wins.
+    // Targets the site centroid and releases once near it, so the legacy hold /
+    // engage takes back over instead of pinning onto the exact hex pre-plant.
+    if (collapseHex && !retreat && mode !== 'engaged'
+      && u.team === defenderTeamId && !collapseExempt.has(u.id)
+      && hexDistance(u.pos, collapseHex) > DEFENSIVE_COLLAPSE.siteRadius) {
+      mode = 'moving';
+      effectiveTarget = collapseHex;
+      nextTargets[u.id] = collapseHex;
     }
 
     // Pass F — coordinated defender retake on plant (was Pass B's "everyone
