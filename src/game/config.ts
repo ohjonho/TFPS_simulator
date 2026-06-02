@@ -696,6 +696,20 @@ export const CHANNEL_COMMIT = {
   minComplyPct: 70,
 } as const;
 
+// v0.20.0 — post-plant hunt. An aggressive / Ego defender designated as the
+// retake defuser clears the last attacker BEFORE committing to the spike,
+// instead of dying on a no-shoot defuse (v0.19.0). It defers the defuse only
+// while a live attacker is visible (a real target — no ghost-chasing) AND
+// enough detonation time remains to still defuse after the kill
+// (timeLeft > DEFUSE_TICKS + timeMarginTicks); when the clock tightens or the
+// threat clears, it commits to the defuse. `aggroBar` is the effective-
+// aggression cutoff; the listed traits always qualify regardless of aggression.
+export const POST_PLANT_HUNT = {
+  aggroBar: 60,
+  timeMarginTicks: 2,
+  egoTraits: ['Ego', 'Hot Head'] as readonly string[],
+};
+
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous
 // tick ("first sight"), the first shot takes this HR penalty. Models the

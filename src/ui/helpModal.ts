@@ -313,6 +313,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.20.0 — a cornered aggressive defender fights before defusing</h3>
+    <ul>
+      <li><strong>When an aggressive or Ego defender is the last one alive, it
+        clears the attacker before committing to the spike.</strong> Since a
+        defuser can't shoot (v0.19.0), a hot-headed defender alone in a 1v1 retake
+        used to just die on the hex. Now — with no teammate left to trade for it,
+        and only if there's still time to win the duel and then defuse — it hunts
+        the attacker down first and defuses once the area is clear. With teammates
+        still up, the coordinated retake runs as before; calmer, disciplined
+        defenders go straight for the defuse; and when the detonation clock gets
+        tight, everyone commits to the defuse regardless — ego never costs you the
+        round on the timer.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.19.0 — planting and defusing are real commitments</h3>
     <ul>
       <li><strong>A unit planting or defusing can no longer move or shoot while

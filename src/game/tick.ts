@@ -60,6 +60,7 @@ import {
   MIN_ROUND_TICKS_FOR_HOLD_END,
   PLANT_TICKS,
   POSITIONING,
+  POST_PLANT_HUNT,
   ROTATE_AFTER_HOLD_TICKS,
   ROUND_TICK_LIMIT,
   SITUATION,
@@ -303,22 +304,31 @@ export function stepTick(state: GameState): GameState {
     // the defuser clears the angle first. Retreat (HP 1) still wins.
     if (state.plant.planted && plantHexList.length > 0 && !retreat && u.team === defenderTeamId) {
       if (u.id === defuserId) {
-        // Nearest plant hex. When clear, commit (override engage) and — once on
-        // the hex — target self so movement is a no-op and the cover-seek can't
-        // pull it back off the spike. When contested, approach and let engage
-        // clear the blockers first.
-        let goal = plantHexList[0];
-        let gd = Infinity;
-        for (const h of plantHexList) { const d = hexDistance(u.pos, h); if (d < gd) { gd = d; goal = h; } }
-        const onPlant = plantHexList.some((h) => sameHex(h, u.pos));
-        if (plantClear) {
-          mode = 'moving';
-          effectiveTarget = onPlant ? u.pos : goal;
-        } else if (mode !== 'engaged') {
-          mode = 'moving';
-          effectiveTarget = goal;
+        // Step 2 (v0.20.0) — an aggressive / Ego defuser clears the last attacker
+        // BEFORE committing to the spike (a no-shoot defuser just dies on the hex
+        // otherwise). While that hold applies, leave engage/hold as decided so the
+        // unit fights its target; otherwise commit onto the spike as before.
+        const huntFirst = postPlantHuntFirst(
+          u, state, tick, seesEnemy, aliveTeamCount(working, u.team) === 1,
+        );
+        if (!huntFirst) {
+          // Nearest plant hex. When clear, commit (override engage) and — once on
+          // the hex — target self so movement is a no-op and the cover-seek can't
+          // pull it back off the spike. When contested, approach and let engage
+          // clear the blockers first.
+          let goal = plantHexList[0];
+          let gd = Infinity;
+          for (const h of plantHexList) { const d = hexDistance(u.pos, h); if (d < gd) { gd = d; goal = h; } }
+          const onPlant = plantHexList.some((h) => sameHex(h, u.pos));
+          if (plantClear) {
+            mode = 'moving';
+            effectiveTarget = onPlant ? u.pos : goal;
+          } else if (mode !== 'engaged') {
+            mode = 'moving';
+            effectiveTarget = goal;
+          }
+          nextTargets[u.id] = effectiveTarget ?? u.pos;
         }
-        nextTargets[u.id] = effectiveTarget ?? u.pos;
       } else if (mode !== 'engaged') {
         // Coverer — hold a covered angle with LoS to the spike to trade for the
         // defuser, instead of crowding onto the hex.
@@ -794,6 +804,30 @@ type PlantUpdate = {
   events: GameEvent[];
   roundResult: { winner: Team } | null;
 };
+// Step 2 (v0.20.0) — should this designated defuser hunt the last attacker
+// BEFORE committing to the spike? This is the lone-retaker case the player asked
+// for: an aggressive / Ego defender with NO surviving teammate to trade for it
+// would just die on a no-shoot defuse, so it clears the threat first. Gated to
+// the last defender alive — with coverers present, the coordinated retake
+// already trades for the defuser, and deferring a clear defuse there only throws
+// winnable rounds away. Also requires a visible attacker to hunt (no ghost-
+// chasing) and enough detonation time left to still defuse after the kill.
+// Deterministic — no RNG.
+function postPlantHuntFirst(
+  unit: Unit,
+  state: GameState,
+  tick: number,
+  hasVisibleEnemy: boolean,
+  isLastDefenderAlive: boolean,
+): boolean {
+  if (!state.plant.planted || !hasVisibleEnemy || !isLastDefenderAlive) return false;
+  const timeLeft = DETONATION_TICKS - (tick - state.plant.planted.plantedAtTick);
+  if (timeLeft <= DEFUSE_TICKS + POST_PLANT_HUNT.timeMarginTicks) return false;
+  const egoLike = [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]
+    .some((t) => t !== null && POST_PLANT_HUNT.egoTraits.includes(t));
+  return egoLike || unit.modifiers.aggression >= POST_PLANT_HUNT.aggroBar;
+}
+
 // v0.19.0 — who is eligible to plant / defuse RIGHT NOW given positions? Shared
 // by the no-shoot lock (tick body, post-move/pre-fire) and the timer
 // (updatePlantState, post-fire) so the two never disagree about the channeler.
