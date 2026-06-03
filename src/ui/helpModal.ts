@@ -313,6 +313,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.26.0 — Hot Head and Ego now play differently</h3>
+    <ul>
+      <li><strong>Ego and Hot Head used to be the exact same trait under two
+        names — now they're distinct.</strong> Both simply lowered a unit's bar
+        for picking fights. Now <strong>Hot Head</strong> stays the on-sight
+        aggressor (peeks and takes duels readily), while <strong>Ego</strong> is
+        the high-ceiling <em>freelancer</em> — it ignores the team plan more
+        often, breaking off its assigned hold or angle to do its own thing. On
+        defense that freelancing tends to backfire (an Ego player abandons a good
+        angle and gets caught out), matching the "talented but uncoachable"
+        archetype. The overall <em>magnitude</em> of aggressive traits is still
+        being tuned and will land in the upcoming trait/role/hero rebalance.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.25.0 — skill wins fights, it no longer picks them</h3>
     <ul>
       <li><strong>A unit's aim and skill traits no longer secretly make it take

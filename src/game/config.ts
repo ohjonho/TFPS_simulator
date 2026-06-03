@@ -264,11 +264,15 @@ export const ENGAGE = {
   softness: 0.15,               // logistic band width; smaller = sharper cutoff
   aggressionWeight: 0.003,      // threshold -= (aggression-50) × this (Vanguard 70 → −0.06)
   // Per-trait threshold deltas (negative = takes worse fights). Summed across
-  // the unit's skill/behavioral/personality slots. Calibrated so an Ego unit
-  // (~0.33 threshold) takes a 40/60 fight ≈62% of the time; a plain Warden
-  // (~0.55) ≈28%; Patient/Lurker ≈15%; neutral 50/50 → 50%.
+  // the unit's skill/behavioral/personality slots. Calibrated so a Hot Head
+  // takes a 40/60 fight more readily; a plain Warden (~0.55) ≈28%;
+  // Patient/Lurker ≈15%; neutral 50/50 → 50%.
+  // v0.26.0 — Ego removed here (was −0.16, identical to Hot Head): the two were
+  // byte-identical. Ego is now differentiated by CHANNEL — it freelances off the
+  // team plan via a directive-COMPLIANCE penalty (COMPLIANCE_TRAIT_DELTA below),
+  // not by taking worse duels. Hot Head remains the on-sight peeker here.
   traitThreshold: {
-    Ego: -0.16, 'Hot Head': -0.16, 'Run-n-Gun': -0.10, Entry: -0.08, Clutch: -0.08,
+    'Hot Head': -0.16, 'Run-n-Gun': -0.10, Entry: -0.08, Clutch: -0.08,
     Patient: 0.12, Lurker: 0.10, Composed: 0.08, Sentinel: 0.08,
   } as Record<string, number>,
   minThreshold: 0.20,
@@ -283,6 +287,19 @@ export const ENGAGE = {
   // Below it, declining just means "don't stop to fight" and movement proceeds.
   holdThreatCutoff: 0.45,
 } as const;
+
+// v0.26.0 — per-trait directive-compliance delta (pp added to compliancePct in
+// directives.ts, summed across the unit's three trait slots). This is the
+// "freelance" channel, distinct from the engage threshold: a negative delta
+// makes a unit more likely to BREAK its strategy directives and fall through to
+// the legacy behavior tree (leave its hold, peek off-plan), independent of
+// whether it takes a given duel. Ego (the high-ceiling freelancer) lives here
+// instead of in ENGAGE.traitThreshold — that's what differentiates it from Hot
+// Head (the on-sight peeker, who stays in traitThreshold). Coherent with Ego's
+// Solo_Frag unlock (complianceThreshold 30 = "accepts freelancing").
+export const COMPLIANCE_TRAIT_DELTA: Record<string, number> = {
+  Ego: -25,
+};
 
 // --- Situational read (AI competence #3) ----------------------------------
 // A per-tick aggression delta from the round situation, fed through

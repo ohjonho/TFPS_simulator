@@ -28,7 +28,7 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
-import { CHANNEL_COMMIT } from './config.ts';
+import { CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
 // adhere); ±0.4 per Discipline pt; ±0.2 per Composure pt; demanding
@@ -62,6 +62,12 @@ export function compliancePct(
     + COMPLIANCE.composureWeight  * (c - 50)
     - COMPLIANCE.thresholdWeight  * (complianceThreshold - 50)
     + situationalPressure;
+  // v0.26.0 — per-trait freelance channel. A negative delta (e.g. Ego) makes the
+  // unit break directives more often → falls through to the legacy tree. Summed
+  // across the unit's three trait slots; absent traits contribute 0.
+  for (const id of [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]) {
+    if (id) p += COMPLIANCE_TRAIT_DELTA[id] ?? 0;
+  }
   if (p < COMPLIANCE.min) p = COMPLIANCE.min;
   if (p > COMPLIANCE.max) p = COMPLIANCE.max;
   return p;
