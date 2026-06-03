@@ -684,7 +684,12 @@ export const PLANT_TICKS = 2;
 // defender win across the three live maps (Foundry +2, Atoll +5, Canyon +6 —
 // the dense map where retakes were arriving at the detonation wire). Banked as
 // a partial step toward the ~50/50 target.
-export const DETONATION_TICKS = 25;
+// v0.23.0: 25 → 30. Even with the defensive collapse, cross-map retakes arrived
+// at the wire (a retake needs rotation ~20-30 ticks + defuse, vs a 25-tick fuse).
+// 30 roughly matches real tac shooters (post-plant window is several× a
+// rotation). Kept identical on every map for player consistency; per-map balance
+// (e.g. Foundry, already ~even) is handled by other levers, not the fuse.
+export const DETONATION_TICKS = 30;
 // v0.19.0 — 4 → 3. The no-shoot channel lock makes defusing a genuine
 // commitment (a defuser can't trade for itself); the shorter timer partly
 // offsets the added exposure.

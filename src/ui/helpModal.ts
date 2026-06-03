@@ -313,6 +313,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.23.0 — longer fuse (30 ticks)</h3>
+    <ul>
+      <li><strong>The spike now takes 30 ticks to detonate (up from 25).</strong>
+        Even with defenders collapsing onto the contested site, cross-map retakes
+        kept arriving right as the spike went off — there wasn't enough time after
+        a plant to rotate in and defuse. A longer fuse fixes that and is closer to
+        real tactical shooters, where the post-plant window is several times a
+        rotation. It lifts the defense on every map; we keep the timer identical
+        across all maps for consistency, and will rebalance individual maps by
+        other means if one ends up too defender-friendly.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.22.0 — defenders collapse onto the site under attack</h3>
     <ul>
       <li><strong>When defenders read which site the attackers are committing to,
