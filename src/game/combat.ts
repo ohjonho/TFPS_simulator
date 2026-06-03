@@ -13,7 +13,7 @@
 // Pure: given shooter/target/map/context/buffs/cardEffects/rng, return
 // the shot's outcome. Tick.ts owns the call ordering + per-tick RNG.
 
-import type { ActiveCardEffect, Buff, MapDefinition, RangeBand, Unit, Weapon } from './types.ts';
+import type { ActiveCardEffect, Attributes, Buff, MapDefinition, Modifiers, RangeBand, Unit, Weapon } from './types.ts';
 import type { Rng } from './rng.ts';
 import { hexDistance, hexLine } from './hex.ts';
 import {
@@ -429,9 +429,29 @@ export function resolveShot(
   return { hit, headshot, damage, band: ctx.band, cover: ctx.crossesCover };
 }
 
+// v0.25.0 — neutral per-unit power, used by the skill-neutral engage-odds path.
+// Mirrors units.ts NEUTRAL_ATTRIBUTES + the construction-time neutral Modifiers
+// (all 50 / no off-position), so a shooter cloned with these contributes zero
+// attribute/modifier HR — the effective-stat seam then reflects only the
+// tactical matchup (weapon/range/cover/fire-rate/mark).
+const NEUTRAL_ATTRS: Attributes = {
+  aim: 50, headshot: 50, reflexes: 50, weaponAffinity: 50,
+  vision: 50, mapIQ: 50, tenacity: 50, composure: 50, adaptability: 50, comms: 50,
+};
+const NEUTRAL_MODS: Modifiers = {
+  aggression: 50, baseAggression: 50, offPosition: false, retreatThresholdMod: 0,
+};
+
 // Decision-time estimate of `shooter`'s expected damage per tick against
 // `target` at the current geometry — the input to the AI's engagement gate
-// (engage.ts). Routes through the real effective-stat seam, so the mark, traits,
+// (engage.ts). `skillOddsWeight` (config.ENGAGE.skillOddsWeight, 0..1) blends
+// this between FULL personal power (1.0 = the original full effective-stat read)
+// and a power-stripped NEUTRAL clone (0.0 — attributes/modifiers 50, no trait
+// HR/HS, no card flags, no buffs). Below 1.0 it partially decouples combat POWER
+// from the commit DECISION, so skill traits win the fights you take rather than
+// (perversely) making you take more. Real damage (resolveShot) is unaffected.
+// The neutral read is byte-equivalent to the unit for a flat-50 / no-trait
+// roster, so the vanilla baseline is provably unchanged at any weight. Routes through the real effective-stat seam, so the mark, traits,
 // cover, range, weapon and attributes all flow in; weighs head/body damage and
 // fire rate so a sniper's 2/4 every-2-ticks reads as the threat it is. The
 // engagement-progression ctx (firstShot / settle / peeker's) is approximated to
@@ -447,6 +467,7 @@ export function estimateEdpt(
   cardEffects: readonly ActiveCardEffect[],
   currentTick: number,
   lastAlive: boolean,
+  skillOddsWeight = 1,
 ): number {
   const dist = hexDistance(shooter.pos, target.pos);
   const markedTarget = cardEffects.some(
@@ -473,9 +494,25 @@ export function estimateEdpt(
     spearheadFirstEngagement: false,
     firstSightShot: false,
   };
-  const hr = effectiveHitPct(shooter, ctx, buffs) / 100;
-  const hs = headshotPct(shooter, ctx, buffs) / 100;
   const dmg = DAMAGE[shooter.weapon];
-  const expDamagePerShot = (1 - hs) * dmg.body + hs * dmg.head;
-  return (hr * expDamagePerShot) / FIRE_RATE[shooter.weapon];
+  const fr = FIRE_RATE[shooter.weapon];
+  const edptOf = (s: Unit, b: readonly Buff[]): number => {
+    const hr = effectiveHitPct(s, ctx, b) / 100;
+    const hs = headshotPct(s, ctx, b) / 100;
+    return (hr * ((1 - hs) * dmg.body + hs * dmg.head)) / fr;
+  };
+  // Full personal-power read (the original behavior). At weight 1.0 we're done.
+  const full = edptOf(shooter, buffs);
+  if (skillOddsWeight >= 1) return full;
+  // Neutral read: power stripped to baseline so the odds carry only the tactical
+  // matchup. Real weapon kept (sniper vs rifle IS tactical), as is the mark bonus
+  // (ctx.markedTarget — a team state, not personal skill). Blend toward full by
+  // skillOddsWeight (0 = fully neutral). Byte-equal to `full` for a flat-50 /
+  // no-trait unit, so the vanilla baseline is unchanged at any weight.
+  const neutralShooter: Unit = {
+    ...shooter, attributes: NEUTRAL_ATTRS, modifiers: NEUTRAL_MODS,
+    skillTrait: null, behavioralTrait: null, personalityTrait: null, cardFlags: {},
+  };
+  const neutral = edptOf(neutralShooter, []);
+  return neutral + skillOddsWeight * (full - neutral);
 }

@@ -80,8 +80,8 @@ export function assessEngagement(
   let bestOdds = 0.5;
   for (const e of visibleEnemies) {
     const eLastAlive = aliveTeam(state.units, e.team) === 1;
-    const myEdpt = estimateEdpt(unit, e, state.map, state.buffs[unit.id] ?? [], state.cardEffects, tick, lastAlive);
-    const eEdpt = estimateEdpt(e, unit, state.map, state.buffs[e.id] ?? [], state.cardEffects, tick, eLastAlive);
+    const myEdpt = estimateEdpt(unit, e, state.map, state.buffs[unit.id] ?? [], state.cardEffects, tick, lastAlive, ENGAGE.skillOddsWeight);
+    const eEdpt = estimateEdpt(e, unit, state.map, state.buffs[e.id] ?? [], state.cardEffects, tick, eLastAlive, ENGAGE.skillOddsWeight);
     const odds = myEdpt + eEdpt > 0 ? myEdpt / (myEdpt + eEdpt) : 0.5;
     const marked = isMarked(state, unit.team, e.id, tick);
     const score = odds + 0.15 * (e.maxHp - e.hp) + (marked ? 0.25 : 0) - 0.01 * hexDistance(unit.pos, e.pos);

@@ -248,6 +248,18 @@ export const COMMS = {
 // fights) and raised by patient/anchor traits (wait for the good fight). The
 // accept roll uses a dedicated seeded RNG stream in tick.ts (determinism safe).
 export const ENGAGE = {
+  // v0.25.0 — partial skill-decoupling of the engage odds. The "should I take
+  // this duel?" odds (estimateEdpt) blend between FULL personal power (1.0) and a
+  // power-stripped NEUTRAL read (0.0 — attributes 50, no trait HR/HS, no card
+  // flags/buffs/modifier HR; weapon/range/cover/fire-rate/mark kept). This
+  // decouples combat POWER from the commit DECISION so skill/aim traits WIN the
+  // fights you take (resolveShot is untouched) instead of perversely making you
+  // TAKE more — taming the map-chaotic skill-trait win% swings. Behavior intent
+  // stays in `threshold` below (aggression + traitThreshold). Measured: full
+  // neutral (0.0) over-corrects (blinds the AI to real skill gaps → strong units
+  // no longer respected, balanced Foundry slips); a partial weight keeps skilled
+  // units partly confident + partly feared while still cutting the swing.
+  skillOddsWeight: 0.5,
   baseThreshold: 0.50,          // a 50/50 fight is a coin flip at neutral discipline
   softness: 0.15,               // logistic band width; smaller = sharper cutoff
   aggressionWeight: 0.003,      // threshold -= (aggression-50) × this (Vanguard 70 → −0.06)

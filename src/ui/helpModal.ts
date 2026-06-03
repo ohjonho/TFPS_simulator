@@ -313,6 +313,24 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.25.0 — skill wins fights, it no longer picks them</h3>
+    <ul>
+      <li><strong>A unit's aim and skill traits no longer secretly make it take
+        more fights — only win the ones it takes.</strong> The AI decided whether
+        to commit to a duel from a unit's full combat power, so a high-aim or
+        skill-trait player saw better odds and peeked far more often. On maps
+        where a defender should hold their angle, that over-peeking backfired —
+        so a "+aim" trait could swing a map's win rate wildly, flip sign between
+        maps, and even make a side <em>worse</em>, with no consistent value. Now
+        the commit decision reads mostly the tactical matchup (weapon, range,
+        cover, numbers) while skill still decides who <em>wins</em> the fight, so
+        traits behave far more predictably. Skill counts at half-weight in the
+        decision — going fully neutral over-corrected and made the AI ignore
+        genuinely strong opponents. Groundwork for rebalancing roles, heroes, and
+        traits next.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.24.0 — Atoll II rebuilt</h3>
     <ul>
       <li><strong>Atoll II is a real map now.</strong> It replaces the old
