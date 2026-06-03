@@ -30,7 +30,12 @@ export const LOADOUTS = {
 } as const;
 
 export const UNIT_DEFAULTS = {
-  maxHp: 3,
+  // Rebalance: 3→4. Longer TTK (one extra rifle body-hit; snipers still
+  // one-shot on headshot / two-shot body) opens trade windows and mid-fight
+  // repositioning, so coordination/positioning carry real weight instead of
+  // pure aim deciding the duel. Measured on Foundry II: Leadership gap
+  // +15→+25, Improvisation un-inerted, Discipline de-trapped, defenses evened.
+  maxHp: 4,
 } as const;
 
 // Team size (config knob). createTeam builds this many units per team from the
@@ -220,6 +225,19 @@ export const POSITIONING = {
 //     (Canyon only for now) rather than global.
 export const SPAWN_SPREAD = {
   enabled: false,
+} as const;
+
+// --- Team-trade coordination (Phase 3 — Leadership / comms) -----------------
+// Makes the comms (Leadership) attribute mechanically real. When a teammate has
+// fired recently (ctx.allyFiredRecently — an engagement to trade into), a unit's
+// hit chance shifts by its comms relative to neutral (50): high-Leadership
+// rosters convert trades, low ones fumble them. Stacks with the Trader trait's
+// flat bonus. `enabled` A/B-flags the whole mechanism. MEASUREMENT-GATED — kept
+// only if comms-high vs comms-low rosters show a non-inert win-rate gap at 5v5
+// (team coordination was inert at 3v3; more bodies may revive it).
+export const COMMS = {
+  enabled: true,
+  tradeScalePerPt: 0.3, // HR pp per comms point off 50 (±12 at comms 90 / 10)
 } as const;
 
 // --- Engagement gate (AI competence #2) -----------------------------------
@@ -517,8 +535,8 @@ export const ATTRIBUTES = {
     max: 90,
   },
   formulas: {
-    aim: { multiplier: 0.2 },                                   // pp per (rating-50); contributes to HR
-    weaponAffinity: { multiplier: 0.1 },                        // pp per (rating-50); H1 — replaces per-weapon handling
+    aim: { multiplier: 0.13 },                                  // pp per (rating-50); contributes to HR. Rebalance: 0.2→0.13 to cut aim dominance (Mechanics gap was +80pp, swamping tactics) so positioning/first-contact carry comparable weight. Aim stays the #1 lever, not 2.3× everything.
+    weaponAffinity: { multiplier: 0.06 },                       // pp per (rating-50); H1 — replaces per-weapon handling. Rebalance: 0.1→0.06 (paired with aim cut).
     vision: {                                                   // H1 (was awareness)
       coneMultiplier: 0.4,                                      // deg per (rating-50); cone widens with vision
       coneCap: 20,                                              // ±deg cap
@@ -529,7 +547,7 @@ export const ATTRIBUTES = {
       withTraitMultiplier: 0.15,                                // stacks on Clutch trait
       withoutTraitMultiplier: 0.15,                             // default last-alive bonus
     },
-    headshot: { multiplier: 0.2 },                              // pp per (rating-50); linear HS contribution
+    headshot: { multiplier: 0.13 },                             // pp per (rating-50); linear HS contribution. Rebalance: 0.2→0.13 (reduces headshot-lethality swing that compounds aim dominance).
     reflexes: { firstShotMultiplier: 0.01 },                    // per (rating-50); scales First Shot trait magnitude
     mapIQ: { highThreshold: 70, lowThreshold: 30 },             // H1 — absorbs old `positioning`; widens cover-seek radius
   },
@@ -652,12 +670,78 @@ export const AI_STRATEGY_EXPLORATION = 2;
 // plant hexes. Once the spike is down, DETONATION_TICKS later the attacker
 // team wins. Defenders can defuse by standing on the planted site's plant
 // hexes for DEFUSE_TICKS contiguous ticks with no attacker present.
+// v0.19.0 — the channeling unit (planter or defuser) is now committed: it
+// cannot move or shoot while its timer runs (enforced in tick.ts). A
+// committed unit that drops to retreat HP holds the channel or bails per
+// CHANNEL_COMMIT below.
 export const PLANT_TICKS = 2;
 // Pass B iteration: 15 → 20 ticks. Gives defenders more rotation time to
 // actually reach the planted site and defuse (zero defuses across 450 rounds
 // at 15-tick suggested defenders couldn't get there in time).
-export const DETONATION_TICKS = 20;
-export const DEFUSE_TICKS = 4;
+// v0.21.0: 20 → 25. The attacker bias is structural (defenders split across
+// two sites + mid while attackers concentrate), so combat tweaks barely move
+// it — extra fuse is a rotation/retake-window lever instead. Measured +4.5pp
+// defender win across the three live maps (Foundry +2, Atoll +5, Canyon +6 —
+// the dense map where retakes were arriving at the detonation wire). Banked as
+// a partial step toward the ~50/50 target.
+// v0.23.0: 25 → 30. Even with the defensive collapse, cross-map retakes arrived
+// at the wire (a retake needs rotation ~20-30 ticks + defuse, vs a 25-tick fuse).
+// 30 roughly matches real tac shooters (post-plant window is several× a
+// rotation). Kept identical on every map for player consistency; per-map balance
+// (e.g. Foundry, already ~even) is handled by other levers, not the fuse.
+export const DETONATION_TICKS = 30;
+// v0.19.0 — 4 → 3. The no-shoot channel lock makes defusing a genuine
+// commitment (a defuser can't trade for itself); the shorter timer partly
+// offsets the added exposure.
+export const DEFUSE_TICKS = 3;
+
+// v0.19.0 — channel commitment. A unit already planting/defusing that drops
+// to retreat HP holds the channel (finishing under fire) instead of bailing
+// iff its discipline clears `minComplyPct`. Deterministic — no roll: evaluated
+// via compliancePct (Tenacity/Composure) at a neutral strategy threshold under
+// enemy-visible pressure, so gritty units clutch the defuse and flaky ones run.
+// Raise `minComplyPct` to make commitment rarer (more bailing).
+export const CHANNEL_COMMIT = {
+  strategyThreshold: 50,
+  underFirePressure: -15,
+  minComplyPct: 70,
+} as const;
+
+// v0.20.0 — post-plant hunt. An aggressive / Ego defender designated as the
+// retake defuser clears the last attacker BEFORE committing to the spike,
+// instead of dying on a no-shoot defuse (v0.19.0). It defers the defuse only
+// while a live attacker is visible (a real target — no ghost-chasing) AND
+// enough detonation time remains to still defuse after the kill
+// (timeLeft > DEFUSE_TICKS + timeMarginTicks); when the clock tightens or the
+// threat clears, it commits to the defuse. `aggroBar` is the effective-
+// aggression cutoff; the listed traits always qualify regardless of aggression.
+export const POST_PLANT_HUNT = {
+  aggroBar: 60,
+  timeMarginTicks: 2,
+  egoTraits: ['Ego', 'Hot Head'] as readonly string[],
+};
+
+// v0.22.0 — defensive collapse-on-commit (pre-plant). The attacker bias is
+// structural: defenders split across two sites + mid while attackers
+// concentrate, so the defense arrives at the contested site a man short
+// (measured ~2.5 attackers vs ~0.2 defenders on-site at the plant, with ~3
+// defenders alive but elsewhere). When the defense collectively SEES at least
+// `commitThreshold` attackers committing to one site (and more than the other),
+// the off-site defenders converge on it — keeping `minWatchers` nearest the
+// quiet site so a fake-and-switch can't walk in free.
+//   `readRadius`: an attacker counts toward a site when it's within this many
+//     hexes of that site's centroid AND closer to it than the other site —
+//     wide enough to catch the push out in the approach (entry/choke/main), so
+//     the collapse fires early enough for off-site defenders to actually arrive
+//     (a tight centroid-only read triggered when attackers were already on-site).
+//   `siteRadius`: a converging defender stops overriding once this close to the
+//     target, handing back to the legacy hold/engage instead of pinning deep.
+export const DEFENSIVE_COLLAPSE = {
+  readRadius: 14,
+  siteRadius: 7,
+  commitThreshold: 2,
+  minWatchers: 1,
+} as const;
 
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous

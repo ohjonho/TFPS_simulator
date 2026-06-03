@@ -4,7 +4,7 @@
 
 import type { Facing, HexCoord, MapDefinition, Unit } from './types.ts';
 import { hexDistance, offsetToPixel } from './hex.ts';
-import { neighbors, passableAt, isCoverAdjacent, findPath } from './pathfind.ts';
+import { neighbors, passableAt, isCoverAdjacent } from './pathfind.ts';
 import { isVisibleAlongLine } from './vision.ts';
 import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
 
@@ -58,20 +58,6 @@ function isWallAdjacent(hex: HexCoord, map: MapDefinition): boolean {
     if (map.grid[nb.row][nb.col] === 'wall') return true;
   }
   return false;
-}
-
-// Next hex one step toward target along an A* route, or null if no path / already
-// there. Callers cache the full route in MoveState; this is the "primitive" form.
-export function moveToward(unit: Unit, targetHex: HexCoord, map: MapDefinition): HexCoord | null {
-  const path = findPath(map, unit.pos, targetHex);
-  if (!path || path.length < 2) return null;
-  return path[1];
-}
-
-export type HoldAction = { facing: Unit['facing'] };
-
-export function holdPosition(unit: Unit): HoldAction {
-  return { facing: unit.facing };
 }
 
 // Pass 7.6 — "hold strong defensive position": on transition to holding, a unit

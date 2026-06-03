@@ -40,15 +40,15 @@ const VISIBLE_ROWS: readonly VisibleRow[] = [
   { key: 'improvisation', label: 'Improvisation',
     desc: 'Quality of off-plan play + composure under pressure (last-alive / damaged).' },
   { key: 'leadership', label: 'Leadership',
-    desc: 'Team buff radius + ally aura strength + info-sharing magnitude (wires fully in H3).' },
+    desc: 'Team coordination — a hit-rate bonus when a teammate just fired (trading); high Leadership converts trades.' },
 ];
 
-// v0-active visible aggregates. H1 wired Mechanics + Game Sense +
-// Improvisation; H3 also wired Discipline (Tenacity drives the per-tick
-// compliance roll in directives.ts). Leadership is the lone holdout —
-// its sub (Comms) won't be consumed until H4+ wires hero auras.
+// Active visible aggregates. H1 wired Mechanics + Game Sense + Improvisation;
+// H3 wired Discipline (Tenacity → per-tick compliance roll); Phase 3 wired
+// Leadership (Comms → team-trade HR bonus, see combat.ts / config.COMMS). All
+// five aggregates are now live.
 const V0_VISIBLE: ReadonlySet<keyof VisibleAttributes> = new Set([
-  'mechanics', 'gameSense', 'discipline', 'improvisation',
+  'mechanics', 'gameSense', 'discipline', 'improvisation', 'leadership',
 ]);
 
 // --- Hidden sub-attributes (the 10 that feed combat/vision math) ---------
@@ -58,7 +58,7 @@ type SubRow = {
   label: string;
   desc: string;
   group: 'Mechanics' | 'Game Sense' | 'Discipline' | 'Improvisation' | 'Leadership';
-  active: boolean;        // false → still inert (H3+), renders greyed
+  active: boolean;        // false → still inert (planned), renders greyed
 };
 
 const SUB_ROWS: readonly SubRow[] = [
@@ -83,10 +83,10 @@ const SUB_ROWS: readonly SubRow[] = [
   { key: 'composure',      label: 'Composure',       group: 'Improvisation', active: true,
     desc: 'Scales last-alive HR/HS bonus (with or without Clutch trait).' },
   { key: 'adaptability',   label: 'Adaptability',    group: 'Improvisation', active: false,
-    desc: 'H3 — quality of fallback-behavior decision when compliance fails.' },
+    desc: 'Quality of off-plan fallback decisions — planned, not yet wired.' },
   // Leadership
-  { key: 'comms',          label: 'Comms',           group: 'Leadership',    active: false,
-    desc: 'H3 — aura radius + ally buff magnitude (hero auras).' },
+  { key: 'comms',          label: 'Comms',           group: 'Leadership',    active: true,
+    desc: 'Team-trade hit-rate bonus when a teammate fired recently (±12pp at the tails); high Leadership converts trades.' },
 ];
 
 // --- HTML helpers --------------------------------------------------------
@@ -96,7 +96,7 @@ function visibleBarsHtml(attrs: VisibleAttributes): string {
     const val = attrs[key];
     const active = V0_VISIBLE.has(key);
     const cls = active ? 'attr-row v0 visible' : 'attr-row v1 visible';
-    const badge = active ? '' : '<span class="v1-tag">H3</span>';
+    const badge = active ? '' : '<span class="v1-tag">planned</span>';
     const pct = Math.max(0, Math.min(100, val));
     return `
       <div class="${cls}" title="${esc(desc)}">
@@ -112,7 +112,7 @@ function subBarsHtml(attrs: Attributes): string {
   return SUB_ROWS.map(({ key, label, desc, active }) => {
     const val = attrs[key];
     const cls = active ? 'attr-row v0 sub' : 'attr-row v1 sub';
-    const badge = active ? '' : '<span class="v1-tag">H3</span>';
+    const badge = active ? '' : '<span class="v1-tag">planned</span>';
     const pct = Math.max(0, Math.min(100, val));
     return `
       <div class="${cls}" title="${esc(desc)}">

@@ -313,6 +313,171 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.24.0 — Atoll II rebuilt</h3>
+    <ul>
+      <li><strong>Atoll II is a real map now.</strong> It replaces the old
+        placeholder skeleton with a full layout: two corner sites, each with a
+        deep anchor and an off-angle for crossfire and <em>two</em> watched
+        entries (one from the main lane, one from the flank), a central mid spine
+        and courtyard, and cover spread through the lanes. Defenders set up closer
+        together so they can actually rotate between sites in time. It lifts the
+        defense from ~31% to ~38% round win rate — still the toughest map for
+        defenders, with more to come.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.23.0 — longer fuse (30 ticks)</h3>
+    <ul>
+      <li><strong>The spike now takes 30 ticks to detonate (up from 25).</strong>
+        Even with defenders collapsing onto the contested site, cross-map retakes
+        kept arriving right as the spike went off — there wasn't enough time after
+        a plant to rotate in and defuse. A longer fuse fixes that and is closer to
+        real tactical shooters, where the post-plant window is several times a
+        rotation. It lifts the defense on every map; we keep the timer identical
+        across all maps for consistency, and will rebalance individual maps by
+        other means if one ends up too defender-friendly.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.22.0 — defenders collapse onto the site under attack</h3>
+    <ul>
+      <li><strong>When defenders read which site the attackers are committing to,
+        the off-site defenders now rotate in to meet them.</strong> The old
+        defense set up across both sites and mid and then mostly stayed put — so
+        the attackers, who pick one site and hit it together, kept arriving a
+        man up while three defenders sat alive on the other side of the map. Now,
+        once the defense collectively sees enough attackers piling onto a site,
+        the players not holding it converge to defend or retake it — while one
+        watcher stays back on the quiet site so a fake-and-switch can't stroll in
+        for a free plant. It's a big step toward fixing defenders being
+        chronically outnumbered at the bombsite — they still arrive a little
+        short, but far less than before.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.21.0 — longer fuse, more time to retake</h3>
+    <ul>
+      <li><strong>The spike now takes longer to detonate (25 ticks, up from 20).</strong>
+        Defenders were too attacker-favored on every map — and the root cause is
+        positional: attackers concentrate on one site while defenders have to
+        cover the whole map, so the defense keeps arriving at the bombsite a step
+        late. A longer fuse gives the defense more time to rotate in and retake.
+        It's a partial fix (more is coming for how defenders rotate and hold), but
+        on its own it measurably swings rounds back toward the defense — most of
+        all on Canyon, where retakes were landing right as the spike went off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.20.0 — a cornered aggressive defender fights before defusing</h3>
+    <ul>
+      <li><strong>When an aggressive or Ego defender is the last one alive, it
+        clears the attacker before committing to the spike.</strong> Since a
+        defuser can't shoot (v0.19.0), a hot-headed defender alone in a 1v1 retake
+        used to just die on the hex. Now — with no teammate left to trade for it,
+        and only if there's still time to win the duel and then defuse — it hunts
+        the attacker down first and defuses once the area is clear. With teammates
+        still up, the coordinated retake runs as before; calmer, disciplined
+        defenders go straight for the defuse; and when the detonation clock gets
+        tight, everyone commits to the defuse regardless — ego never costs you the
+        round on the timer.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.19.0 — planting and defusing are real commitments</h3>
+    <ul>
+      <li><strong>A unit planting or defusing can no longer move or shoot while
+        the timer runs.</strong> Previously a defuser sitting on the spike could
+        trade shots to defend itself; now it's locked in place and exposed — so a
+        defuse is a genuine gamble you have to clear the area for first. The same
+        applies to the planter. <strong>Defuse time drops from 4 ticks to 3</strong>
+        to partly offset the added risk.</li>
+      <li><strong>Discipline decides whether a unit commits.</strong> When a unit
+        already on the spike is shot down to its last health, whether it holds and
+        finishes under fire or bails depends on its Tenacity and Composure — gritty
+        players clutch the defuse, flaky ones run. Stepping onto the spike is now a
+        decision with real follow-through.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.18.0 — Canyon reworked (v3)</h3>
+    <ul>
+      <li><strong>Canyon's geometry was reshaped to give the defense a fighting
+        chance.</strong> Both sites were expanded and given more cover to hold
+        from, and several chokes were narrowed so defenders can actually anchor an
+        angle instead of getting overrun the instant attackers arrive. The dense
+        old layout left defenders bottom-of-the-pack; the rework lifts their
+        average round win rate from ~19% to ~24%, with Hold now trading evenly vs
+        a straight Execute and Pressure hard-countering Control. Fast Rush pushes
+        are still the open problem against a static hold.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.17.0 — defenders retake and defuse</h3>
+    <ul>
+      <li><strong>Defenders now actually retake the spike.</strong> After a plant,
+        one defender commits to the defuse while the rest hold covered angles to
+        trade for them — previously defenders never attempted a defuse, handing
+        attackers free detonations even when defenders were alive and ahead. This
+        swings post-plant rounds back toward the defense on the open maps (Foundry
+        II / Atoll II ~+3pp each). Canyon's dense layout makes retakes arrive too
+        late regardless — a known gap we'll tackle separately.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.16.0 — map roster trimmed to the live three</h3>
+    <ul>
+      <li><strong>Foundry and Atoll (the originals) retired from the picker.</strong>
+        They were one-dimensional and superseded by the Foundry II / Atoll II
+        redesigns. The picker now shows <strong>Foundry II, Atoll II, Canyon</strong>,
+        and the game opens on Foundry II. The old maps still exist in the build,
+        just aren't selectable.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.15.0 — units stop watching their own backfield</h3>
+    <ul>
+      <li><strong>Holding units now watch the right way.</strong> A defender
+        pushed forward into a lane was sometimes told to watch a region behind it
+        (e.g. hold deep in A-main but face A-site), so it stared back at ground it
+        had already passed instead of the direction attackers actually come from —
+        and got caught looking the wrong way. Units now ignore a hold-angle that
+        points behind them and watch the threat approach instead (a tracked enemy
+        still overrides — if someone really is behind you, you turn). Sideways
+        lane and off-angle watches are unchanged. With longer fights (v0.14.0),
+        seeing the enemy first matters more, so this is a real edge.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.14.0 — longer fights, tactics matter more</h3>
+    <ul>
+      <li><strong>Units now have 4 HP (was 3).</strong> Fights last a beat
+        longer — one extra rifle body-hit to down someone (snipers are unchanged:
+        still a one-shot headshot / two-shot body). This isn't a shooter-y HP
+        bump; it opens room for trades, refrags, and mid-fight repositioning, so
+        a round is decided by team play and angles, not just who has the best aim
+        in the first exchange.</li>
+      <li><strong>Aim is a little less swingy.</strong> Raw aim still wins
+        gunfights and is the #1 attribute — but it no longer dwarfs everything
+        else, so Game Sense, positioning, and especially Leadership/trading now
+        carry real weight. Drafting a great aimer still pays; drafting a great
+        <em>team</em> now also pays.</li>
+      <li><strong>Fixed:</strong> a long-standing bug silently capped every unit
+        at 3 HP regardless of the configured value (Guardian Aura housekeeping
+        used a hard-coded base) — so HP tuning had no effect until now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.13.0 — Leadership matters (team trades)</h3>
+    <ul>
+      <li><strong>Comms / Leadership is now a real attribute.</strong> When a
+        teammate has just fired — a fight to trade into — every unit's hit chance
+        shifts by its Leadership: high-Leadership rosters convert trades, low ones
+        fumble them. At 5v5 (unlike 3v3, where team coordination was inert) this
+        swings rounds by ~9–10pp for a high-Leadership team. Drafting for
+        Leadership now pays off; it has no effect at the flat-50 debug baseline.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.12.0 — two new 5v5 maps</h3>
     <ul>
       <li><strong>Foundry II + Atoll II</strong> are selectable from the map
@@ -320,7 +485,8 @@ const PATCH_NOTES = `
         the richer region vocabulary (site entries/anchors/off-angles, near/far
         lane splits, a real mid choke, and rotational connectors). Foundry II
         plays close to balanced; Atoll II is still attacker-leaning and a work in
-        progress (no cover placed yet). The originals remain for comparison.</li>
+        progress. Both now have a first pass of cover. The originals remain for
+        comparison.</li>
       <li><strong>Map picker polish.</strong> The map toggle shows tidier labels
         and a one-line description of each map on hover.</li>
       <li><strong>Canyon defenders spawn smarter.</strong> On Canyon, defenders
