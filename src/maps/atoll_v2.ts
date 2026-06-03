@@ -10,52 +10,57 @@
  *   M mid (l left / r right / k mid_choke) · c a_choke · C b_choke
  *   7 a_connector · 8 b_connector
  *
- * Skeleton pass — regions placed, no cover (o) yet.
+ * v4 (2026-06-03): full geometry rework, replacing the region-skeleton. Two
+ * corner sites (A left / B right) each with anchor + off-angle holds and DUAL
+ * pre-aimed entries — the main approach labelled a_main_near and the flank
+ * doorway a_entry, so two defenders watch two angles. Central mid spine + lower
+ * courtyard, flank mains, cover spread in. Measured ~38% def win (skeleton ~31%)
+ * at det=30; anchor-to-anchor rotation pulled in to 23 hexes.
  */
 import type { MapDefinition } from './types';
 import { mapFromCharGrid } from './gridUtils';
 
 const ROWS: string[] = [
-  'DDDDDDDDDDDDDDDDDD...#########', // 0
-  'DDDDDDDDDDDDDDDDD....#########', // 1
-  'DDDDDDDDDDDDDDD#####..########', // 2
-  'DDDD#DDDD##DDD######.....#####', // 3
-  '#DDD#DDDD.###########....NNN##', // 4
-  'DDDDDD#....##########....NNNNN', // 5
-  '#DDDD###....##########...##NNN', // 6
-  '#..######...#########NNN###BoB', // 7
-  '#..#######...######..#NNBBBBbb', // 8
-  '#..#######...####..88NNNoBBbbb', // 9
-  '##....#####...###.8888NNBBBBbb', // 10
-  '##....####....##.8888##BB##BoB', // 11
-  '###....####......888###FFF#BBG', // 12
-  '##..............888####FFFBBBG', // 13
-  '##nn...7777777MMM88######FF#BG', // 14
-  '##nn##7777777MM#rr#########EEE', // 15
-  '###nnnnnn#ll##MM#rr########5o5', // 16
-  '###nnnngg#ll#MM##rr######55555', // 17
-  '###nnn#Agg#ll#MM##rr#####55555', // 18
-  '###AoA#AA#ll##MM#rr######CC###', // 19
-  '##ffAAA#AAell#MM#rr######CCC##', // 20
-  '#ffAAA#aaAell#MM#rr######CCC##', // 21
-  '##ffoA#aaa##ll#M##rr######CCC6', // 22
-  '###AAAAaaa#ll#MM#rr########666', // 23
-  '#33eeAAA###ll#MM#rr#....####66', // 24
-  '33o3e######ll#M#rr#.....66666#', // 25
-  '3333########kkkkkk#...#.o6666#', // 26
-  '33##########kkkkkk...##666####', // 27
-  '333############kkkk#####66666#', // 28
-  '333cc#####...##k##kr####66666#', // 29
-  '#33ccc####....#lllrrr######666', // 30
-  '###cc####..#...lllor#######666', // 31
-  '###cc...#..##...#llrr#######66', // 32
-  '##44o.....#######llrr#######66', // 33
-  '###444#...########lorr######66', // 34
-  '###444############llrrr####66X', // 35
-  '####444############lllrr####XX', // 36
-  '####444444444444###lolrr#XXXXX', // 37
-  '#####4o44o44444444444llrXXXXXX', // 38
-  '#####44444444444444444XXXXXXXX', // 39
+  '#########DDDDDDDDDDDDD########', // 0
+  '########DDDDDDDDDDDDDD########', // 1
+  '#######..DDDDDDDDDDDDD....####', // 2
+  '######...DDDDDDDDDDDD.....####', // 3
+  '##.......#######...####....###', // 4
+  '#.......########..#####.....##', // 5
+  '#......#########...#####.....#', // 6
+  '...############...#######....#', // 7
+  '#...##########....########....', // 8
+  '...###########..##########....', // 9
+  '#...##########...##########...', // 10
+  '..o###.7777777...#########o...', // 11
+  'AAAAAAAnn77777....8888888##...', // 12
+  'AAAA#nno#777..##..888888BNNBBB', // 13
+  'AAAAa#Agg###oll#rro8888#BBNNFF', // 14
+  'AAAaaagg####lllrrr######BBo#FF', // 15
+  'ff#aaaA#####llooorrr####BBBBoB', // 16
+  'ffAAAAAe...llo##oorr####B#bbbB', // 17
+  '##oAA#AAe..llo###orr####BBBbbb', // 18
+  '#3333####ollo####orr...EBBbbbB', // 19
+  '#333#######llo###orr...EB#BBBB', // 20
+  '333#######lloo##orro####G#BBBB', // 21
+  '#333#######lllo#orr#####GGBoBB', // 22
+  '#333########lloorr#########555', // 23
+  '#333o########llorr#########555', // 24
+  '#ccc44#######kkkk##...####o555', // 25
+  '##ccc44#....##kkk##.....CCC555', // 26
+  '#####444.....k##k...#..CCC555#', // 27
+  '######444##..MMMMM..###CCo####', // 28
+  '######444####MMMM#####666#####', // 29
+  '#######444####MMM#####666#####', // 30
+  '#######44####MMM######666#####', // 31
+  '#######444###MMM#######666####', // 32
+  '######444####MM########666####', // 33
+  '#######444###MMMM#######666###', // 34
+  '######...#####MMM#######666###', // 35
+  '######...#####MMM#######.66###', // 36
+  '#####...####XXXXXX........####', // 37
+  '#####........XXXXX........####', // 38
+  '#####.......XXXXXX.###########', // 39
 ];
 
 const parsed = mapFromCharGrid(ROWS);

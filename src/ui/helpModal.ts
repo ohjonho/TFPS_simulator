@@ -313,6 +313,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.24.0 — Atoll II rebuilt</h3>
+    <ul>
+      <li><strong>Atoll II is a real map now.</strong> It replaces the old
+        placeholder skeleton with a full layout: two corner sites, each with a
+        deep anchor and an off-angle for crossfire and <em>two</em> watched
+        entries (one from the main lane, one from the flank), a central mid spine
+        and courtyard, and cover spread through the lanes. Defenders set up closer
+        together so they can actually rotate between sites in time. It lifts the
+        defense from ~31% to ~38% round win rate — still the toughest map for
+        defenders, with more to come.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.23.0 — longer fuse (30 ticks)</h3>
     <ul>
       <li><strong>The spike now takes 30 ticks to detonate (up from 25).</strong>
