@@ -313,6 +313,23 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.27.0 — roles now play differently (positioning + posture)</h3>
+    <ul>
+      <li><strong>A unit's role used to be just an aggression number, so a Warden
+        and a Vanguard holding the same spot played identically. Now role shapes
+        WHERE a unit sets up and HOW it fights — and it adapts to the side you're
+        on.</strong> <strong>Vanguard</strong> sets up forward and takes the entry
+        duel on attack, and peeks aggressively for info on defense.
+        <strong>Warden</strong> anchors deep in a crossfire on defense (two Wardens
+        on a site fan apart so an attacker is caught from two angles) and plays
+        disciplined support on attack — never dead weight. <strong>Tactician</strong>
+        and <strong>Specialist</strong> stay flexible. Stacking the same role still
+        works — you just get a lopsided setup (e.g. no frontline) — and units never
+        pile onto the same spot. This is the foundation for the trait and hero
+        reworks coming next; the exact numbers are still being tuned.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.26.0 — Hot Head and Ego now play differently</h3>
     <ul>
       <li><strong>Ego and Hot Head used to be the exact same trait under two

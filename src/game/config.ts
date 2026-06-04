@@ -2,7 +2,7 @@
 // CLAUDE.md rule: pull every tunable into config so the management layer can
 // later override per-unit stats without code changes.
 
-import type { CellType, RangeBand, Weapon } from './types.ts';
+import type { CellType, RangeBand, Role, Side, Weapon } from './types.ts';
 
 export const GRID = {
   cols: 30,
@@ -516,6 +516,57 @@ export const ROLE_AGGRESSION = {
   Warden: 35,
   Specialist: 55,
 } as const;
+
+// v0.27.0 — role POSITIONING + ENGAGE-POSTURE profile (Pass 1 of the trait/role/
+// hero redesign). Role used to be only the aggression number above, so a Warden
+// and a Vanguard in the same strategy slot played identically. Now role also
+// modulates micro-position WITHIN the slot + the engage threshold.
+//   - positionOffset: hexes applied via applyAnchorOffset ON TOP of the slot's
+//     own offset (+ = deeper toward own spawn, − = forward toward the enemy).
+//   - engageDelta: added to engage.engageThreshold (− = commits to worse duels,
+//     + = more selective). Gives posture teeth (role aggression alone is weak).
+//   - crossfire: same-side group fans laterally (index-based, ±crossfireSpreadCols)
+//     so cones onto the choke DIVERGE — a peeker is caught from two bearings (the
+//     "crossfire fork"). Also guarantees same-role holders never collapse onto
+//     one hex/path. Applied additively on the slot's already-distinct position,
+//     so 2-3 of the same role degrade to a hole-y composition but never stack.
+//
+// SIDE-AWARE (the first cut was side-agnostic — a passive Warden was dead weight
+// on attack, so mixed comps lost; measured). A unit keeps its role across the
+// halftime swap but adapts posture to the side it's playing:
+//   - Vanguard: ATTACK = entry (forward, commits); DEFENSE = aggressive info-peek
+//     (still proactive, takes early duels) — never passive.
+//   - Warden: DEFENSE = deep crossfire anchor that holds + trades; ATTACK =
+//     disciplined SUPPORT (trails slightly, ~neutral threshold so it still fights
+//     and contributes to the push — NOT a passive decliner).
+//   - Tactician / Specialist: neutral both sides (Specialist will read its
+//     adaptability attr in a later pass).
+export const ROLE_PROFILE: Record<Role, Record<Side, {
+  positionOffset: number;
+  engageDelta: number;
+  crossfire: boolean;
+}>> = {
+  Vanguard: {
+    attacker: { positionOffset: -2, engageDelta: -0.08, crossfire: false },
+    defender: { positionOffset: -1, engageDelta: -0.06, crossfire: false },
+  },
+  Warden: {
+    attacker: { positionOffset: +1, engageDelta: +0.02, crossfire: false },
+    defender: { positionOffset: +2, engageDelta: +0.08, crossfire: true  },
+  },
+  Tactician: {
+    attacker: { positionOffset: 0, engageDelta: 0, crossfire: false },
+    defender: { positionOffset: 0, engageDelta: 0, crossfire: false },
+  },
+  Specialist: {
+    attacker: { positionOffset: 0, engageDelta: 0, crossfire: false },
+    defender: { positionOffset: 0, engageDelta: 0, crossfire: false },
+  },
+};
+
+// Lateral columns between adjacent same-site Warden holders for the crossfire
+// fan. Index-based: the i-th of n Wardens shifts by round((i-(n-1)/2)*this).
+export const CROSSFIRE_SPREAD_COLS = 3;
 
 // H3.fix3 — manager-readable one-liner per role. Surfaced in role chip
 // tooltips (sidePanel roster, draftPanel pool cards, unit-info DL). Each

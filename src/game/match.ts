@@ -31,17 +31,19 @@ import type {
 import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { applyAnchorOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
+import { applyAnchorOffset, applyLateralOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
 import type { Directive } from './types.ts';
 // H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
 // strategy + hero synergies in applyStrategies (H3.3).
 import {
   CARD_EFFECTS,
+  CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
+  ROLE_PROFILE,
   UNIT_DEFAULTS,
 } from './config.ts';
 import { hexDistance } from './hex.ts';
@@ -234,6 +236,24 @@ export function applyStrategies(
     if (uid) unitToSlotIdx[uid] = i;
   }
 
+  // v0.27.0 — crossfire grouping (Pass 1). Group same-team, same-region Warden
+  // holders so each fans laterally by index (i of n) → divergent angles onto the
+  // choke, and never collapse onto one hex. Deterministic: units + groups in
+  // declaration order. Recomputes each Warden's region the same way the loop does.
+  const crossfireIndex: Record<string, { i: number; n: number }> = {};
+  {
+    const groups: Record<string, string[]> = {};
+    for (const u of state.units) {
+      if (!ROLE_PROFILE[u.role][state.teamSide[u.team]].crossfire) continue;
+      const variant = u.team === playerTeam ? playerVariant : aiVariant;
+      const strat = u.team === playerTeam ? playerStrat : aiStrat;
+      const slotIdx = unitToSlotIdx[u.id];
+      const region = (slotIdx !== undefined ? variant[slotIdx]?.region : undefined) ?? strat.fallbackRegion;
+      (groups[`${u.team}|${region}`] ??= []).push(u.id);
+    }
+    for (const ids of Object.values(groups)) ids.forEach((id, i) => { crossfireIndex[id] = { i, n: ids.length }; });
+  }
+
   const nextUnits: Unit[] = [];
   const nextTargets: Record<string, HexCoord | null> = { ...state.targets };
   for (const u of state.units) {
@@ -254,6 +274,20 @@ export function applyStrategies(
     // Pass 9 — apply the per-slot anchor offset on top of weapon adjustment.
     if (adjusted && slot?.anchorOffset) {
       adjusted = applyAnchorOffset(adjusted, slot.anchorOffset, side, state.map);
+    }
+    // v0.27.0 — role micro-position ON TOP of the slot: deep (Warden) / forward
+    // (Vanguard) via applyAnchorOffset, then the Warden crossfire lateral fan so
+    // same-site Wardens diverge instead of stacking.
+    if (adjusted) {
+      const rp = ROLE_PROFILE[u.role][side];
+      if (rp.positionOffset !== 0) {
+        adjusted = applyAnchorOffset(adjusted, rp.positionOffset, side, state.map);
+      }
+      const cf = crossfireIndex[u.id];
+      if (rp.crossfire && cf && cf.n > 1) {
+        const cols = Math.round((cf.i - (cf.n - 1) / 2) * CROSSFIRE_SPREAD_COLS);
+        adjusted = applyLateralOffset(adjusted, cols, state.map);
+      }
     }
     nextTargets[u.id] = adjusted;
 

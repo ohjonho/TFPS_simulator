@@ -1212,6 +1212,20 @@ export function applyAnchorOffset(
   return nearestPassable(map, want) ?? hex;
 }
 
+// v0.27.0 — lateral (column) shift, used by the Warden crossfire fan to fan
+// same-site holders across columns so their cones onto the choke diverge.
+// Side-agnostic (a column offset reads the same for both teams). Snaps to the
+// nearest passable hex; returns the input unchanged when the shift is 0.
+export function applyLateralOffset(
+  hex: HexCoord,
+  cols: number,
+  map: MapDefinition,
+): HexCoord {
+  if (cols === 0) return hex;
+  const want: HexCoord = { col: clamp(hex.col + cols, 0, map.width - 1), row: hex.row };
+  return nearestPassable(map, want) ?? hex;
+}
+
 // BFS outward from `start`; returns the first passable hex found (or the start
 // itself if it's already passable). Caps the search at 32 hexes — at this scale
 // the desired hex is almost always passable or within 1–2 steps.
