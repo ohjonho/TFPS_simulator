@@ -35,14 +35,11 @@ export function rosterUnlocks(units: readonly Unit[]): Set<string> {
 }
 
 // v0.28.0 (Pass 2a) — the strategy menu is DECOUPLED from traits. Traits now
-// only modulate units; they no longer gate the strategy list. The menu is the
-// same for every roster: the baselines + the 3 promoted concepts (Mind Games /
-// Coordinated Lockdown / Rotate Stack). The other former trait-unlock strategies
-// are retired (still in the table but never surfaced). The `requiresUnlock` seam
-// stays so the future management layer can gate strategies via progression
-// instead of "which traits you happened to roll".
-const PROMOTED_STRATEGIES = new Set(['Mind_Games', 'Coordinated_Lockdown', 'Rotate_Stack']);
-
+// only modulate units; they no longer gate the strategy list. Every roster sees
+// the same menu: all strategies that aren't `requiresUnlock` (the consolidated
+// set in strategies.ts — the retired trait-unlock strategies were removed). The
+// `requiresUnlock` seam stays so the future management layer can gate strategies
+// via progression instead of "which traits you happened to roll".
 export function availableStrategies(
   units: readonly Unit[],
   side: Side,
@@ -50,9 +47,7 @@ export function availableStrategies(
 ): ReturnType<typeof strategiesFor> {
   void units; // roster no longer affects the menu (kept for signature stability)
   void strategyById; // id-only lookup escape hatch (AI opponent / __sim)
-  return strategiesFor(side, map).filter(
-    (s) => !s.requiresUnlock || PROMOTED_STRATEGIES.has(s.id),
-  );
+  return strategiesFor(side, map).filter((s) => !s.requiresUnlock);
 }
 
 // Diagnostic: for each unlocked strategy id, return the contributor units
@@ -61,18 +56,9 @@ export function availableStrategies(
 export type UnlockContributor = { unitId: string; traitId: string };
 
 export function unlockContributors(units: readonly Unit[]): Record<string, UnlockContributor[]> {
-  const out: Record<string, UnlockContributor[]> = {};
-  for (const u of units) {
-    if (u.state !== 'alive') continue;
-    for (const traitId of [u.skillTrait, u.behavioralTrait, u.personalityTrait]) {
-      if (!traitId) continue;
-      const def = TRAITS_BY_ID[traitId];
-      if (!def) continue;
-      for (const stratId of def.unlocks) {
-        if (!out[stratId]) out[stratId] = [];
-        out[stratId].push({ unitId: u.id, traitId });
-      }
-    }
-  }
-  return out;
+  // v0.28.0 — strategies are no longer trait-unlocked (the menu is decoupled),
+  // so there's nothing to attribute. Kept as a `{}`-returning seam for the UI +
+  // the future management/progression layer.
+  void units;
+  return {};
 }

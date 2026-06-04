@@ -379,54 +379,21 @@ export function applyStrategies(
   };
 }
 
-// H3.3 — strategy + trait synergy mapping. Each entry: if the unit has the
-// listed trait AND the team's strategy id matches, set the cardFlag. Combat
-// hooks unchanged — they already read these flags via the Pass 8 path; only
-// the source of the flags moved from card handlers to strategy commit.
+// Per-unit round-start synergy flags. v0.28.0 — the old trait+strategy synergy
+// branches (Sentinel+Anchor_Hold, Run-n-Gun+Mobile_Push, Lurker+Patient_Flank,
+// Entry/Vanguard+Coordinated_Execute, Trader+Crossfire_Lockdown,
+// Clutch+Last_Stand_Defense) all keyed off retired trait-unlock strategies and
+// were removed with them. Only the Cursed-hero mark flag remains; the trait
+// reworks (Pass 2b) own the rest of the synergy story. `strategyId` is kept on
+// the signature for the upcoming hero/trait passes.
 function applyTraitStrategySynergies(
   flags: import('./types.ts').CardFlags,
   unit: Unit,
   strategyId: string,
 ): import('./types.ts').CardFlags {
-  // Sentinel + Anchor_Hold → doubles Sentinel's stationary bonus (formerly
-  // the Anchor Position card).
-  if (unit.behavioralTrait === 'Sentinel' && strategyId === 'Anchor_Hold') {
-    flags = { ...flags, anchorPosition: true };
-  }
-  // Run-n-Gun + Mobile_Push → +1 speed, no retreat, +15 HR moving
-  // (formerly Reckless Push card). Even non-Run-n-Gun units on Mobile_Push
-  // get a smaller bump via the strategy aggression mod (already applied).
-  if (unit.behavioralTrait === 'Run-n-Gun' && strategyId === 'Mobile_Push') {
-    flags = { ...flags, recklessPush: true };
-  }
-  // Lurker + Patient_Flank → perimeter routing + invisibility-until-fire
-  // (formerly Slow Flank card). slowFlank flag covers both behaviors.
-  if (unit.behavioralTrait === 'Lurker' && strategyId === 'Patient_Flank') {
-    flags = { ...flags, slowFlank: true, invisibleUntilFire: true };
-  }
-  // Entry + Coordinated_Execute → +30 HR/+15 HS first 3 engagement ticks,
-  // no post-penalty (formerly Opening Pick card).
-  if (unit.behavioralTrait === 'Entry' && strategyId === 'Coordinated_Execute') {
-    flags = { ...flags, openingPickActive: true };
-  }
-  // Spearhead synergy — Vanguard role on Coordinated_Execute leads the
-  // commit; allies follow 2 ticks behind (formerly Spearhead card).
-  if (unit.role === 'Vanguard' && strategyId === 'Coordinated_Execute') {
-    flags = { ...flags, spearhead: true };
-  }
-  // Trader + Crossfire_Lockdown → crossfire buff cascade on ally fire
-  // (formerly Crossfire card).
-  if (unit.behavioralTrait === 'Trader' && strategyId === 'Crossfire_Lockdown') {
-    flags = { ...flags, crossfireEligible: true };
-  }
-  // Clutch + Last_Stand_Defense → trade-window mark on teammate death
-  // (formerly Trade Window card).
-  if (unit.behavioralTrait === 'Clutch' && strategyId === 'Last_Stand_Defense') {
-    flags = { ...flags, tradeWindowEnabled: true };
-  }
-  // H3.3 — Cursed hero → mark-target-pending flag. The hero's passive
-  // ability fires when the unit first spots an enemy this round (existing
-  // Mark Target trigger in tick.ts reads this flag).
+  void strategyId;
+  // Cursed hero → mark-target-pending flag. The hero's passive fires when the
+  // unit first spots an enemy this round (tick.ts reads this flag).
   if (unit.hero === 'Cursed') {
     flags = { ...flags, markTargetPending: true };
   }

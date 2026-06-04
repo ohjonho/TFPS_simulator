@@ -204,52 +204,14 @@ export type StrategyMatrixCell = {
 };
 export type StrategyMatrixResult = Record<string, StrategyMatrixCell>;
 
-// H3.5 — trait-unlocked strategy → required trait for the unlock filter.
-// Each unlock strategy needs ≥1 unit on the team to carry the matching trait
-// (otherwise availableStrategies filters it out). Pinned per-unit-id below
-// so runStrategyRound can include unlock strategies in the matrix.
-const UNLOCK_TRAIT: Record<string, { trait: string; category: 'behavioral' | 'personality' }> = {
-  Anchor_Hold:          { trait: 'Sentinel',  category: 'behavioral' },
-  Crossfire_Lockdown:   { trait: 'Trader',    category: 'behavioral' },
-  Last_Stand_Defense:   { trait: 'Clutch',    category: 'behavioral' },
-  Mind_Games:           { trait: 'Big Brain', category: 'personality' },
-  Hold_Composure:       { trait: 'Composed',  category: 'personality' },
-  Coordinated_Lockdown: { trait: 'Leader',    category: 'personality' },
-  Rotate_Stack:         { trait: 'Roamer',    category: 'behavioral' },
-  Wide_Watch:           { trait: 'Paranoid',  category: 'personality' },
-  Slow_Burn:            { trait: 'Patient',   category: 'personality' },
-  Mobile_Push:          { trait: 'Run-n-Gun', category: 'behavioral' },
-  Patient_Flank:        { trait: 'Lurker',    category: 'behavioral' },
-  Coordinated_Execute:  { trait: 'Entry',     category: 'behavioral' },
-  Solo_Frag:            { trait: 'Ego',       category: 'personality' },
-  Scatter_Push:         { trait: 'Lone Wolf', category: 'personality' },
-  Aggressive_Peek:      { trait: 'Hot Head',  category: 'behavioral' },
-};
-
-// Build overrides that pin the unlock trait onto the team's slot-0 unit so
-// availableStrategies surfaces it. D1 / A1 are the canonical slot-0 ids
-// after assignSlots — they always exist on the 3-unit teams.
-function unlockOverrides(defStrategy: string, atkStrategy: string): Record<string, AttributeOverride> {
-  const o: Record<string, AttributeOverride> = {};
-  const defUnlock = UNLOCK_TRAIT[defStrategy];
-  if (defUnlock) {
-    o.D1 = defUnlock.category === 'behavioral'
-      ? { behavioralTrait: defUnlock.trait as AttributeOverride['behavioralTrait'] }
-      : { personalityTrait: defUnlock.trait as AttributeOverride['personalityTrait'] };
-  }
-  const atkUnlock = UNLOCK_TRAIT[atkStrategy];
-  if (atkUnlock) {
-    o.A1 = atkUnlock.category === 'behavioral'
-      ? { behavioralTrait: atkUnlock.trait as AttributeOverride['behavioralTrait'] }
-      : { personalityTrait: atkUnlock.trait as AttributeOverride['personalityTrait'] };
-  }
-  return o;
-}
+// v0.28.0 — the trait-unlock strategy system was retired (strategies decoupled
+// from traits). The only non-baseline picks now are the promoted concepts
+// (Mind_Games / Coordinated_Lockdown / Rotate_Stack), which are plain baselines
+// — no trait pinning needed.
 
 // All defender strategies × attacker strategies; N seeds per cell.
-// `includeUnlocks: true` adds the 9 D + 6 A trait-unlocked strategies (with
-// pinned trait overrides so availableStrategies surfaces them). Default
-// false to keep the headline matrix at the 3×3 baseline size.
+// `includeUnlocks: true` additionally runs the promoted non-baseline strategies.
+// Default false keeps the headline matrix at the 3×3 baseline size.
 export function runStrategyMatrix(
   seeds = 20,
   mapName: MapDefinition['name'] = 'Foundry',
@@ -257,29 +219,20 @@ export function runStrategyMatrix(
 ): StrategyMatrixResult {
   const baselineDef = ['Hold', 'Stack', 'Pressure'];
   const baselineAtk = ['Execute', 'Rush', 'Control'];
-  const unlockDef = includeUnlocks ? [
-    'Anchor_Hold', 'Crossfire_Lockdown', 'Last_Stand_Defense', 'Mind_Games',
-    'Hold_Composure', 'Coordinated_Lockdown', 'Rotate_Stack', 'Wide_Watch',
-    'Slow_Burn',
-  ] : [];
-  const unlockAtk = includeUnlocks ? [
-    'Mobile_Push', 'Patient_Flank', 'Coordinated_Execute', 'Solo_Frag',
-    'Scatter_Push', 'Aggressive_Peek', 'Mind_Games',
-  ] : [];
-  const defenderStrategies = [...baselineDef, ...unlockDef];
-  const attackerStrategies = [...baselineAtk, ...unlockAtk];
+  const extraDef = includeUnlocks ? ['Mind_Games', 'Coordinated_Lockdown', 'Rotate_Stack'] : [];
+  const extraAtk = includeUnlocks ? ['Mind_Games'] : [];
+  const defenderStrategies = [...baselineDef, ...extraDef];
+  const attackerStrategies = [...baselineAtk, ...extraAtk];
   const out: StrategyMatrixResult = {};
   for (const defS of defenderStrategies) {
     for (const atkS of attackerStrategies) {
       let defWins = 0;
       let totalTicks = 0;
-      const overrides = unlockOverrides(defS, atkS);
       for (let i = 0; i < seeds; i++) {
         const r = runStrategyRound(1000 + i, {
           defenderStrategy: defS,
           attackerStrategy: atkS,
           mapName,
-          overrides,
         });
         if (r.winner === 'defenders') defWins++;
         totalTicks += r.ticks;
@@ -329,12 +282,13 @@ export function runComplianceTest(
   seeds = 20,
   mapName: MapDefinition['name'] = 'Foundry',
 ): ComplianceTestResult[] {
-  // Test pairs: one baseline-threshold matchup (Hold vs Execute, ~50) and
-  // one demanding matchup (Anchor_Hold vs Coordinated_Execute, ~75) so we
-  // can compare how much compliance bites at each demand level.
+  // Test pairs: one baseline-threshold matchup (Hold vs Execute, ~50) and one
+  // demanding matchup (~75). v0.28.0 — the demanding def is now the kept
+  // high-compliance baseline Coordinated_Lockdown (the trait-unlock strategies
+  // were retired).
   const pairs: { def: string; atk: string; label: string; threshold: number }[] = [
-    { def: 'Hold',        atk: 'Execute',             label: 'Hold vs Execute',                   threshold: 50 },
-    { def: 'Anchor_Hold', atk: 'Coordinated_Execute', label: 'Anchor_Hold vs Coordinated_Execute', threshold: 75 },
+    { def: 'Hold',                 atk: 'Execute', label: 'Hold vs Execute',                  threshold: 50 },
+    { def: 'Coordinated_Lockdown', atk: 'Execute', label: 'Coordinated_Lockdown vs Execute',  threshold: 75 },
   ];
   // Formula reference values — computed once, deterministic.
   // pressure = -15 (under fire) matches the in-tick formula in directives.ts
@@ -345,9 +299,8 @@ export function runComplianceTest(
     ));
   const out: ComplianceTestResult[] = [];
   for (const { def, atk, label, threshold } of pairs) {
-    const unlockOvs = unlockOverrides(def, atk);
-    const runHigh = mergedRun(seeds, mapName, def, atk, unlockOvs, tenacityOverride(90));
-    const runLow  = mergedRun(seeds, mapName, def, atk, unlockOvs, tenacityOverride(10));
+    const runHigh = mergedRun(seeds, mapName, def, atk, tenacityOverride(90));
+    const runLow  = mergedRun(seeds, mapName, def, atk, tenacityOverride(10));
     out.push({
       strategy: label,
       threshold,
@@ -361,21 +314,17 @@ export function runComplianceTest(
   return out;
 }
 
-// Merge unlock overrides + attribute overrides per unit, then run N seeds
-// of the matchup. Returns defender win % (rounded to 0.1).
+// Run N seeds of the matchup with the given per-unit attribute overrides.
+// Returns defender win % (rounded to 0.1). v0.28.0 — the unlock-trait overrides
+// are gone (strategies decoupled), so this just applies the attribute overrides.
 function mergedRun(
   seeds: number,
   mapName: MapDefinition['name'],
   def: string,
   atk: string,
-  unlockOvs: Record<string, AttributeOverride>,
   attrOvs: Record<string, AttributeOverride>,
 ): number {
-  // Merge per unit id: trait fields from unlockOvs + attributes from attrOvs.
-  const merged: Record<string, AttributeOverride> = {};
-  for (const id of new Set([...Object.keys(unlockOvs), ...Object.keys(attrOvs)])) {
-    merged[id] = { ...(unlockOvs[id] ?? {}), ...(attrOvs[id] ?? {}) };
-  }
+  const merged = attrOvs;
   let defWins = 0;
   for (let i = 0; i < seeds; i++) {
     const r = runStrategyRound(3000 + i, {
