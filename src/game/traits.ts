@@ -34,26 +34,25 @@ export function rosterUnlocks(units: readonly Unit[]): Set<string> {
   return out;
 }
 
-// The team's full strategy menu = baseline (strategies where
-// requiresUnlock !== true) + unlock-gated variants whose id is in the
-// roster's unlock set (deduped union of every alive unit's three traits'
-// `unlocks` lists). H3 — strategiesFor() returns ALL strategies for the
-// side (baseline + unlocks); we filter here so the player only sees what
-// their roster can actually run.
+// v0.28.0 (Pass 2a) — the strategy menu is DECOUPLED from traits. Traits now
+// only modulate units; they no longer gate the strategy list. The menu is the
+// same for every roster: the baselines + the 3 promoted concepts (Mind Games /
+// Coordinated Lockdown / Rotate Stack). The other former trait-unlock strategies
+// are retired (still in the table but never surfaced). The `requiresUnlock` seam
+// stays so the future management layer can gate strategies via progression
+// instead of "which traits you happened to roll".
+const PROMOTED_STRATEGIES = new Set(['Mind_Games', 'Coordinated_Lockdown', 'Rotate_Stack']);
+
 export function availableStrategies(
   units: readonly Unit[],
   side: Side,
   map: MapDefinition,
 ): ReturnType<typeof strategiesFor> {
-  const all = strategiesFor(side, map);
-  const baseline = all.filter((s) => !s.requiresUnlock);
-  const lockedExtras = all.filter((s) => s.requiresUnlock);
-  const unlocks = rosterUnlocks(units);
-  const granted = lockedExtras.filter((s) => unlocks.has(s.id));
-  // Strategy lookup uses id-only — strategyById() is preserved as the
-  // direct-lookup escape hatch (AI opponent / __sim drive it that way).
-  void strategyById;
-  return [...baseline, ...granted];
+  void units; // roster no longer affects the menu (kept for signature stability)
+  void strategyById; // id-only lookup escape hatch (AI opponent / __sim)
+  return strategiesFor(side, map).filter(
+    (s) => !s.requiresUnlock || PROMOTED_STRATEGIES.has(s.id),
+  );
 }
 
 // Diagnostic: for each unlocked strategy id, return the contributor units

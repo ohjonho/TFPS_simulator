@@ -313,6 +313,22 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.28.0 — one strategy menu for every roster</h3>
+    <ul>
+      <li><strong>Strategies are no longer locked behind specific traits — every
+        team picks from the same consolidated menu.</strong> The old system
+        expanded your menu based on which traits your units happened to roll, and
+        most of those unlocks were near-duplicate "hold deeper" / "rush variant"
+        plays. We trimmed those and kept the genuinely distinct ones. Defenders:
+        Hold, Stack, Pressure, <strong>Mind Games</strong> (show one site, swing
+        the other), <strong>Coordinated Lockdown</strong> (stack all five on one
+        site), <strong>Rotate</strong> (rotating mobile defense). Attackers:
+        Execute, Rush, Control, <strong>Mind Games</strong>. Earning new strategies
+        will return later through the management/progression layer rather than
+        trait luck.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.27.0 — roles now play differently (positioning + posture)</h3>
     <ul>
       <li><strong>A unit's role used to be just an aggression number, so a Warden
