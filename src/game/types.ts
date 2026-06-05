@@ -51,63 +51,34 @@ export type Buff = {
   expiresAtTick: number;
 };
 
-// Trait unions (spec §12), role (§10), hero (§11).
-// Pass H2 — added the Personality category (Mental + Social fused into one
-// pool). Each unit now carries one trait per category (skill / behavioral /
-// personality), up from 2-per-unit. Each trait can declare a `unlocks`
-// list of strategy ids that H3 surfaces on the strategy menu.
-export type SkillTrait =
-  | 'Sharp Aim'
-  | 'Headhunter'
-  | 'Eagle Eye'
-  | 'First Shot'
-  // H2 expansion — combat-flavored specialists
-  | 'Spray Down'      // post-first-3-shots HR bonus (opposite of First Shot)
-  | 'Deadeye'         // long-range HR specialist
-  | 'Close Quarters'; // short-range HR specialist
-export type BehavioralTrait =
-  | 'Sentinel'
-  | 'Run-n-Gun'
-  | 'Lurker'
-  | 'Entry'
-  | 'Trader'
-  | 'Clutch'
-  // H2 expansion — engagement-style flavors
-  | 'Roamer'          // mobile defender (rotates, doesn't hold one angle)
-  | 'Hot Head';       // first to engage, low Discipline / Tenacity
-export type PersonalityTrait =
-  | 'Big Brain'   // mental — analytical, reads the map
-  | 'Ego'         // mental — high-confidence freelancer
-  | 'Composed'    // mental — steady under pressure
-  | 'Leader'      // social — coordinates + buffs allies
-  | 'Lone Wolf'   // social — works alone, weak comms
-  // H2 expansion — round-pressure / vigilance / veteran flavors
-  | 'Paranoid'    // mental — over-rotates, sees ghosts
-  | 'Patient'     // mental — late-round HR bonus
-  | 'Old Pro';    // veteran — small all-around boost; v1 "earned via XP"
-export type TraitId = SkillTrait | BehavioralTrait | PersonalityTrait;
+// Trait unions (role §10, hero §11). v0.29.0 redesign — two pools:
+//   - TACTICAL (8): each unit draws TWO distinct, from one pool. In-match
+//     behavior levers (engage threshold / compliance / positioning / combat),
+//     side-AGNOSTIC personality perturbations on top of the side-aware role.
+//   - PERSONALITY (4): each unit draws ONE, on a 2-axis quadrant grid
+//     (Extroversion × Task/People). Minor in-match stat nudges now; their real
+//     weight is the future management layer (pre/post-match team chemistry).
+export type TacticalTrait =
+  | 'Aggressor'    // engage threshold − ; no-retreat; pushes (Hot Head/Run-n-Gun/Ego-aggro)
+  | 'Anchor'       // engage threshold + ; stationary hold (Sentinel/Patient)
+  | 'Freelancer'   // low directive compliance — plays off-plan (Ego/Lone Wolf)
+  | 'Disciplined'  // high directive compliance — executes the plan reliably
+  | 'Flanker'      // perimeter routing + lurk-till-fire; wall-adjacent +HR (Lurker)
+  | 'Trader'       // +HR trading off a teammate's recent fire (Trader/Leader)
+  | 'Marksman'     // flat combat +HR — the prized mechanical edge (Sharp Aim cluster)
+  | 'Clutch';      // last-alive +HR/+HS surge
+export type Personality =
+  | 'Firebrand'    // extrovert + task   — driven, vocal competitor
+  | 'Catalyst'     // extrovert + people — rallies the team
+  | 'Analyst'      // introvert + task   — quiet, methodical
+  | 'Stabilizer';  // introvert + people — loyal, low-ego glue
 
-// Pass H2 — generic trait shape. Each trait declares sub-attribute deltas
-// (consumed by rollUnitMeta) and an unlocks list (consumed by traits.ts'
-// availableStrategies to expand the strategy menu beyond the baseline 3).
-// `category` lets the UI group traits in the panel; H3 may also read it
-// for compliance-roll modifiers (e.g. Ego personality lowers Discipline
-// adherence).
-// H2 — trait rarity tier. v0 sim treats all tiers as uniform-pickable from
-// the trait pool; v1's progression layer reads this to gate scouting +
-// match-XP-earned trait unlocks (starters appear on scouted units; earned
-// traits require XP / training; event traits require specific in-match
-// triggers like ace-1v3-survival).
+// Rarity tier — v0 sim treats all as uniform-pickable; the v1 progression layer
+// reads it to gate scouting + XP-earned unlocks (e.g. Marksman as a prized find).
 export type TraitTier = 'starter' | 'earned' | 'event';
 
-export type TraitDef = {
-  id: TraitId;
-  category: 'skill' | 'behavioral' | 'personality';
-  tier: TraitTier;
-  attrBonuses: Partial<Attributes>;
-  unlocks: string[];                // strategy ids; forward-ref'd from H3
-  description: string;
-};
+// Personality quadrant axes (−1..+1), stored for the future chemistry matrix.
+export type PersonalityAxes = { extroversion: number; people: number };
 
 export type Role = 'Vanguard' | 'Tactician' | 'Warden' | 'Specialist';
 export type Hero = 'Angelic' | 'Techy' | 'Cursed';
@@ -173,13 +144,11 @@ export type Unit = {
   maxHp: number;
   facing: Facing;
   state: UnitState;
-  // Attributes assigned at match start (Pass 6).
-  skillTrait: SkillTrait | null;
-  behavioralTrait: BehavioralTrait | null;
-  // Pass H2 — third trait dimension (mental + social fused). Each unit
-  // contributes its three traits' `unlocks` lists to the team's available
-  // strategies; cumulative composition decides the strategy menu (H3).
-  personalityTrait: PersonalityTrait | null;
+  // v0.29.0 — traits assigned at match start. Two TACTICAL traits (distinct,
+  // from the 8-pool) + one PERSONALITY (4-quadrant). Combat/engage/compliance
+  // hooks iterate `[...tacticalTraits, personality]`.
+  tacticalTraits: TacticalTrait[];
+  personality: Personality | null;
   role: Role;
   preferredRole: Role;
   hero: Hero;

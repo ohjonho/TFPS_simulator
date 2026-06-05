@@ -15,16 +15,15 @@ import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './conf
 
 export type RetreatDecision = { retreat: boolean };
 
-// Default retreat rule: low HP. Behavioral overrides (spec §12.2): Sentinel
-// holds, Entry pushes forward, Clutch ignores retreat — none retreat. Lurker
-// keeps the default (its retreat routes to a wall via nearestWallRetreatHex).
-const NO_RETREAT_TRAITS = new Set(['Sentinel', 'Entry', 'Clutch']);
+// Default retreat rule: low HP. v0.29.0 tactical-trait overrides — Anchor holds
+// its ground, Aggressor pushes, Clutch stands its last — none retreat.
+const NO_RETREAT_TRAITS = new Set(['Anchor', 'Aggressor', 'Clutch']);
 
 export function shouldRetreat(unit: Unit): RetreatDecision {
   // Per-round strategy can shift the threshold (Rush: −1 → never retreat at 1 HP).
   const threshold = AI.retreatHpThreshold + unit.modifiers.retreatThresholdMod;
   if (unit.hp > threshold) return { retreat: false };
-  if (unit.behavioralTrait && NO_RETREAT_TRAITS.has(unit.behavioralTrait)) {
+  if (unit.tacticalTraits.some((t) => NO_RETREAT_TRAITS.has(t))) {
     return { retreat: false };
   }
   // Pass 8 — Reckless Push card ignores retreat for the round.

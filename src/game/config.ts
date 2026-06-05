@@ -263,17 +263,14 @@ export const ENGAGE = {
   baseThreshold: 0.50,          // a 50/50 fight is a coin flip at neutral discipline
   softness: 0.15,               // logistic band width; smaller = sharper cutoff
   aggressionWeight: 0.003,      // threshold -= (aggression-50) × this (Vanguard 70 → −0.06)
-  // Per-trait threshold deltas (negative = takes worse fights). Summed across
-  // the unit's skill/behavioral/personality slots. Calibrated so a Hot Head
-  // takes a 40/60 fight more readily; a plain Warden (~0.55) ≈28%;
-  // Patient/Lurker ≈15%; neutral 50/50 → 50%.
-  // v0.26.0 — Ego removed here (was −0.16, identical to Hot Head): the two were
-  // byte-identical. Ego is now differentiated by CHANNEL — it freelances off the
-  // team plan via a directive-COMPLIANCE penalty (COMPLIANCE_TRAIT_DELTA below),
-  // not by taking worse duels. Hot Head remains the on-sight peeker here.
+  // Per-trait engage-threshold deltas (negative = takes worse fights). Summed
+  // across the unit's tactical traits. v0.29.0 — two tactical traits own this
+  // lever: Aggressor (peeks/commits) and Anchor (waits for the good fight).
+  // Magnitudes provisional (retune with the full stack); the structural finding
+  // is that this is the cleanest behavior lever (see [[lever-board]]).
   traitThreshold: {
-    'Hot Head': -0.16, 'Run-n-Gun': -0.10, Entry: -0.08, Clutch: -0.08,
-    Patient: 0.12, Lurker: 0.10, Composed: 0.08, Sentinel: 0.08,
+    Aggressor: -0.10,
+    Anchor: 0.10,
   } as Record<string, number>,
   minThreshold: 0.20,
   maxThreshold: 0.75,
@@ -298,7 +295,8 @@ export const ENGAGE = {
 // Head (the on-sight peeker, who stays in traitThreshold). Coherent with Ego's
 // Solo_Frag unlock (complianceThreshold 30 = "accepts freelancing").
 export const COMPLIANCE_TRAIT_DELTA: Record<string, number> = {
-  Ego: -25,
+  Freelancer: -25,  // plays off-plan — breaks directives ~half the time
+  Disciplined: 20,  // executes the plan reliably
 };
 
 // --- Situational read (AI competence #3) ----------------------------------
@@ -367,147 +365,73 @@ export const HIT_CLAMP = { minPct: 5, maxPct: 95 } as const;
 // combat.ts against the per-shot context.
 // (Combat-condition values — Pass 6 originals. Pass H2 added the TRAITS_BY_ID
 // metadata registry below for sub-attr bonuses + strategy unlocks.)
+// v0.29.0 — combat-condition constants for the 8 tactical traits (evaluated in
+// combat.ts against the per-shot context). Only traits with a per-shot combat
+// hook appear here; Aggressor/Freelancer/Disciplined's levers are the engage
+// threshold + compliance (ENGAGE.traitThreshold / COMPLIANCE_TRAIT_DELTA) and
+// attribute bonuses, not a combat-condition hook.
 export const TRAITS = {
-  sharpAimHitPp: 10,
-  headhunterHsPp: 10,
-  firstShotHitPp: 20,
-  sentinel: { hitPp: 25, hsPp: 20, stationaryTicks: 3 },
-  runAndGunMovingHitPp: 15,
-  lurker: { hitPp: 20, hsPp: 10 },
-  entry: { hitPp: 20, hsPp: 15, postPenaltyHitPp: -10, windowTicks: 3 },
-  trader: { hitPp: 15, windowTicks: 3 },
-  clutch: { hitPp: 20, hsPp: 15 },
-  // H2 expansion — combat hooks for the new traits with conditional bonuses.
-  // Pure-stat traits (Roamer, Hot Head, Paranoid, Old Pro) have no entry here
-  // since their entire effect is the sub-attribute bonus in TRAITS_BY_ID.
-  // Spray Down keys off engagementTicks (after Entry's 3-tick window closes)
-  // — it's the opposite-half of First Shot / Entry's early-engagement bonus.
-  sprayDown: { hitPp: 15, afterTicks: 3 },               // post-first-3-engagement-ticks HR retention
-  deadeyeLongHitPp: 15,                                  // +HR at the 'long' range band
-  closeQuartersShortHitPp: 15,                           // +HR at the 'short' range band
-  patient: { hitPp: 15, afterTick: 30 },                 // late-round HR bonus (Patient personality)
+  marksmanHitPp: 10,                                     // Marksman — flat HR across weapons (stacks with its aim+15)
+  aggressorMovingHitPp: 15,                              // Aggressor — +HR while moving (absorbs Run-n-Gun)
+  anchor: { hitPp: 25, hsPp: 20, stationaryTicks: 3 },   // Anchor — +HR/HS after 3 ticks stationary
+  flanker: { hitPp: 20, hsPp: 10 },                      // Flanker — +HR/HS when wall-adjacent
+  trader: { hitPp: 15, windowTicks: 3 },                 // Trader — +HR when an ally fired recently
+  clutch: { hitPp: 20, hsPp: 15 },                       // Clutch — +HR/HS when last alive
 } as const;
 
-// Pass H2 — trait metadata registry. Every trait id maps to its category,
-// rarity tier, sub-attribute bonus deltas, and a forward-data list of
-// strategy ids it unlocks (H3 builds those strategies).
-//
-// Strategy unlock ids referenced here: Anchor_Hold / Mobile_Push /
-// Patient_Flank / Coordinated_Execute / Crossfire_Lockdown /
-// Last_Stand_Defense / Mind_Games / Solo_Frag / Hold_Composure /
-// Coordinated_Lockdown / Scatter_Push / Rotate_Stack / Aggressive_Peek /
-// Wide_Watch / Slow_Burn. Unknown ids are silently skipped by
-// availableStrategies(), keeping the system forward-compatible.
-//
-// 3 trait pools (skill / behavioral / personality), each unit picks one
-// trait per pool via rollUnitMeta. Pool sizes after H2 expansion:
-// Skill 7 / Behavioral 8 / Personality 8 = 23 trait defs total. With 6
-// drafted units × 3 traits = 18 trait picks per match (heavily deduped on
-// small rosters).
-//
-// `tier` — 'starter' / 'earned' / 'event'. v0 sim treats all uniformly;
-// v1's progression layer reads this to gate scouting + XP-earned trait
-// unlocks (e.g. fresh recruits roll only starters; earned + event come
-// from training / in-match triggers).
-export const TRAITS_BY_ID: Record<string, {
-  category: 'skill' | 'behavioral' | 'personality';
+// v0.29.0 — TACTICAL trait registry (8). Each unit draws TWO distinct. `tier`
+// gates v1 progression (Marksman is the prized 'earned' find). attrBonuses are
+// applied on top of the rolled attributes in rollUnitMeta.
+export const TACTICAL_TRAITS: Record<string, {
   tier: 'starter' | 'earned' | 'event';
   attrBonuses: Record<string, number>;
-  unlocks: readonly string[];
   description: string;
 }> = {
-  // --- Skill (mechanical) — pure stat, no strategy unlocks ---
-  'Sharp Aim':      { category: 'skill', tier: 'starter',
-    attrBonuses: { aim: 15 }, unlocks: [],
-    description: 'Wide HR bonus across all weapons.' },
-  'Headhunter':     { category: 'skill', tier: 'starter',
-    attrBonuses: { headshot: 15 }, unlocks: [],
-    description: 'Extra HS chance on every hit (rifle-only combat bonus).' },
-  'Eagle Eye':      { category: 'skill', tier: 'earned',
-    attrBonuses: { vision: 10 }, unlocks: [],
-    description: 'Wider vision cone; spots threats earlier.' },
-  'First Shot':     { category: 'skill', tier: 'starter',
-    attrBonuses: { reflexes: 10 }, unlocks: [],
-    description: 'First shot of any engagement gets a big HR bump.' },
-  'Spray Down':     { category: 'skill', tier: 'earned',
-    attrBonuses: { reflexes: 10 }, unlocks: [],
-    description: 'Post-first-3-shots HR bonus; complements First Shot.' },
-  'Deadeye':        { category: 'skill', tier: 'earned',
-    attrBonuses: { aim: 10 }, unlocks: [],
-    description: 'Long-range HR specialist (+HR at long band).' },
-  'Close Quarters': { category: 'skill', tier: 'earned',
-    attrBonuses: { weaponAffinity: 10 }, unlocks: [],
-    description: 'Short-range HR specialist (+HR at short band).' },
-
-  // --- Behavioral — engagement style; each unlocks one strategy variant ---
-  'Sentinel':   { category: 'behavioral', tier: 'starter',
-    attrBonuses: { tenacity: 10, composure: 5 }, unlocks: ['Anchor_Hold'],
-    description: 'Stationary hold; +HR after 3 ticks of stillness.' },
-  'Run-n-Gun':  { category: 'behavioral', tier: 'starter',
-    attrBonuses: { weaponAffinity: 10, reflexes: 5 }, unlocks: ['Mobile_Push'],
-    description: 'No retreat; faster move; HR bonus while moving.' },
-  'Lurker':     { category: 'behavioral', tier: 'starter',
-    attrBonuses: { mapIQ: 10, composure: 5 }, unlocks: ['Patient_Flank'],
-    description: 'Hugs walls + map edges; bonus when wall-adjacent.' },
-  'Entry':      { category: 'behavioral', tier: 'starter',
-    attrBonuses: { aim: 10, composure: -5 }, unlocks: ['Coordinated_Execute'],
-    description: 'First-3-ticks engagement bonus; small penalty after.' },
-  'Trader':     { category: 'behavioral', tier: 'starter',
-    attrBonuses: { comms: 10, aim: 5 }, unlocks: ['Crossfire_Lockdown'],
-    description: 'HR bonus when an ally has fired in the last 3 ticks.' },
-  'Clutch':     { category: 'behavioral', tier: 'earned',
-    attrBonuses: { composure: 15 }, unlocks: ['Last_Stand_Defense'],
-    description: 'Big HR/HS bonus when last alive on the team.' },
-  'Roamer':     { category: 'behavioral', tier: 'starter',
-    attrBonuses: { reflexes: 10, mapIQ: 10, tenacity: -10 },
-    unlocks: ['Rotate_Stack'],
-    description: 'Mobile defender; rotates between angles instead of holding.' },
-  'Hot Head':   { category: 'behavioral', tier: 'starter',
-    attrBonuses: { aim: 15, tenacity: -15 }, unlocks: ['Aggressive_Peek'],
-    description: 'Engages on sight; ignores hold orders.' },
-
-  // --- Personality (mental + social) — risky / tricky / veteran flavors ---
-  'Big Brain':  { category: 'personality', tier: 'earned',
-    attrBonuses: { mapIQ: 10, tenacity: 10, adaptability: 5 }, unlocks: ['Mind_Games'],
-    description: 'Sets up fakes / feints; reads enemy rotations.' },
-  'Ego':        { category: 'personality', tier: 'event',
-    attrBonuses: { aim: 15, tenacity: -15 }, unlocks: ['Solo_Frag'],
-    description: 'High Aim, low compliance — freelances even off-plan.' },
-  'Composed':   { category: 'personality', tier: 'starter',
-    attrBonuses: { composure: 15 }, unlocks: ['Hold_Composure'],
-    description: 'Performance under fire stays consistent.' },
-  'Leader':     { category: 'personality', tier: 'earned',
-    attrBonuses: { comms: 20, tenacity: 5 }, unlocks: ['Coordinated_Lockdown'],
-    description: 'Buffs ally aura radius + magnitude (wires fully in H3).' },
-  'Lone Wolf':  { category: 'personality', tier: 'event',
-    attrBonuses: { aim: 10, comms: -10 }, unlocks: ['Scatter_Push'],
-    description: 'Solo plays; weak ally synergy but high individual ceiling.' },
-  'Paranoid':   { category: 'personality', tier: 'starter',
-    attrBonuses: { vision: 10, reflexes: 5, tenacity: -10 }, unlocks: ['Wide_Watch'],
-    description: 'Over-rotates, sees ghosts; wide cone coverage, low patience.' },
-  'Patient':    { category: 'personality', tier: 'earned',
-    attrBonuses: { composure: 10, mapIQ: 5 }, unlocks: ['Slow_Burn'],
-    description: 'Rewards long rounds; +HR after tick 30.' },
-  'Old Pro':    { category: 'personality', tier: 'event',
-    attrBonuses: { aim: 5, composure: 5, mapIQ: 5, tenacity: 5 }, unlocks: [],
-    description: 'Veteran feel; small bonus to multiple sub-attributes.' },
-} as const;
-
-// Pass H2 — trait pools by category. rollUnitMeta picks one from each pool
-// per unit. v0 sim picks uniformly across tiers; v1 progression can filter
-// to starters-only for fresh scouts and surface earned/event via XP.
-export const SKILL_TRAIT_IDS = [
-  'Sharp Aim', 'Headhunter', 'Eagle Eye', 'First Shot',
-  'Spray Down', 'Deadeye', 'Close Quarters',
+  Aggressor:   { tier: 'starter', attrBonuses: { aim: 5, tenacity: -5 },
+    description: 'Pushes and peeks — lower bar to take a duel, never retreats, hunts before defusing. Strong on attack; over-extends on defense.' },
+  Anchor:      { tier: 'starter', attrBonuses: { tenacity: 10 },
+    description: 'Holds an angle — patient (waits for the good fight), +HR/HS after settling, never retreats.' },
+  Freelancer:  { tier: 'event',   attrBonuses: { aim: 10, comms: -10 },
+    description: 'High ceiling, uncoachable — frequently breaks the team plan to play its own game.' },
+  Disciplined: { tier: 'starter', attrBonuses: { tenacity: 5, composure: 5 },
+    description: 'Executes the plan reliably — sticks to its assigned role under pressure.' },
+  Flanker:     { tier: 'starter', attrBonuses: { mapIQ: 10 },
+    description: 'Takes the long way — perimeter routing, unseen until it fires, +HR hugging walls.' },
+  Trader:      { tier: 'earned',  attrBonuses: { comms: 10, aim: 5 },
+    description: 'Punishes trades — +HR right after a teammate fires (scales with Leadership).' },
+  Marksman:    { tier: 'earned',  attrBonuses: { aim: 15 },
+    description: 'Pure mechanical edge — high Aim + a flat hit-rate bonus on every shot. A prized find.' },
+  Clutch:      { tier: 'earned',  attrBonuses: { composure: 10 },
+    description: 'Rises when alone — big HR/HS surge as the last one standing (scales with Composure).' },
+};
+export const TACTICAL_TRAIT_IDS = [
+  'Aggressor', 'Anchor', 'Freelancer', 'Disciplined',
+  'Flanker', 'Trader', 'Marksman', 'Clutch',
 ] as const;
-export const BEHAVIORAL_TRAIT_IDS = [
-  'Sentinel', 'Run-n-Gun', 'Lurker', 'Entry', 'Trader', 'Clutch',
-  'Roamer', 'Hot Head',
-] as const;
-export const PERSONALITY_TRAIT_IDS = [
-  'Big Brain', 'Ego', 'Composed', 'Leader', 'Lone Wolf',
-  'Paranoid', 'Patient', 'Old Pro',
-] as const;
+
+// v0.29.0 — PERSONALITY registry (4-quadrant: Extroversion × Task/People). Each
+// unit draws ONE. In-match effect is only the minor attrBonuses below. `axes`
+// (−1..+1) is stored for the FUTURE management layer's chemistry matrix.
+// MANAGEMENT STUB (not built — needs the v1 persistence layer): pre/post-match
+// interactions between teammates' personalities would adjust attributes for the
+// match (positive → both up, risky → one up/one down, negative → both down) and
+// could grant strategy/trait unlocks, sponsor cash, EXP, or quests. See
+// docs/spec.md §15 + [[v1-direction]].
+export const PERSONALITIES: Record<string, {
+  axes: { extroversion: number; people: number };
+  attrBonuses: Record<string, number>;
+  description: string;
+}> = {
+  Firebrand:  { axes: { extroversion: 1,  people: -1 }, attrBonuses: { aim: 5, tenacity: -5 },
+    description: 'Extrovert · task-driven — vocal competitor who plays for the highlight.' },
+  Catalyst:   { axes: { extroversion: 1,  people: 1 },  attrBonuses: { comms: 10 },
+    description: 'Extrovert · people-first — rallies the team and keeps everyone talking.' },
+  Analyst:    { axes: { extroversion: -1, people: -1 }, attrBonuses: { mapIQ: 5, composure: 5 },
+    description: 'Introvert · task-driven — quiet and methodical; studies the game.' },
+  Stabilizer: { axes: { extroversion: -1, people: 1 },  attrBonuses: { composure: 5, tenacity: 5 },
+    description: 'Introvert · people-first — loyal, low-ego glue that steadies the room.' },
+};
+export const PERSONALITY_IDS = ['Firebrand', 'Catalyst', 'Analyst', 'Stabilizer'] as const;
 
 // Per-role base aggression rating (0–100), spec §13.1.
 export const ROLE_AGGRESSION = {
@@ -798,7 +722,7 @@ export const CHANNEL_COMMIT = {
 export const POST_PLANT_HUNT = {
   aggroBar: 60,
   timeMarginTicks: 2,
-  egoTraits: ['Ego', 'Hot Head'] as readonly string[],
+  egoTraits: ['Aggressor'] as readonly string[],
 };
 
 // v0.22.0 — defensive collapse-on-commit (pre-plant). The attacker bias is

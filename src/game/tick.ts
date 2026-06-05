@@ -885,9 +885,9 @@ function postPlantHuntFirst(
   if (!state.plant.planted || !hasVisibleEnemy || !isLastDefenderAlive) return false;
   const timeLeft = DETONATION_TICKS - (tick - state.plant.planted.plantedAtTick);
   if (timeLeft <= DEFUSE_TICKS + POST_PLANT_HUNT.timeMarginTicks) return false;
-  const egoLike = [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]
+  const aggroTrait = [...unit.tacticalTraits, unit.personality]
     .some((t) => t !== null && POST_PLANT_HUNT.egoTraits.includes(t));
-  return egoLike || unit.modifiers.aggression >= POST_PLANT_HUNT.aggroBar;
+  return aggroTrait || unit.modifiers.aggression >= POST_PLANT_HUNT.aggroBar;
 }
 
 // v0.19.0 — who is eligible to plant / defuse RIGHT NOW given positions? Shared

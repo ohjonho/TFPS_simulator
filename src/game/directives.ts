@@ -65,7 +65,7 @@ export function compliancePct(
   // v0.26.0 — per-trait freelance channel. A negative delta (e.g. Ego) makes the
   // unit break directives more often → falls through to the legacy tree. Summed
   // across the unit's three trait slots; absent traits contribute 0.
-  for (const id of [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]) {
+  for (const id of [...unit.tacticalTraits, unit.personality]) {
     if (id) p += COMPLIANCE_TRAIT_DELTA[id] ?? 0;
   }
   if (p < COMPLIANCE.min) p = COMPLIANCE.min;

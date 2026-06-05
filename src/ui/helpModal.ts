@@ -313,6 +313,31 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.29.0 — trait roster overhaul (tactical traits + personality)</h3>
+    <ul>
+      <li><strong>The old three-pool trait system (skill / behavioral /
+        personality) is gone. Every unit now draws two distinct
+        <em>tactical traits</em> from one pool, plus a single
+        <em>personality</em>.</strong> The old pools were a third dead and full
+        of near-duplicates; this collapses them into eight clean, distinct
+        levers that each span attack and defense play.
+        <strong>Tactical traits:</strong> <strong>Aggressor</strong> (picks
+        fights, never retreats, hunts after the plant),
+        <strong>Anchor</strong> (holds position, deadly while set),
+        <strong>Freelancer</strong> (goes off-plan for the solo play),
+        <strong>Disciplined</strong> (executes the called strategy),
+        <strong>Flanker</strong> (perimeter routes, lurks until it fires),
+        <strong>Trader</strong> (sharper right after an ally shoots),
+        <strong>Marksman</strong> (a flat aim edge — the prized one),
+        <strong>Clutch</strong> (rises when last alive).</li>
+      <li><strong>Personalities</strong> — <strong>Firebrand</strong>,
+        <strong>Catalyst</strong>, <strong>Analyst</strong>,
+        <strong>Stabilizer</strong> (extroversion × task/people) — give only a
+        small in-match stat nudge for now. Their real weight arrives with the
+        team-management layer (locker-room chemistry, sponsors, quests).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.28.0 — one strategy menu for every roster</h3>
     <ul>
       <li><strong>Strategies are no longer locked behind specific traits — every

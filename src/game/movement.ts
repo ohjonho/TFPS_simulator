@@ -16,8 +16,8 @@ export type AdvanceResult = {
 // while behavioral traits are null.
 export function effectiveSpeed(unit: Unit): number {
   const base = SPEED[unit.weapon];
-  const runGun = unit.behavioralTrait === 'Run-n-Gun' ? MOVE.runAndGunBonus : 0;
-  // Pass 8 — Reckless Push card stacks with Run-n-Gun's bonus.
+  // v0.29.0 — Aggressor (absorbs Run-n-Gun) moves a bit faster.
+  const runGun = unit.tacticalTraits.includes('Aggressor') ? MOVE.runAndGunBonus : 0;
   const recklessPush = unit.cardFlags.recklessPush ? CARD_EFFECTS.recklessPush.speedBonus : 0;
   return base + runGun + recklessPush;
 }

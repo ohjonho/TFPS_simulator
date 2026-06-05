@@ -132,75 +132,29 @@ function sumBuff(buffs: readonly Buff[], key: 'hitPp' | 'headshotPp'): number {
   return s;
 }
 
-// Skill + behavioral trait hit-rate contribution (spec §12). A unit has at most
-// one of each, so the matching branches simply sum. Pass 8: Opening Pick (Entry
-// card) overrides the Entry trait branch — skips the post-engagement penalty.
+// v0.29.0 — tactical-trait hit-rate contribution (spec §12). A unit has up to 2
+// tactical traits; each combat-relevant one adds its conditional bonus. (Aggressor
+// /Freelancer/Disciplined own the engage threshold + compliance, not a per-shot
+// HR hook; personalities are stat-only.)
 function traitHitPp(unit: Unit, ctx: ShotContext): number {
   let pp = 0;
-  switch (unit.skillTrait) {
-    case 'Sharp Aim': pp += TRAITS.sharpAimHitPp; break;
-    case 'First Shot':
-      if (ctx.firstShot) {
-        // F2 — Reflexes scales First Shot magnitude. (reflexes - 50) ×
-        // multiplier added to 1.0 produces a 0.6×–1.4× scaling at the
-        // [10, 90] tails. At rating 50 the scaling is 1.0 (no change).
-        const reflexScale = 1 + (unit.attributes.reflexes - 50) * ATTRIBUTES.formulas.reflexes.firstShotMultiplier;
-        pp += TRAITS.firstShotHitPp * reflexScale;
-      }
-      break;
-    // H2 expansion — opposite-half of First Shot: sustained-fire retention
-    // after the early-engagement window closes (ticks > 3). Pairs naturally
-    // with Entry / opposes First Shot for "frame-1 reflex" specialists.
-    case 'Spray Down':
-      if (ctx.engagementTicks > TRAITS.sprayDown.afterTicks) pp += TRAITS.sprayDown.hitPp;
-      break;
-    // Range specialists: read shot's resolved range band directly.
-    case 'Deadeye':
-      if (ctx.band === 'long') pp += TRAITS.deadeyeLongHitPp;
-      break;
-    case 'Close Quarters':
-      if (ctx.band === 'short') pp += TRAITS.closeQuartersShortHitPp;
-      break;
-    default: break; // Headhunter (HS only), Eagle Eye (vision) — no HR effect
+  const t = unit.tacticalTraits;
+  // Marksman — flat HR on every shot (the prized mechanical edge).
+  if (t.includes('Marksman')) pp += TRAITS.marksmanHitPp;
+  // Aggressor — +HR while moving (pushes in, shooting).
+  if (t.includes('Aggressor') && !ctx.stationary) pp += TRAITS.aggressorMovingHitPp;
+  // Anchor — +HR once settled (stationary 3+ ticks).
+  if (t.includes('Anchor') && ctx.stationaryTicks >= TRAITS.anchor.stationaryTicks) pp += TRAITS.anchor.hitPp;
+  // Flanker — +HR hugging walls / map edges.
+  if (t.includes('Flanker') && ctx.adjacentToWall) pp += TRAITS.flanker.hitPp;
+  // Trader — +HR right after a teammate fired (a trade to punish).
+  if (t.includes('Trader') && ctx.allyFiredRecently) pp += TRAITS.trader.hitPp;
+  // Clutch — surge when last alive (Composure scales the magnitude).
+  if (t.includes('Clutch') && ctx.lastAlive) {
+    pp += TRAITS.clutch.hitPp + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
   }
-  switch (unit.behavioralTrait) {
-    case 'Sentinel': if (ctx.stationaryTicks >= TRAITS.sentinel.stationaryTicks) pp += TRAITS.sentinel.hitPp; break;
-    case 'Run-n-Gun': if (!ctx.stationary) pp += TRAITS.runAndGunMovingHitPp; break;
-    case 'Lurker': if (ctx.adjacentToWall) pp += TRAITS.lurker.hitPp; break;
-    case 'Entry':
-      // Opening Pick replaces the trait branch (card handles both phases).
-      if (unit.cardFlags.openingPickActive) break;
-      pp += ctx.engagementTicks <= TRAITS.entry.windowTicks ? TRAITS.entry.hitPp : TRAITS.entry.postPenaltyHitPp;
-      break;
-    case 'Trader': if (ctx.allyFiredRecently) pp += TRAITS.trader.hitPp; break;
-    case 'Clutch':
-      // Pass 9 m4 — Last Stand removed (replaced by Trade Window); Clutch
-      // trait reverts to its base lastAlive bonus.
-      // Pass H1 — Composure attribute (was Clutch attribute) scales the
-      // magnitude on top of the trait flat: high-Composure trait holders are
-      // extra-dangerous when alone, low ones underperform their own trait.
-      if (ctx.lastAlive) {
-        pp += TRAITS.clutch.hitPp
-            + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
-      }
-      break;
-    // H2 expansion — Roamer / Hot Head are pure-stat traits (their entire
-    // effect lives in TRAITS_BY_ID.attrBonuses). No combat hook needed.
-    default: break;
-  }
-  // H2 expansion — personality trait combat hooks (only Patient is
-  // round-time-conditional; Big Brain / Ego / Composed / Leader / Lone Wolf /
-  // Paranoid / Old Pro are pure-stat traits via attrBonuses).
-  switch (unit.personalityTrait) {
-    case 'Patient':
-      if (ctx.ticksIntoRound > TRAITS.patient.afterTick) pp += TRAITS.patient.hitPp;
-      break;
-    default: break;
-  }
-  // Phase 3 — team-trade coordination scaled by Leadership (comms). When a
-  // teammate just fired (a live engagement to trade into), HR shifts by comms
-  // relative to neutral. Applies to every unit (stacks with the Trader trait),
-  // making Leadership mechanically real. Measurement-gated (config.COMMS).
+  // Team-trade coordination scaled by Leadership (comms) — applies to every unit
+  // when a teammate just fired (stacks with the Trader trait). config.COMMS.
   if (COMMS.enabled && ctx.allyFiredRecently) {
     pp += (unit.attributes.comms - 50) * COMMS.tradeScalePerPt;
   }
@@ -209,23 +163,11 @@ function traitHitPp(unit: Unit, ctx: ShotContext): number {
 
 function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
   let pp = 0;
-  if (unit.skillTrait === 'Headhunter' && unit.weapon === 'rifle') pp += TRAITS.headhunterHsPp;
-  switch (unit.behavioralTrait) {
-    case 'Sentinel': if (ctx.stationaryTicks >= TRAITS.sentinel.stationaryTicks) pp += TRAITS.sentinel.hsPp; break;
-    case 'Lurker': if (ctx.adjacentToWall) pp += TRAITS.lurker.hsPp; break;
-    case 'Entry':
-      if (unit.cardFlags.openingPickActive) break;
-      if (ctx.engagementTicks <= TRAITS.entry.windowTicks) pp += TRAITS.entry.hsPp;
-      break;
-    case 'Clutch':
-      // Pass 9 m4 — Last Stand removed; Clutch trait reverts to base.
-      // Pass H1 — Composure attribute scales the trait HS bonus, same shape as HR.
-      if (ctx.lastAlive) {
-        pp += TRAITS.clutch.hsPp
-            + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
-      }
-      break;
-    default: break;
+  const t = unit.tacticalTraits;
+  if (t.includes('Anchor') && ctx.stationaryTicks >= TRAITS.anchor.stationaryTicks) pp += TRAITS.anchor.hsPp;
+  if (t.includes('Flanker') && ctx.adjacentToWall) pp += TRAITS.flanker.hsPp;
+  if (t.includes('Clutch') && ctx.lastAlive) {
+    pp += TRAITS.clutch.hsPp + (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withTraitMultiplier;
   }
   return pp;
 }
@@ -235,7 +177,7 @@ function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
 function cardHitPp(unit: Unit, ctx: ShotContext): number {
   let pp = 0;
   // Anchor Position: extra Sentinel-style bonus while stationary 3+.
-  if (unit.cardFlags.anchorPosition && ctx.stationaryTicks >= TRAITS.sentinel.stationaryTicks) {
+  if (unit.cardFlags.anchorPosition && ctx.stationaryTicks >= TRAITS.anchor.stationaryTicks) {
     pp += CARD_EFFECTS.anchorPosition.hitPp;
   }
   // Reckless Push: +15 HR while moving (on top of Run-n-Gun's +15 if also that trait).
@@ -272,7 +214,7 @@ function cardHitPp(unit: Unit, ctx: ShotContext): number {
 
 function cardHeadshotPp(unit: Unit, ctx: ShotContext): number {
   let pp = 0;
-  if (unit.cardFlags.anchorPosition && ctx.stationaryTicks >= TRAITS.sentinel.stationaryTicks) {
+  if (unit.cardFlags.anchorPosition && ctx.stationaryTicks >= TRAITS.anchor.stationaryTicks) {
     pp += CARD_EFFECTS.anchorPosition.hsPp;
   }
   if (unit.cardFlags.openingPickActive && ctx.engagementTicks <= CARD_EFFECTS.openingPick.windowTicks) {
@@ -303,7 +245,7 @@ function modifierHitPp(unit: Unit, ctx: ShotContext): number {
   // `MODIFIERS.clutchDefault.hitPp` is gone). A low-Clutch unit who's last
   // alive takes a *penalty*; a high-Clutch one gets a small bonus. Trait
   // holders pick up their own attribute-scaled bonus in traitHitPp.
-  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
+  if (ctx.lastAlive && !unit.tacticalTraits.includes('Clutch')) {
     pp += (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withoutTraitMultiplier;
   }
   return pp;
@@ -311,7 +253,7 @@ function modifierHitPp(unit: Unit, ctx: ShotContext): number {
 
 function modifierHeadshotPp(unit: Unit, ctx: ShotContext): number {
   // Pass H1 — same shape on the HS side; reads Composure (was Clutch attr).
-  if (ctx.lastAlive && unit.behavioralTrait !== 'Clutch') {
+  if (ctx.lastAlive && !unit.tacticalTraits.includes('Clutch')) {
     return (unit.attributes.composure - 50) * ATTRIBUTES.formulas.composure.withoutTraitMultiplier;
   }
   return 0;
@@ -511,7 +453,7 @@ export function estimateEdpt(
   // no-trait unit, so the vanilla baseline is unchanged at any weight.
   const neutralShooter: Unit = {
     ...shooter, attributes: NEUTRAL_ATTRS, modifiers: NEUTRAL_MODS,
-    skillTrait: null, behavioralTrait: null, personalityTrait: null, cardFlags: {},
+    tacticalTraits: [], personality: null, cardFlags: {},
   };
   const neutral = edptOf(neutralShooter, []);
   return neutral + skillOddsWeight * (full - neutral);

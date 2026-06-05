@@ -48,7 +48,7 @@ function engageThreshold(unit: Unit, side: Side): number {
   // not a passive decliner). The explicit half of "Warden ≠ Vanguard".
   t += ROLE_PROFILE[unit.role][side].engageDelta;
   const tt = ENGAGE.traitThreshold;
-  for (const id of [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]) {
+  for (const id of [...unit.tacticalTraits, unit.personality]) {
     if (id && tt[id] !== undefined) t += tt[id];
   }
   return Math.max(ENGAGE.minThreshold, Math.min(ENGAGE.maxThreshold, t));

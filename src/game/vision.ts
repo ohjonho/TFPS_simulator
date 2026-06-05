@@ -75,9 +75,8 @@ function coneHalfRad(unit: Unit, state: GameState): number {
   if (unit.weapon === 'sniper' && isStationary(unit, state.prevPos[unit.id])) {
     halfDeg = VISION.sniperStationaryHalfDeg;
   }
-  if (unit.skillTrait === 'Eagle Eye') {
-    halfDeg += VISION.eagleEyeBonusHalfDeg;
-  }
+  // v0.29.0 — the Eagle Eye cone bonus was cut (trait retired); cone width is now
+  // purely the Vision attribute below. VISION.eagleEyeBonusHalfDeg is unused.
   // Pass H1 — Vision (was Awareness) widens/narrows the half-cone, capped
   // to ±coneCap deg. Neutral at 50; at the generation tails (10 / 90) the
   // cap kicks in well before the raw value gets extreme.

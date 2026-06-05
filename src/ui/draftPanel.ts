@@ -146,10 +146,9 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
       ? '<span class="pick-tag you">YOU</span>'
       : '<span class="pick-tag opp">OPP</span>';
   const cls = ['pool-card', picked ? 'picked' : 'available'].join(' ');
-  // H2.2 — trait chips with hover tooltips (description + bonuses + unlocks).
-  const skillChipHtml = traitSpan(u.skillTrait, 'skill');
-  const behChipHtml = traitSpan(u.behavioralTrait, 'beh');
-  const personalityChipHtml = traitSpan(u.personalityTrait, 'personality');
+  // Trait chips with hover tooltips. v0.29.0 — 2 tactical traits + 1 personality.
+  const tacticalChipsHtml = u.tacticalTraits.map((t) => traitSpan(t, 'skill')).join(' ');
+  const personalityChipHtml = traitSpan(u.personality, 'personality');
   // Attribute bars: Pass H1 — pool cards show the 5 visible aggregates only,
   // matching the H1 thesis (manager sees the legible scout card, not the
   // sub-attribute breakdown). The floating attributes panel still exposes
@@ -165,8 +164,7 @@ function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string 
         ${tag}
       </div>
       <div class="pool-card-traits">
-        ${skillChipHtml}
-        ${behChipHtml}
+        ${tacticalChipsHtml}
         ${personalityChipHtml}
       </div>
       <div class="pool-card-attrs">${inner}</div>
@@ -183,7 +181,7 @@ function rosterHtml(draft: DraftState, team: Team, _label: 'You' | 'Opp'): strin
       // H2.2 — trait chips with tooltips here too; visually consistent with
       // the pool cards above + the side-panel roster.
       // H3.fix3 — full weapon name + role/hero as chips with tooltips.
-      return `<li>${i + 1}. <span class="pool-card-weapon weapon-${u.weapon}">${WEAPON_NAME[u.weapon]}</span> ${roleChip(u.role)} ${heroChip(u.hero)} · ${traitSpan(u.skillTrait, 'skill')} ${traitSpan(u.behavioralTrait, 'beh')} ${traitSpan(u.personalityTrait, 'personality')}</li>`;
+      return `<li>${i + 1}. <span class="pool-card-weapon weapon-${u.weapon}">${WEAPON_NAME[u.weapon]}</span> ${roleChip(u.role)} ${heroChip(u.hero)} · ${u.tacticalTraits.map((t) => traitSpan(t, 'skill')).join(' ')} ${traitSpan(u.personality, 'personality')}</li>`;
     })
     .join('');
   return `<ul>${rows || '<li class="empty">—</li>'}</ul>`;

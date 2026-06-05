@@ -20,7 +20,7 @@ import { previewPlayerPlan } from './game/planningPreview.ts';
 // all deleted (card system removed).
 import { buildInitialState } from './game/state.ts';
 import { aggregateVisible } from './game/attributes.ts';
-import { availableStrategies, rosterUnlocks, unlockContributors } from './game/traits.ts';
+import { availableStrategies, unlockContributors } from './game/traits.ts';
 import { compliancePct } from './game/directives.ts';
 import { assignTarget } from './game/movement.ts';
 import { stepTick } from './game/tick.ts';
@@ -545,18 +545,12 @@ if (import.meta.env.DEV) {
       if (!d) return null;
       return { halfDeg: (d.halfRad * 180) / Math.PI, coneCount: d.cone.size, visibleCount: d.visible.size };
     },
-    setTrait: (id: string, skill: string | null) =>
-      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, skillTrait: skill as Unit['skillTrait'] } : u)) }),
-    setBehavioral: (id: string, t: string | null) =>
-      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, behavioralTrait: t as Unit['behavioralTrait'] } : u)) }),
-    // Pass H2 — personality trait + roster-unlock diagnostics.
+    // v0.29.0 — set the 2 tactical traits (array) + the personality.
+    setTactical: (id: string, traits: string[]) =>
+      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, tacticalTraits: traits as Unit['tacticalTraits'] } : u)) }),
     setPersonality: (id: string, t: string | null) =>
-      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, personalityTrait: t as Unit['personalityTrait'] } : u)) }),
-    getRosterUnlocks: (team?: Team) => {
-      const t = team ?? state.playerTeam;
-      const units = state.units.filter((u) => u.team === t);
-      return [...rosterUnlocks(units)];
-    },
+      setState({ ...state, units: state.units.map((u) => (u.id === id ? { ...u, personality: t as Unit['personality'] } : u)) }),
+    getRosterUnlocks: () => [], // v0.28.0 — strategies decoupled from traits; no roster unlocks
     getUnlockContributors: (team?: Team) => {
       const t = team ?? state.playerTeam;
       const units = state.units.filter((u) => u.team === t);
@@ -593,9 +587,7 @@ if (import.meta.env.DEV) {
       state.units.map((u) => ({
         id: u.id, team: u.team, weapon: u.weapon, role: u.role, preferredRole: u.preferredRole,
         hero: u.hero,
-        skill: u.skillTrait, behavioral: u.behavioralTrait,
-        // Pass H2 — third trait dimension.
-        personality: u.personalityTrait,
+        tactical: u.tacticalTraits, personality: u.personality,
         // Pass H1 — `handling` (legacy per-weapon view) is just weaponAffinity now;
         // the per-weapon split collapsed into one sub-attribute.
         aggression: u.modifiers.aggression,
