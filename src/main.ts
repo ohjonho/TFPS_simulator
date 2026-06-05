@@ -20,6 +20,7 @@ import { previewPlayerPlan } from './game/planningPreview.ts';
 // all deleted (card system removed).
 import { buildInitialState } from './game/state.ts';
 import { aggregateVisible } from './game/attributes.ts';
+import { computeTeamChemistry } from './game/chemistry.ts';
 import { availableStrategies, unlockContributors } from './game/traits.ts';
 import { compliancePct } from './game/directives.ts';
 import { assignTarget } from './game/movement.ts';
@@ -594,6 +595,19 @@ if (import.meta.env.DEV) {
         handling: u.attributes.weaponAffinity,
         offPos: u.modifiers.offPosition,
       })),
+    // --- Pass 2c: personality CHEMISTRY (stub for the v1 management layer) ---
+    // Computes the locker-room interaction read for a team's personalities.
+    // Pure + deterministic; NOT consumed by the live sim, so it has no match
+    // effect today — exposed here only for inspection + headless verification.
+    // getChemistry() defaults to the player's team; pass a team to override.
+    getChemistry: (team?: Team) => {
+      const t = team ?? state.playerTeam;
+      return computeTeamChemistry(
+        state.units
+          .filter((u) => u.team === t)
+          .map((u) => ({ id: u.id, personality: u.personality })),
+      );
+    },
     // --- Pass A1 / H1: per-unit attribute ratings ---
     // getRatings() returns the 10 hidden sub-attributes per unit; getRatings(id)
     // returns one. getVisible(id?) returns the 5 visible aggregates instead.

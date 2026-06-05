@@ -433,6 +433,23 @@ export const PERSONALITIES: Record<string, {
 };
 export const PERSONALITY_IDS = ['Firebrand', 'Catalyst', 'Analyst', 'Stabilizer'] as const;
 
+// v0.29.0 / Pass 2c — CHEMISTRY engine tunables. The pairwise personality
+// interaction model (src/game/chemistry.ts) is a STUB for the v1 management
+// layer: it is NOT consumed by the live sim, so these numbers have no in-match
+// effect yet. They define the score→interaction buckets + the per-unit
+// attribute-point delta the management layer would apply pre/post-match.
+//   score range is −2..+2 (see chemistry.classifyPair):
+//     >= positiveAt → positive (both members +delta)
+//     == riskyAt    → risky    (task member +delta, people member −delta)
+//     <= negativeAt → negative (both members −delta)
+//     otherwise     → neutral  (0)
+export const CHEMISTRY = {
+  delta: 2,          // attribute-point swing per interaction (management-applied)
+  positiveAt: 2,     // score ≥ this → positive
+  riskyAt: 1,        // score == this → risky (one up / one down)
+  negativeAt: -2,    // score ≤ this → negative
+} as const;
+
 // Per-role base aggression rating (0–100), spec §13.1.
 export const ROLE_AGGRESSION = {
   Vanguard: 70,
