@@ -260,6 +260,18 @@ export type CardFlags = {
   // a target until they fire OR get within `slowFlank.proximityHexes`. Cleared
   // by tick.ts when the unit fires (or by proximity check in vision-filter).
   invisibleUntilFire?: boolean;
+  // Pass 3 (heroes) — once-per-round active armed at round start; cleared when
+  // the hero's tactical condition fires (Angelic rally on first ally death;
+  // Techy scan on first team contact). Cursed uses `markTargetPending` instead.
+  heroActivePending?: boolean;
+  // Angelic Rally — stamped on living allies within radius when the active
+  // fires; combat reads it for +HR and engage reads it for −threshold while
+  // tick < this value.
+  rallyUntilTick?: number;
+  // Cursed weak passive — flat self +HR ("the hunter"). Set at round start on
+  // Cursed units; read in combat's cardHitPp (stripped in the neutral odds
+  // clone, so it wins fights without inflating engage decisions).
+  hunterBonus?: boolean;
 };
 
 // --- Match flow -------------------------------------------------------------

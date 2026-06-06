@@ -58,6 +58,7 @@ import {
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
+  HERO_ABILITIES,
   MIN_ROUND_TICKS_FOR_HOLD_END,
   PLANT_TICKS,
   POSITIONING,
@@ -796,6 +797,27 @@ export function stepTick(state: GameState): GameState {
   let nextCardEffects: import('./types.ts').ActiveCardEffect[] =
     tradeWindowMarks.length > 0 ? [...state.cardEffects, ...tradeWindowMarks] : [...state.cardEffects];
 
+  // Pass 3 — Angelic Rally: the team's FIRST loss steels nearby allies. Each
+  // armed Angelic (heroActivePending) on the bereaved team stamps living allies
+  // within radius with `rallyUntilTick` (engage threshold drop + small +HR in
+  // combat), then disarms. Fair info — triggered by an own-team death.
+  if (deathsThisTick.length > 0) {
+    const ral = HERO_ABILITIES.angelicRally;
+    for (const { dead } of deathsThisTick) {
+      for (const angel of working) {
+        if (angel.hero !== 'Angelic' || angel.state !== 'alive') continue;
+        if (angel.team !== dead.team || !angel.cardFlags.heroActivePending) continue;
+        angel.cardFlags = { ...angel.cardFlags, heroActivePending: false };
+        for (const ally of working) {
+          if (ally.team !== angel.team || ally.state !== 'alive') continue;
+          if (hexDistance(ally.pos, angel.pos) <= ral.radius) {
+            ally.cardFlags = { ...ally.cardFlags, rallyUntilTick: tick + ral.durationTicks };
+          }
+        }
+      }
+    }
+  }
+
   // Buff durations: drop any whose window has elapsed (spec §7.4).
   const nextBuffs = pruneBuffs(state.buffs, tick);
 
@@ -821,12 +843,11 @@ export function stepTick(state: GameState): GameState {
   const currVisibleByTeam = visibleEnemiesByTeam(postMove, visibility);
   const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam, tick);
 
-  // Pass 9 m3 — Mark Target trigger: for each unit with markTargetPending,
-  // if their per-unit visibility includes a live enemy this tick, register a
-  // mark_target effect on that enemy and clear the pending flag. First enemy
-  // wins (stable: lowest enemy id on tied distance). Reads post-move visibility
-  // so it fires the tick the contributor first sees an enemy.
-  const triggeredEffects = triggerPendingMarks(working, post.perUnit, postMove.cardEffects, tick);
+  // Pass 9 m3 / Pass 3 — vision-triggered hero actives, evaluated on post-move
+  // visibility so they fire the tick the condition first holds: Cursed Mark
+  // Target (first enemy a contributor spots) + Techy Tactical Scan (the team's
+  // first enemy contact). Returns the updated cardEffects; clears the flags.
+  const triggeredEffects = triggerHeroActives(working, post.perUnit, postMove.cardEffects, tick);
 
   // Pass B — spike-plant update on the post-move state. May set roundResult
   // (detonation → attackers win, defuse → defenders win) and push plant
@@ -1003,17 +1024,21 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
   return { plant: nextPlant, events, roundResult };
 }
 
-// Pass 9 m3 — convert pending Mark Target flags into active mark_target
-// effects when the contributor first spots an enemy this round. Pure: returns
-// a new cardEffects array; mutates each triggered contributor's cardFlags in
-// place (the same `working` array stepTick is about to commit).
-function triggerPendingMarks(
+// Pass 9 m3 / Pass 3 — fire vision-triggered hero actives this tick. Pure:
+// returns a new cardEffects array; mutates each triggered contributor's
+// cardFlags in place (the same `working` array stepTick is about to commit).
+//   Cursed Mark Target (markTargetPending) — first enemy the contributor spots.
+//   Techy Tactical Scan (heroActivePending) — fires the tick the team first
+//     sees any live enemy ("first contact"), revealing all enemies briefly.
+// (Angelic Rally is death-triggered and handled in the death loop above.)
+function triggerHeroActives(
   units: Unit[],
   perUnitVis: Record<string, Set<string>>,
   cardEffects: readonly import('./types.ts').ActiveCardEffect[],
   tick: number,
 ): import('./types.ts').ActiveCardEffect[] {
   let next: import('./types.ts').ActiveCardEffect[] = [...cardEffects];
+  // Cursed — Mark Target on first spotted enemy.
   for (const u of units) {
     if (u.state !== 'alive') continue;
     if (!u.cardFlags.markTargetPending) continue;
@@ -1037,6 +1062,26 @@ function triggerPendingMarks(
         targetId: target.id,
         revealUntilTick: tick + CARD_EFFECTS.markTarget.revealTicks,
       },
+    ];
+  }
+  // Techy — Tactical Scan held until the team's first enemy contact.
+  for (const u of units) {
+    if (u.state !== 'alive' || u.hero !== 'Techy') continue;
+    if (!u.cardFlags.heroActivePending) continue;
+    const teamSeesEnemy = units.some((mate) => {
+      if (mate.team !== u.team || mate.state !== 'alive') return false;
+      const vis = perUnitVis[mate.id];
+      if (!vis) return false;
+      return units.some(
+        (e) => e.team !== u.team && e.state === 'alive' && vis.has(`${e.pos.col},${e.pos.row}`),
+      );
+    });
+    if (!teamSeesEnemy) continue;
+    u.cardFlags = { ...u.cardFlags, heroActivePending: false };
+    next = next.filter((e) => !(e.kind === 'tactical_scan' && e.team === u.team));
+    next = [
+      ...next,
+      { kind: 'tactical_scan', team: u.team, expiresAtTick: tick + CARD_EFFECTS.tacticalScan.ticks },
     ];
   }
   return next;

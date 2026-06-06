@@ -522,10 +522,12 @@ export const ROLE_DESCRIPTIONS = {
 // H3.fix3 — hero passive-ability descriptions. Heroes became passive
 // role-tags in H3.3 (card system collapse); each grants one always-on
 // effect with no decision surface.
+// Pass 3 — heroes are now hybrid: a weak always-on passive + ONE once-per-round
+// active that fires on a tactical condition.
 export const HERO_DESCRIPTIONS = {
-  Angelic: 'Guardian Aura — allies within 5 hex get +1 max HP, always on.',
-  Techy: 'Tactical Scan — round-start reveal of all enemy positions for a few ticks.',
-  Cursed: 'Mark Target — the first enemy this unit spots each round is auto-marked all round (+20 HR / +10 HS for allies vs the mark).',
+  Angelic: 'Guardian (passive): allies within 3 hex get +1 max HP. Rally (active): on the team’s first loss, nearby allies steel up — they commit fights they’d decline and hit harder for a few ticks.',
+  Techy: 'Recon (passive): slightly wider vision cone. Tactical Scan (active): held until first contact, then reveals every enemy for a few ticks so the team commits with full info.',
+  Cursed: 'Hunter (passive): a small flat aim edge. Mark Target (active): the first enemy the team spots is marked all round (+20 HR / +10 HS for allies vs the mark).',
 } as const;
 
 // Dynamic modifier scales (spec §13.1).
@@ -854,8 +856,9 @@ export const CARD_EFFECTS = {
   // Adapt: Pass C2 — invokes a role card's handler on the Specialist AND
   // additionally grants a flat +10 HR buff for the full round (60 ticks).
   adapt: { allRoundHitPp: 10, durationTicks: 60 },
-  // Guardian Aura: +1 maxHp within N hexes of source.
-  guardianAura: { radius: 5, maxHpBonus: 1 },
+  // Guardian Aura: +1 maxHp within N hexes of source. Pass 3 — radius cut
+  // 5→3: this is now Angelic's *weak passive* (the rally active does the work).
+  guardianAura: { radius: 3, maxHpBonus: 1 },
   // Tactical Scan: reveal all enemies for N ticks at round start.
   // Pass C2 tone-down: 5 → 3 ticks.
   tacticalScan: { ticks: 3 },
@@ -863,6 +866,30 @@ export const CARD_EFFECTS = {
   // Pass 9 m3 — first-spotted trigger model; reveal lasts `revealTicks` even
   // past LoS once the mark is set.
   markTarget: { hitPp: 20, hsPp: 10, revealTicks: 5 },
+} as const;
+
+// v0.30.0 / Pass 3 — HERO abilities. Each hero keeps a *weak passive* and gains
+// ONE condition-triggered ACTIVE that arms at round start and fires once, the
+// first tick its tactical condition is met (fair info only — own-team state).
+// Magnitudes provisional (mechanics-now-tune-later); the full-stack 50/50 tune
+// is a later pass.
+export const HERO_ABILITIES = {
+  // Angelic — weak passive: the reduced Guardian Aura (CARD_EFFECTS.guardianAura,
+  // radius 5→3). ACTIVE "Rally": on the team's FIRST death, living allies within
+  // `radius` of the Angelic get −engageDelta (commit/hold a fight they'd decline)
+  // and +hitPp for `durationTicks` — counters the post-first-blood cascade.
+  angelicRally: { radius: 4, durationTicks: 6, engageDelta: 0.12, hitPp: 8 },
+  // Techy — weak passive: +cone half-angle (deg) for Techy himself (mirrors the
+  // retired Eagle Eye cone). ACTIVE "Tactical Scan": held until the team's FIRST
+  // enemy contact, then reveals all enemies for CARD_EFFECTS.tacticalScan.ticks
+  // (info → better commit decisions at the hit, not a wasted spawn scan).
+  techyConeBonusDeg: 6,
+  // Cursed — weak passive: flat self +HR (the "hunter"). ACTIVE "Mark Target":
+  // first enemy the team spots is marked all round (CARD_EFFECTS.markTarget) —
+  // unchanged; already the once-per-round-on-condition template. Kept genuinely
+  // weak (flat pp; a trait's attribute bonus is only ~2pp, so this is a small
+  // edge — the mark active is where Cursed earns its pick).
+  cursedSelfHitPp: 3,
 } as const;
 
 // AI plays a card this fraction of rounds (spec §15.6).

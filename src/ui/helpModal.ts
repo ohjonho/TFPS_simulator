@@ -313,6 +313,26 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.30.0 — heroes now have a signature move</h3>
+    <ul>
+      <li><strong>Heroes used to be flat, always-on passives. Now each one keeps a
+        weaker passive AND gains a once-per-round active that fires automatically
+        the moment a tactical condition is met.</strong> The active is where the
+        hero earns its pick — it triggers at the right beat instead of doing the
+        same thing every tick. <strong>Angelic</strong> — Guardian aura shrinks
+        to 3 hex (passive); <strong>Rally</strong> fires on your team’s first
+        death, steeling nearby allies to commit fights they’d otherwise flinch
+        from (and hit harder) for a few ticks — it blunts the snowball after first
+        blood. <strong>Techy</strong> — slightly wider vision cone (passive);
+        <strong>Tactical Scan</strong> is now <em>held</em> until your team makes
+        first contact, then reveals every enemy briefly so you commit with full
+        info, instead of being wasted at spawn. <strong>Cursed</strong> — a small
+        flat aim edge (passive); <strong>Mark Target</strong> is unchanged (the
+        first enemy your team spots is marked all round). Exact numbers are
+        provisional and will be tuned alongside roles and traits.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.29.0 — trait roster overhaul (tactical traits + personality)</h3>
     <ul>
       <li><strong>The old three-pool trait system (skill / behavioral /

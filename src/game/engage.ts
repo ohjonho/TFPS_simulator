@@ -21,7 +21,7 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { estimateEdpt } from './combat.ts';
 import { staticExposure, suspectedEnemyHexes, threatAt } from './threat.ts';
-import { ENGAGE, ROLE_PROFILE } from './config.ts';
+import { ENGAGE, ROLE_PROFILE, HERO_ABILITIES } from './config.ts';
 
 export type EngageAssessment = {
   engage: boolean;
@@ -38,7 +38,7 @@ function aliveTeam(units: readonly Unit[], team: Unit['team']): number {
 
 // Odds (0..1) at which this unit becomes a coin-flip to commit. Lower = takes
 // worse fights. Aggression + risk/patient traits shift it; clamped.
-function engageThreshold(unit: Unit, side: Side): number {
+function engageThreshold(unit: Unit, side: Side, tick: number): number {
   let t = ENGAGE.baseThreshold;
   // High aggression lowers the bar (fights more); risk traits are negative
   // deltas (lower the bar further), patient/anchor traits positive (raise it).
@@ -50,6 +50,11 @@ function engageThreshold(unit: Unit, side: Side): number {
   const tt = ENGAGE.traitThreshold;
   for (const id of [...unit.tacticalTraits, unit.personality]) {
     if (id && tt[id] !== undefined) t += tt[id];
+  }
+  // Pass 3 — Angelic Rally: while inside the active window, commit/hold fights
+  // this unit would otherwise decline (the rally's primary decision lever).
+  if ((unit.cardFlags.rallyUntilTick ?? -1) > tick) {
+    t -= HERO_ABILITIES.angelicRally.engageDelta;
   }
   return Math.max(ENGAGE.minThreshold, Math.min(ENGAGE.maxThreshold, t));
 }
@@ -113,7 +118,7 @@ export function assessEngagement(
   }
 
   // Probabilistic commit on acquisition.
-  const threshold = engageThreshold(unit, state.teamSide[unit.team]);
+  const threshold = engageThreshold(unit, state.teamSide[unit.team], tick);
   const p = 1 / (1 + Math.exp(-(bestOdds - threshold) / ENGAGE.softness));
   const pClamped = Math.max(ENGAGE.minAccept, Math.min(ENGAGE.maxAccept, p));
   if (rng.chance(pClamped)) {

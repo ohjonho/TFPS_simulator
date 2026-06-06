@@ -31,6 +31,7 @@ import {
   RANGE,
   SNIPER_SETTLED_TICKS,
   TRAITS,
+  HERO_ABILITIES,
 } from './config.ts';
 
 export type ShotContext = {
@@ -51,6 +52,11 @@ export type ShotContext = {
   // (Pass C2 — `flankedByShooter` removed; Setup Play no longer flank-gated.)
   warderAnchorStationary: boolean; // Warden Hold-the-Line stationary at anchor
   spearheadFirstEngagement: boolean;
+  // Pass 3 (heroes) — shooter is inside an active Angelic Rally (+HR). A team
+  // decision buff like markedTarget, so it's carried on ctx (survives the
+  // neutral odds clone); the odds estimate sets it false to avoid the rally
+  // double-counting (its primary lever is the engage-threshold drop).
+  rallied: boolean;
   // --- Pass B: peeker's advantage ---
   // True when the target's hex is in the shooter's per-unit visibility set
   // THIS tick but was NOT in the previous tick's set ("just appeared"). The
@@ -209,6 +215,16 @@ function cardHitPp(unit: Unit, ctx: ShotContext): number {
   if (ctx.markedTarget) {
     pp += CARD_EFFECTS.markTarget.hitPp;
   }
+  // Pass 3 — Angelic Rally: allies inside the active rally hit harder.
+  if (ctx.rallied) {
+    pp += HERO_ABILITIES.angelicRally.hitPp;
+  }
+  // Pass 3 — Cursed weak passive ("hunter"): flat self +HR. Behind a cardFlag
+  // (not a hero check) so the neutral odds clone strips it — it wins the fights
+  // Cursed takes without making Cursed take more.
+  if (unit.cardFlags.hunterBonus) {
+    pp += HERO_ABILITIES.cursedSelfHitPp;
+  }
   return pp;
 }
 
@@ -358,6 +374,7 @@ export function resolveShot(
     markedTarget,
     warderAnchorStationary,
     spearheadFirstEngagement,
+    rallied: (shooter.cardFlags.rallyUntilTick ?? -1) > currentTick,
     ...input,
   };
   const hit = rng.chance(effectiveHitPct(shooter, ctx, buffs) / 100);
@@ -434,6 +451,7 @@ export function estimateEdpt(
     markedTarget,
     warderAnchorStationary: false,
     spearheadFirstEngagement: false,
+    rallied: false, // rally's odds lever is the threshold drop, not inflated EDPT
     firstSightShot: false,
   };
   const dmg = DAMAGE[shooter.weapon];

@@ -392,10 +392,16 @@ function applyTraitStrategySynergies(
   strategyId: string,
 ): import('./types.ts').CardFlags {
   void strategyId;
-  // Cursed hero → mark-target-pending flag. The hero's passive fires when the
-  // unit first spots an enemy this round (tick.ts reads this flag).
+  // Pass 3 — arm each hero's once-per-round active + weak passive at round start.
+  //   Cursed → Mark Target (markTargetPending; fires on first enemy spotted) +
+  //            hunterBonus weak passive (flat self +HR, read in combat).
+  //   Angelic/Techy → heroActivePending; the trigger condition differs by hero
+  //            (Angelic rally fires in tick.ts's death loop on first ally death;
+  //            Techy scan fires on the team's first enemy contact).
   if (unit.hero === 'Cursed') {
-    flags = { ...flags, markTargetPending: true };
+    flags = { ...flags, markTargetPending: true, hunterBonus: true };
+  } else if (unit.hero === 'Angelic' || unit.hero === 'Techy') {
+    flags = { ...flags, heroActivePending: true };
   }
   return flags;
 }
