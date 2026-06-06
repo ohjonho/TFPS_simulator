@@ -32,7 +32,7 @@ import {
 const TACTICALS: readonly TacticalTrait[] = TACTICAL_TRAIT_IDS as readonly TacticalTrait[];
 const PERSONALITIES_LIST: readonly Personality[] = PERSONALITY_IDS as readonly Personality[];
 const ROLES: readonly Role[] = ['Vanguard', 'Tactician', 'Warden', 'Specialist'];
-const HEROES: readonly Hero[] = ['Angelic', 'Techy', 'Cursed'];
+const HEROES: readonly Hero[] = ['Angelic', 'Techy', 'Cursed', 'Bulwark'];
 
 // Clamp a number to [0, 100] for attribute deltas.
 function clamp100(v: number): number {

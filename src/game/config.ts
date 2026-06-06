@@ -525,9 +525,10 @@ export const ROLE_DESCRIPTIONS = {
 // Pass 3 — heroes are now hybrid: a weak always-on passive + ONE once-per-round
 // active that fires on a tactical condition.
 export const HERO_DESCRIPTIONS = {
-  Angelic: 'Guardian (passive): allies within 3 hex get +1 max HP. Rally (active): on the team’s first loss, nearby allies steel up — they commit fights they’d decline and hit harder for a few ticks.',
-  Techy: 'Recon (passive): slightly wider vision cone. Tactical Scan (active): held until first contact, then reveals every enemy for a few ticks so the team commits with full info.',
-  Cursed: 'Hunter (passive): a small flat aim edge. Mark Target (active): the first enemy the team spots is marked all round (+20 HR / +10 HS for allies vs the mark).',
+  Angelic: 'Field Medic (active): the first time a teammate in sight is hurt but survives, the Angelic rushes a step to them, heals them to full, and pumps their aim for a few ticks. A pure support.',
+  Techy: 'Recon (passive): slightly wider vision cone. Tactical Scan (active): held until first contact, then briefly reveals enemies lurking around the nearer bomb site — targeted intel for the hit or the hold.',
+  Cursed: 'Hunter (passive): a small flat aim edge. Hunter’s Mark (active): the first enemy the team spots is revealed and takes +20 HR / +10 HS from your team — until you damage it or the hunt times out.',
+  Bulwark: 'Anchor (passive): a little extra max HP. Fortify (active): the first time the Bulwark is hit, it and nearby allies harden up — enemies hit them less for a few ticks. The defensive wall.',
 } as const;
 
 // Dynamic modifier scales (spec §13.1).
@@ -874,22 +875,28 @@ export const CARD_EFFECTS = {
 // Magnitudes provisional (mechanics-now-tune-later); the full-stack 50/50 tune
 // is a later pass.
 export const HERO_ABILITIES = {
-  // Angelic — weak passive: the reduced Guardian Aura (CARD_EFFECTS.guardianAura,
-  // radius 5→3). ACTIVE "Rally": on the team's FIRST death, living allies within
-  // `radius` of the Angelic get −engageDelta (commit/hold a fight they'd decline)
-  // and +hitPp for `durationTicks` — counters the post-first-blood cascade.
-  angelicRally: { radius: 4, durationTicks: 6, engageDelta: 0.12, hitPp: 8 },
-  // Techy — weak passive: +cone half-angle (deg) for Techy himself (mirrors the
-  // retired Eagle Eye cone). ACTIVE "Tactical Scan": held until the team's FIRST
-  // enemy contact, then reveals all enemies for CARD_EFFECTS.tacticalScan.ticks
-  // (info → better commit decisions at the hit, not a wasted spawn scan).
+  // Angelic — SUPPORT/HEALER (Pass 4). No standing passive. ACTIVE "Field Medic":
+  // the first time an ally in LOS takes damage and survives, the Angelic steps 1
+  // hex toward them, heals them to full HP, and grants +hitPp for `buffTicks`
+  // (combat reads it via cardFlags.rallyUntilTick → ctx.rallied).
+  angelicHeal: { buffTicks: 5, hitPp: 8 },
+  // Techy — passive: +cone half-angle (deg) for Techy himself. ACTIVE "Tactical
+  // Scan" (Pass 4): held until the team's FIRST enemy contact, then reveals
+  // enemies within `radius` of the NEARER site's plant hexes for `ticks` ticks
+  // (targeted recon at the objective, not a whole-map wallhack).
   techyConeBonusDeg: 6,
-  // Cursed — weak passive: flat self +HR (the "hunter"). ACTIVE "Mark Target":
-  // first enemy the team spots is marked all round (CARD_EFFECTS.markTarget) —
-  // unchanged; already the once-per-round-on-condition template. Kept genuinely
-  // weak (flat pp; a trait's attribute bonus is only ~2pp, so this is a small
-  // edge — the mark active is where Cursed earns its pick).
+  techyScan: { ticks: 2, radius: 4 },
+  // Cursed — passive: flat self +HR (the "hunter", ~weak; a trait's attr bonus is
+  // only ~2pp). ACTIVE "Hunter's Mark" (Pass 4): the first enemy the team spots is
+  // revealed + takes +HR/+HS from allies (CARD_EFFECTS.markTarget pp) for `ticks`
+  // ticks OR until it takes damage from the team — a short, intense hunt.
   cursedSelfHitPp: 3,
+  cursedMark: { ticks: 10 },
+  // Bulwark — DEFENSIVE ANCHOR (Pass 4). Passive: self +maxHP (via a radius-0
+  // guardian_aura). ACTIVE "Fortify": the first time the Bulwark takes damage,
+  // it + allies within `radius` gain a fortify for `durationTicks` — shots vs a
+  // fortified unit take a `hitPenaltyPp` HR penalty (a deliberate pro-DEF knob).
+  bulwarkFortify: { radius: 2, durationTicks: 6, hitPenaltyPp: 12 },
 } as const;
 
 // AI plays a card this fraction of rounds (spec §15.6).

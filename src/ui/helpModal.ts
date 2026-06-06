@@ -313,6 +313,25 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.31.0 — hero abilities reworked + a new defender hero</h3>
+    <ul>
+      <li><strong>The three hero actives were retuned to feel like real roles, and a
+        fourth hero joins.</strong> <strong>Angelic</strong> is now a true medic:
+        the first time a teammate in sight is hurt but survives, the Angelic rushes
+        a step to them, heals them to full, and buffs their aim for a few ticks
+        (replaces the old aura + rally). <strong>Techy</strong>'s Tactical Scan is
+        now targeted — instead of revealing the whole map, it briefly reveals
+        enemies lurking around the nearer bomb site, held until first contact.
+        <strong>Cursed</strong>'s mark is now a hunt: it reveals the first enemy
+        spotted and gives your team +HR/+HS against it until you damage it or the
+        hunt times out (no more round-long wallhack). New hero
+        <strong>Bulwark</strong> — a defensive anchor: a little extra max HP, and
+        the first time it's hit, it and nearby allies harden up so enemies hit them
+        less for a few ticks. Numbers are provisional and will be tuned with the
+        broader balance pass.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.30.0 — heroes now have a signature move</h3>
     <ul>
       <li><strong>Heroes used to be flat, always-on passives. Now each one keeps a

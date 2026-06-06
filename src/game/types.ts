@@ -81,7 +81,7 @@ export type TraitTier = 'starter' | 'earned' | 'event';
 export type PersonalityAxes = { extroversion: number; people: number };
 
 export type Role = 'Vanguard' | 'Tactician' | 'Warden' | 'Specialist';
-export type Hero = 'Angelic' | 'Techy' | 'Cursed';
+export type Hero = 'Angelic' | 'Techy' | 'Cursed' | 'Bulwark';
 
 // --- Pass H1: per-unit attributes (0-100 ratings, 50 = baseline) ----------
 // 10 hidden sub-attributes that combat / vision math reads directly. The UI
@@ -186,9 +186,14 @@ export type ActiveCardEffect =
   // LoS. Pass 9 m4 — `expiresAtTick` lets Trade Window's mark expire after
   // 4 ticks while Mark Target's mark (no expiresAtTick) lasts the whole round
   // (cleared by startRound's cardEffects reset).
-  | { kind: 'mark_target'; team: Team; targetId: string; revealUntilTick?: number; expiresAtTick?: number }
+  // Pass 4 — Cursed hunter mark sets `clearOnDamage`: the mark (reveal + combat
+  // bonus) ends the tick its target takes damage from the marking team (or at
+  // expiresAtTick). Trade Window marks leave it unset (expire purely on time).
+  | { kind: 'mark_target'; team: Team; targetId: string; revealUntilTick?: number; expiresAtTick?: number; clearOnDamage?: boolean }
   | { kind: 'guardian_aura'; team: Team; sourceId: string; radius: number }
-  | { kind: 'tactical_scan'; team: Team; expiresAtTick: number }
+  // Pass 4 — Techy Tactical Scan is now TARGETED: reveals enemies within `radius`
+  // of the chosen site's plant hexes (not the whole map) for a short window.
+  | { kind: 'tactical_scan'; team: Team; expiresAtTick: number; site: 'A' | 'B'; radius: number }
   | { kind: 'hold_the_line'; team: Team; anchorHex: HexCoord; anchorId: string }
   | { kind: 'setup_play'; team: Team; allyId: string; expiresAtTick: number }
   | { kind: 'spearhead'; team: Team; vanguardId: string };
@@ -260,18 +265,22 @@ export type CardFlags = {
   // a target until they fire OR get within `slowFlank.proximityHexes`. Cleared
   // by tick.ts when the unit fires (or by proximity check in vision-filter).
   invisibleUntilFire?: boolean;
-  // Pass 3 (heroes) — once-per-round active armed at round start; cleared when
-  // the hero's tactical condition fires (Angelic rally on first ally death;
-  // Techy scan on first team contact). Cursed uses `markTargetPending` instead.
+  // Pass 3/4 (heroes) — once-per-round active armed at round start; cleared when
+  // the hero's tactical condition fires (Angelic heal on first wounded ally;
+  // Techy scan on first team contact; Bulwark fortify on first damage taken).
+  // Cursed uses `markTargetPending` instead.
   heroActivePending?: boolean;
-  // Angelic Rally — stamped on living allies within radius when the active
-  // fires; combat reads it for +HR and engage reads it for −threshold while
-  // tick < this value.
+  // Short +HR buff window (combat reads it via ctx.rallied) — Pass 4: stamped on
+  // an ally healed by Angelic for buffTicks. (Was the Pass-3 Rally buff.)
   rallyUntilTick?: number;
   // Cursed weak passive — flat self +HR ("the hunter"). Set at round start on
   // Cursed units; read in combat's cardHitPp (stripped in the neutral odds
   // clone, so it wins fights without inflating engage decisions).
   hunterBonus?: boolean;
+  // Pass 4 — Bulwark fortify: while tick < this, shots vs this unit take a HR
+  // penalty (the anchor's damage-resist window). Stamped on the Bulwark + nearby
+  // allies when the fortify active fires.
+  fortifiedUntilTick?: number;
 };
 
 // --- Match flow -------------------------------------------------------------

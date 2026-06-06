@@ -186,15 +186,18 @@ export function computeVisibility(state: GameState): VisibilityComputation {
     for (const k of visible) teamSet.add(k);
   }
 
-  // Pass 8 — Tactical Scan (Techy card): while active for a team, union all
-  // live enemy positions into that team's visibility set (overrides fog).
+  // Pass 8 / Pass 4 — Tactical Scan (Techy): while active, reveal live enemies
+  // within `radius` of the scanned site's plant hexes (targeted recon at the
+  // objective, no longer a whole-map wallhack). Overrides fog for those hexes.
   for (const fx of state.cardEffects) {
     if (fx.kind !== 'tactical_scan') continue;
     if (state.tick > fx.expiresAtTick) continue;
+    const plantHexes = fx.site === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
     for (const u of state.units) {
-      if (u.state !== 'alive') continue;
-      if (u.team === fx.team) continue;
-      visibility[fx.team].add(hexKey(u.pos));
+      if (u.state !== 'alive' || u.team === fx.team) continue;
+      if (plantHexes.some((h) => hexDistance(u.pos, h) <= fx.radius)) {
+        visibility[fx.team].add(hexKey(u.pos));
+      }
     }
   }
   // Pass 9 m3 — Mark Target reveal: while revealUntilTick > state.tick, add

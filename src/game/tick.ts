@@ -30,6 +30,7 @@ import { findPath, findPerimeterPath, neighbors, passableAt } from './pathfind.t
 import {
   computeVisibility,
   hexKey,
+  isVisibleAlongLine,
   updateGhosts,
   updateTracking,
   visibleEnemiesByTeam,
@@ -797,26 +798,59 @@ export function stepTick(state: GameState): GameState {
   let nextCardEffects: import('./types.ts').ActiveCardEffect[] =
     tradeWindowMarks.length > 0 ? [...state.cardEffects, ...tradeWindowMarks] : [...state.cardEffects];
 
-  // Pass 3 — Angelic Rally: the team's FIRST loss steels nearby allies. Each
-  // armed Angelic (heroActivePending) on the bereaved team stamps living allies
-  // within radius with `rallyUntilTick` (engage threshold drop + small +HR in
-  // combat), then disarms. Fair info — triggered by an own-team death.
-  if (deathsThisTick.length > 0) {
-    const ral = HERO_ABILITIES.angelicRally;
-    for (const { dead } of deathsThisTick) {
-      for (const angel of working) {
-        if (angel.hero !== 'Angelic' || angel.state !== 'alive') continue;
-        if (angel.team !== dead.team || !angel.cardFlags.heroActivePending) continue;
-        angel.cardFlags = { ...angel.cardFlags, heroActivePending: false };
-        for (const ally of working) {
-          if (ally.team !== angel.team || ally.state !== 'alive') continue;
-          if (hexDistance(ally.pos, angel.pos) <= ral.radius) {
-            ally.cardFlags = { ...ally.cardFlags, rallyUntilTick: tick + ral.durationTicks };
-          }
-        }
+  // Pass 4 — damage-reactive hero actives (each once per round, armed via
+  // heroActivePending; read only own-team observable state):
+
+  // Angelic Field Medic: the first ally in LOS that took damage this tick and
+  // SURVIVED → the Angelic steps 1 hex toward them, heals them to full, and
+  // grants a short +HR buff. Picks the neediest (most damage taken; id-stable).
+  for (const angel of working) {
+    if (angel.hero !== 'Angelic' || angel.state !== 'alive') continue;
+    if (!angel.cardFlags.heroActivePending) continue;
+    let target: Unit | null = null;
+    let worst = 0;
+    for (const ally of working) {
+      if (ally.id === angel.id || ally.team !== angel.team || ally.state !== 'alive') continue;
+      const d = damage[ally.id] ?? 0;
+      if (d <= 0) continue;
+      if (!isVisibleAlongLine(angel.pos, ally.pos, state.map)) continue;
+      if (d > worst || (d === worst && (target === null || ally.id < target.id))) {
+        worst = d;
+        target = ally;
+      }
+    }
+    if (!target) continue;
+    angel.cardFlags = { ...angel.cardFlags, heroActivePending: false };
+    const path = findPath(state.map, angel.pos, target.pos);
+    if (path && path.length > 1) angel.pos = path[1];
+    target.hp = target.maxHp;
+    target.cardFlags = { ...target.cardFlags, rallyUntilTick: tick + HERO_ABILITIES.angelicHeal.buffTicks };
+  }
+
+  // Bulwark Fortify: the first time the Bulwark takes damage → it + allies within
+  // radius gain a fortify (incoming-HR penalty in combat) for durationTicks.
+  for (const bw of working) {
+    if (bw.hero !== 'Bulwark' || bw.state !== 'alive') continue;
+    if (!bw.cardFlags.heroActivePending) continue;
+    if ((damage[bw.id] ?? 0) <= 0) continue;
+    bw.cardFlags = { ...bw.cardFlags, heroActivePending: false };
+    const fort = HERO_ABILITIES.bulwarkFortify;
+    for (const ally of working) {
+      if (ally.team !== bw.team || ally.state !== 'alive') continue;
+      if (hexDistance(ally.pos, bw.pos) <= fort.radius) {
+        ally.cardFlags = { ...ally.cardFlags, fortifiedUntilTick: tick + fort.durationTicks };
       }
     }
   }
+
+  // Cursed Hunter's Mark — end the hunt: drop any clearOnDamage mark whose target
+  // took damage from the marking team this tick (the prey is hit → mark expires).
+  nextCardEffects = nextCardEffects.filter((fx) => {
+    if (fx.kind !== 'mark_target' || !fx.clearOnDamage) return true;
+    if ((damage[fx.targetId] ?? 0) <= 0) return true;
+    const shooter = workingById[damagedBy[fx.targetId]];
+    return !(shooter && shooter.team === fx.team);
+  });
 
   // Buff durations: drop any whose window has elapsed (spec §7.4).
   const nextBuffs = pruneBuffs(state.buffs, tick);
@@ -847,7 +881,7 @@ export function stepTick(state: GameState): GameState {
   // visibility so they fire the tick the condition first holds: Cursed Mark
   // Target (first enemy a contributor spots) + Techy Tactical Scan (the team's
   // first enemy contact). Returns the updated cardEffects; clears the flags.
-  const triggeredEffects = triggerHeroActives(working, post.perUnit, postMove.cardEffects, tick);
+  const triggeredEffects = triggerHeroActives(working, post.perUnit, postMove.cardEffects, tick, state.map);
 
   // Pass B — spike-plant update on the post-move state. May set roundResult
   // (detonation → attackers win, defuse → defenders win) and push plant
@@ -1024,21 +1058,23 @@ function updatePlantState(state: GameState, tick: number): PlantUpdate {
   return { plant: nextPlant, events, roundResult };
 }
 
-// Pass 9 m3 / Pass 3 — fire vision-triggered hero actives this tick. Pure:
-// returns a new cardEffects array; mutates each triggered contributor's
+// Pass 9 m3 / Pass 3 / Pass 4 — fire vision-triggered hero actives this tick.
+// Pure: returns a new cardEffects array; mutates each triggered contributor's
 // cardFlags in place (the same `working` array stepTick is about to commit).
-//   Cursed Mark Target (markTargetPending) — first enemy the contributor spots.
-//   Techy Tactical Scan (heroActivePending) — fires the tick the team first
-//     sees any live enemy ("first contact"), revealing all enemies briefly.
-// (Angelic Rally is death-triggered and handled in the death loop above.)
+//   Cursed Hunter's Mark (markTargetPending) — first enemy spotted; reveal +
+//     +HR/+HS for cursedMark.ticks OR until it's hit (clearOnDamage).
+//   Techy Tactical Scan (heroActivePending) — fires on the team's first enemy
+//     contact; reveals enemies around the NEARER site's plant hexes.
+// (Angelic heal / Bulwark fortify are damage-triggered, handled in the death loop.)
 function triggerHeroActives(
   units: Unit[],
   perUnitVis: Record<string, Set<string>>,
   cardEffects: readonly import('./types.ts').ActiveCardEffect[],
   tick: number,
+  map: GameState['map'],
 ): import('./types.ts').ActiveCardEffect[] {
   let next: import('./types.ts').ActiveCardEffect[] = [...cardEffects];
-  // Cursed — Mark Target on first spotted enemy.
+  // Cursed — Hunter's Mark on first spotted enemy.
   for (const u of units) {
     if (u.state !== 'alive') continue;
     if (!u.cardFlags.markTargetPending) continue;
@@ -1054,17 +1090,20 @@ function triggerHeroActives(
     // Only one mark per team active at a time. Replace if the team already has
     // one (later contributors would otherwise spam effects).
     next = next.filter((e) => !(e.kind === 'mark_target' && e.team === u.team));
+    const until = tick + HERO_ABILITIES.cursedMark.ticks;
     next = [
       ...next,
       {
         kind: 'mark_target',
         team: u.team,
         targetId: target.id,
-        revealUntilTick: tick + CARD_EFFECTS.markTarget.revealTicks,
+        revealUntilTick: until,
+        expiresAtTick: until,
+        clearOnDamage: true,
       },
     ];
   }
-  // Techy — Tactical Scan held until the team's first enemy contact.
+  // Techy — targeted Tactical Scan on the team's first enemy contact.
   for (const u of units) {
     if (u.state !== 'alive' || u.hero !== 'Techy') continue;
     if (!u.cardFlags.heroActivePending) continue;
@@ -1078,10 +1117,21 @@ function triggerHeroActives(
     });
     if (!teamSeesEnemy) continue;
     u.cardFlags = { ...u.cardFlags, heroActivePending: false };
+    // Pick the site whose plant hexes are nearest the Techy (the objective the
+    // team is fighting over from here).
+    const distTo = (hexes: readonly HexCoord[]) =>
+      hexes.reduce((m, h) => Math.min(m, hexDistance(u.pos, h)), Infinity);
+    const site: 'A' | 'B' = distTo(map.sites.A.plantHexes) <= distTo(map.sites.B.plantHexes) ? 'A' : 'B';
     next = next.filter((e) => !(e.kind === 'tactical_scan' && e.team === u.team));
     next = [
       ...next,
-      { kind: 'tactical_scan', team: u.team, expiresAtTick: tick + CARD_EFFECTS.tacticalScan.ticks },
+      {
+        kind: 'tactical_scan',
+        team: u.team,
+        expiresAtTick: tick + HERO_ABILITIES.techyScan.ticks,
+        site,
+        radius: HERO_ABILITIES.techyScan.radius,
+      },
     ];
   }
   return next;

@@ -52,11 +52,12 @@ export type ShotContext = {
   // (Pass C2 — `flankedByShooter` removed; Setup Play no longer flank-gated.)
   warderAnchorStationary: boolean; // Warden Hold-the-Line stationary at anchor
   spearheadFirstEngagement: boolean;
-  // Pass 3 (heroes) — shooter is inside an active Angelic Rally (+HR). A team
-  // decision buff like markedTarget, so it's carried on ctx (survives the
-  // neutral odds clone); the odds estimate sets it false to avoid the rally
-  // double-counting (its primary lever is the engage-threshold drop).
+  // Pass 4 (heroes) — shooter has Angelic's fresh-heal +HR buff. Carried on ctx
+  // (survives the neutral odds clone) like markedTarget.
   rallied: boolean;
+  // Pass 4 (heroes) — the TARGET is inside a Bulwark Fortify → shots vs it take a
+  // HR penalty (a target-side defensive state, like cover; carried on ctx).
+  targetFortified: boolean;
   // --- Pass B: peeker's advantage ---
   // True when the target's hex is in the shooter's per-unit visibility set
   // THIS tick but was NOT in the previous tick's set ("just appeared"). The
@@ -215,9 +216,10 @@ function cardHitPp(unit: Unit, ctx: ShotContext): number {
   if (ctx.markedTarget) {
     pp += CARD_EFFECTS.markTarget.hitPp;
   }
-  // Pass 3 — Angelic Rally: allies inside the active rally hit harder.
+  // Pass 4 — Angelic Field Medic: a freshly-healed ally gets a short +HR buff
+  // (carried on cardFlags.rallyUntilTick → ctx.rallied).
   if (ctx.rallied) {
-    pp += HERO_ABILITIES.angelicRally.hitPp;
+    pp += HERO_ABILITIES.angelicHeal.hitPp;
   }
   // Pass 3 — Cursed weak passive ("hunter"): flat self +HR. Behind a cardFlag
   // (not a hero check) so the neutral odds clone strips it — it wins the fights
@@ -309,6 +311,8 @@ export function effectiveHitPct(shooter: Unit, ctx: ShotContext, buffs: readonly
   if (ctx.crossesCover) pct -= COVER_HIT_PENALTY_PP;
   // Pass B — peeker's advantage: first-sight first shot reacts late.
   if (ctx.firstSightShot) pct -= FIRST_SIGHT_HIT_PENALTY_PP;
+  // Pass 4 — Bulwark Fortify: harder to hit a fortified target.
+  if (ctx.targetFortified) pct -= HERO_ABILITIES.bulwarkFortify.hitPenaltyPp;
   return clamp(pct, HIT_CLAMP.minPct, HIT_CLAMP.maxPct);
 }
 
@@ -375,6 +379,7 @@ export function resolveShot(
     warderAnchorStationary,
     spearheadFirstEngagement,
     rallied: (shooter.cardFlags.rallyUntilTick ?? -1) > currentTick,
+    targetFortified: (target.cardFlags.fortifiedUntilTick ?? -1) > currentTick,
     ...input,
   };
   const hit = rng.chance(effectiveHitPct(shooter, ctx, buffs) / 100);
@@ -451,7 +456,8 @@ export function estimateEdpt(
     markedTarget,
     warderAnchorStationary: false,
     spearheadFirstEngagement: false,
-    rallied: false, // rally's odds lever is the threshold drop, not inflated EDPT
+    rallied: false, // heal +HR is a post-hoc payoff, not part of the odds estimate
+    targetFortified: (target.cardFlags.fortifiedUntilTick ?? -1) > currentTick,
     firstSightShot: false,
   };
   const dmg = DAMAGE[shooter.weapon];

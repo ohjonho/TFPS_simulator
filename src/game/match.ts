@@ -37,7 +37,6 @@ import type { Directive } from './types.ts';
 // H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
 // strategy + hero synergies in applyStrategies (H3.3).
 import {
-  CARD_EFFECTS,
   CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
   MATCH_ROUND_COUNT,
@@ -400,39 +399,31 @@ function applyTraitStrategySynergies(
   //            Techy scan fires on the team's first enemy contact).
   if (unit.hero === 'Cursed') {
     flags = { ...flags, markTargetPending: true, hunterBonus: true };
-  } else if (unit.hero === 'Angelic' || unit.hero === 'Techy') {
+  } else if (unit.hero === 'Angelic' || unit.hero === 'Techy' || unit.hero === 'Bulwark') {
+    // Angelic Field Medic (first wounded ally), Techy Scan (first contact),
+    // Bulwark Fortify (first damage taken) — all gated by heroActivePending;
+    // the trigger condition differs by hero (handled in tick.ts).
     flags = { ...flags, heroActivePending: true };
   }
   return flags;
 }
 
-// H3.3 — hero passives. Always-on effects derived from each unit's hero
-// (no card decision required). Three heroes wired:
-//   Angelic → guardian_aura (radius from CARD_EFFECTS.guardianAura)
-//   Techy   → tactical_scan (lasts tacticalScan.ticks at round start)
-//   Cursed  → handled per-unit via markTargetPending flag (see above)
+// Pass 4 — standing hero passives. Most hero identity is now in the triggered
+// actives + per-unit flags (Angelic heal / Techy scan / Cursed mark+hunterBonus,
+// all armed in applyTraitStrategySynergies; cone passive in vision). The only
+// standing cardEffect is Bulwark's weak passive: a radius-0 guardian_aura giving
+// the Bulwark itself +1 maxHP (reusing the aura's maxHp plumbing, self only).
 function computeHeroPassiveEffects(
   units: readonly Unit[],
   currentTick: number,
 ): import('./types.ts').ActiveCardEffect[] {
+  void currentTick;
   const out: import('./types.ts').ActiveCardEffect[] = [];
   for (const u of units) {
     if (u.state !== 'alive') continue;
-    if (u.hero === 'Angelic') {
-      out.push({
-        kind: 'guardian_aura',
-        team: u.team,
-        sourceId: u.id,
-        radius: CARD_EFFECTS.guardianAura.radius,
-      });
-    } else if (u.hero === 'Techy') {
-      out.push({
-        kind: 'tactical_scan',
-        team: u.team,
-        expiresAtTick: currentTick + CARD_EFFECTS.tacticalScan.ticks,
-      });
+    if (u.hero === 'Bulwark') {
+      out.push({ kind: 'guardian_aura', team: u.team, sourceId: u.id, radius: 0 });
     }
-    // Cursed → markTargetPending flag on the unit (set in applyTraitStrategySynergies).
   }
   return out;
 }
