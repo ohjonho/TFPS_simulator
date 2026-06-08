@@ -17,9 +17,9 @@
 import type { MapDefinition } from './types';
 import { mapFromCharGrid } from './gridUtils';
 
-// v4 (2026-06-08, user reshape "Canyon_v3"): clearer choke/entry/main sub-region
-// labelling; reshaped both sites + their entry points to fix Site B's 0% retake
-// (the old B was a one-way corner pocket). Diagnostic-driven (Pass 5).
+// v3.1 (2026-06-08, user): follow-up to the v3 reshape — opened the B anchor /
+// connector to pull Site B's overshoot (76% def when attacked) back toward ~50
+// while keeping the B retake viable. Pass 5 diagnostic-driven.
 const ROWS: readonly string[] = [
   '##############################', // 0
   '###########DDDDDDDDDDD########', // 1
@@ -29,19 +29,19 @@ const ROWS: readonly string[] = [
   '##..##.....#...###..###.....##', // 5
   '##..###....#...###..####.....#', // 6
   '#..####...##.......#####.....#', // 7
-  '##..AAAn..###......#####..#BBB', // 8
-  '##.ggAnn77####....#####.N##oBB', // 9
-  '###Ag##AA77777...######8NNNBBG', // 10
-  '###AaaaA#77777...8888#88NNoBGG', // 11
-  '##fAaaaaA#7##o....888888#BbbBo', // 12
-  '#ffa#a#aA7####..o##88888BbbbBB', // 13
-  '###oAAAAAo####kk#####88#FbbbbB', // 14
-  '###333#eee###kk######88FF###B#', // 15
-  '###333##....#kk#######88BBBBBB', // 16
-  '#3333###...o#kk########EE#555#', // 17
-  '#...#####o...kkk########..#o55', // 18
-  'cco#######ll.....#...##..##55#', // 19
-  'cco########ll##.rrr...#CC##55#', // 20
+  '##..AAAn..###......#####...BBB', // 8
+  '##.ggAnn77####....#####..##oBB', // 9
+  '###Ag##AA77777...######88NNBBG', // 10
+  '###AaaaA#77777...8888#88#NoBGG', // 11
+  '##fAaaaaA77##o....8888888Bbbbo', // 12
+  '#ffa#aoaA7####..o##88888BbbbbB', // 13
+  '###oAAAAA#####kk########FbbbbB', // 14
+  '###333#ee####kk########FF#B#B#', // 15
+  '###333##....#kk#########BBBBBB', // 16
+  '##333###...o#kk########EE#5555', // 17
+  '#...o####o...kkk########..#o55', // 18
+  'ccc#######ll.....#...##..##55#', // 19
+  'ccc########ll##.rrr...#CC##55#', // 20
   'cc########ll####rrro..CCCC..##', // 21
   '....#######ll###rrr##..CCC..##', // 22
   '...o######ll###rro#####CC#####', // 23
