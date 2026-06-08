@@ -823,7 +823,7 @@ export function stepTick(state: GameState): GameState {
     angel.cardFlags = { ...angel.cardFlags, heroActivePending: false };
     const path = findPath(state.map, angel.pos, target.pos);
     if (path && path.length > 1) angel.pos = path[1];
-    target.hp = target.maxHp;
+    target.hp = Math.min(target.maxHp, target.hp + HERO_ABILITIES.angelicHeal.healHp);
     target.cardFlags = { ...target.cardFlags, rallyUntilTick: tick + HERO_ABILITIES.angelicHeal.buffTicks };
   }
 

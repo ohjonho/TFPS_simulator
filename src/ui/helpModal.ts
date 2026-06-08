@@ -313,6 +313,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.33.0 — lever rebalance (no single hero or trait swings a match)</h3>
+    <ul>
+      <li><strong>Hero and trait power levels were tuned down so that picking one
+        is a meaningful identity choice, not a match-decider.</strong> Two heroes
+        were over-tuned: <strong>Bulwark</strong>'s Fortify is weaker and shorter
+        (it was strong enough to drag rounds into stalemate), and
+        <strong>Angelic</strong>'s heal now restores a big chunk of health instead
+        of a full heal (the full reset over-sustained pushes). On the trait side,
+        the biggest mechanical edges were trimmed — <strong>Marksman</strong>,
+        <strong>Flanker</strong>, and <strong>Aggressor</strong>'s combat bonuses
+        are smaller. Every hero and trait now lands within a tight band, so the
+        draft adds flavor and counterplay without handing anyone a free round.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.32.0 — Canyon reshaped (defendable B site)</h3>
     <ul>
       <li><strong>Canyon's layout was reworked, mainly to fix the B site.</strong>

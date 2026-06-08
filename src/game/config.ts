@@ -269,7 +269,7 @@ export const ENGAGE = {
   // Magnitudes provisional (retune with the full stack); the structural finding
   // is that this is the cleanest behavior lever (see [[lever-board]]).
   traitThreshold: {
-    Aggressor: -0.10,
+    Aggressor: -0.10, // kept (reducing it backfired — less aggression → attackers execute the plant instead of brawling, MORE attacker-favored; the reactive-ai-inert law). Aggressor's attacker lean is its identity; combat cut (movingHitPp 15→8) does the bounding.
     Anchor: 0.10,
   } as Record<string, number>,
   minThreshold: 0.20,
@@ -371,10 +371,10 @@ export const HIT_CLAMP = { minPct: 5, maxPct: 95 } as const;
 // threshold + compliance (ENGAGE.traitThreshold / COMPLIANCE_TRAIT_DELTA) and
 // attribute bonuses, not a combat-condition hook.
 export const TRAITS = {
-  marksmanHitPp: 10,                                     // Marksman — flat HR across weapons (stacks with its aim+15)
-  aggressorMovingHitPp: 15,                              // Aggressor — +HR while moving (absorbs Run-n-Gun)
-  anchor: { hitPp: 25, hsPp: 20, stationaryTicks: 3 },   // Anchor — +HR/HS after 3 ticks stationary
-  flanker: { hitPp: 20, hsPp: 10 },                      // Flanker — +HR/HS when wall-adjacent
+  marksmanHitPp: 5,                                      // Marksman — flat HR across weapons (stacks with its aim+15). Pass 6: 10→5 (sym −15.6 → bound).
+  aggressorMovingHitPp: 8,                               // Aggressor — +HR while moving (absorbs Run-n-Gun). Pass 6: 15→8.
+  anchor: { hitPp: 25, hsPp: 20, stationaryTicks: 3 },   // Anchor — +HR/HS after 3 ticks stationary (in-bound, kept)
+  flanker: { hitPp: 8, hsPp: 4 },                        // Flanker — +HR/HS when wall-adjacent. Pass 6: 20/10→8/4 (sym −22.2 → bound).
   trader: { hitPp: 15, windowTicks: 3 },                 // Trader — +HR when an ally fired recently
   clutch: { hitPp: 20, hsPp: 15 },                       // Clutch — +HR/HS when last alive
 } as const;
@@ -525,7 +525,7 @@ export const ROLE_DESCRIPTIONS = {
 // Pass 3 — heroes are now hybrid: a weak always-on passive + ONE once-per-round
 // active that fires on a tactical condition.
 export const HERO_DESCRIPTIONS = {
-  Angelic: 'Field Medic (active): the first time a teammate in sight is hurt but survives, the Angelic rushes a step to them, heals them to full, and pumps their aim for a few ticks. A pure support.',
+  Angelic: 'Field Medic (active): the first time a teammate in sight is hurt but survives, the Angelic rushes a step to them, heals a big chunk of their health, and pumps their aim for a few ticks. A pure support.',
   Techy: 'Recon (passive): slightly wider vision cone. Tactical Scan (active): held until first contact, then briefly reveals enemies lurking around the nearer bomb site — targeted intel for the hit or the hold.',
   Cursed: 'Hunter (passive): a small flat aim edge. Hunter’s Mark (active): the first enemy the team spots is revealed and takes +20 HR / +10 HS from your team — until you damage it or the hunt times out.',
   Bulwark: 'Anchor (passive): a little extra max HP. Fortify (active): the first time the Bulwark is hit, it and nearby allies harden up — enemies hit them less for a few ticks. The defensive wall.',
@@ -879,7 +879,7 @@ export const HERO_ABILITIES = {
   // the first time an ally in LOS takes damage and survives, the Angelic steps 1
   // hex toward them, heals them to full HP, and grants +hitPp for `buffTicks`
   // (combat reads it via cardFlags.rallyUntilTick → ctx.rallied).
-  angelicHeal: { buffTicks: 5, hitPp: 8 },
+  angelicHeal: { buffTicks: 3, hitPp: 5, healHp: 40 },
   // Techy — passive: +cone half-angle (deg) for Techy himself. ACTIVE "Tactical
   // Scan" (Pass 4): held until the team's FIRST enemy contact, then reveals
   // enemies within `radius` of the NEARER site's plant hexes for `ticks` ticks
@@ -896,7 +896,7 @@ export const HERO_ABILITIES = {
   // guardian_aura). ACTIVE "Fortify": the first time the Bulwark takes damage,
   // it + allies within `radius` gain a fortify for `durationTicks` — shots vs a
   // fortified unit take a `hitPenaltyPp` HR penalty (a deliberate pro-DEF knob).
-  bulwarkFortify: { radius: 2, durationTicks: 6, hitPenaltyPp: 12 },
+  bulwarkFortify: { radius: 2, durationTicks: 4, hitPenaltyPp: 6 },
 } as const;
 
 // Pass 5 — hero-neutral measurement toggle (test seam). When false, NO hero
