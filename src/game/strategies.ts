@@ -452,6 +452,7 @@ const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   Canyon: ALL_STRATEGIES,
   Foundryv2: ALL_STRATEGIES,
   Atoll_v2: ALL_STRATEGIES,
+  Foundryv3: ALL_STRATEGIES,
 };
 
 export function strategiesFor(side: Side, map: MapDefinition): Strategy[] {
