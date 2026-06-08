@@ -388,11 +388,10 @@ export function applyStrategies(
 }
 
 // Per-unit round-start synergy flags. v0.28.0 — the old trait+strategy synergy
-// branches (Sentinel+Anchor_Hold, Run-n-Gun+Mobile_Push, Lurker+Patient_Flank,
-// Entry/Vanguard+Coordinated_Execute, Trader+Crossfire_Lockdown,
-// Clutch+Last_Stand_Defense) all keyed off retired trait-unlock strategies and
-// were removed with them. Only the Cursed-hero mark flag remains; the trait
-// reworks (Pass 2b) own the rest of the synergy story. `strategyId` is kept on
+// branches all keyed off retired trait-unlock strategies and were removed with
+// them (Pass 7 deleted the leftover STRATEGY_MODS entries too). Hero arming is
+// the only per-unit round-start synergy now; the trait reworks (Pass 2b) own the
+// rest of the synergy story. `strategyId` is kept on
 // the signature for the upcoming hero/trait passes.
 function applyTraitStrategySynergies(
   flags: import('./types.ts').CardFlags,

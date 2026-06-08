@@ -638,25 +638,14 @@ export const STRATEGY_MODS: Record<string, {
   Stack:    { aggression:   0, retreatThreshold: 0,  complianceThreshold: 50 },
   Pressure: { aggression: +10, retreatThreshold: 0,  complianceThreshold: 50 },
 
-  // H3 trait-unlocked DEFENDER variants (9). Each unlocked by ≥1 trait on
-  // the roster (see TRAITS_BY_ID.unlocks).
-  Anchor_Hold:          { aggression: -15, retreatThreshold: 0,  complianceThreshold: 75 }, // Sentinel
-  Crossfire_Lockdown:   { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 70 }, // Trader
-  Last_Stand_Defense:   { aggression: -10, retreatThreshold: 0,  complianceThreshold: 65 }, // Clutch
-  Mind_Games:           { aggression:   0, retreatThreshold: 0,  complianceThreshold: 60 }, // Big Brain (D+A)
-  Hold_Composure:       { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 70 }, // Composed
-  Coordinated_Lockdown: { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 75 }, // Leader
-  Rotate_Stack:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 50 }, // Roamer
-  Wide_Watch:           { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 55 }, // Paranoid
-  Slow_Burn:            { aggression: -15, retreatThreshold: 0,  complianceThreshold: 80 }, // Patient
-
-  // H3 trait-unlocked ATTACKER variants (6 + Mind_Games shared with D).
-  Mobile_Push:          { aggression: +20, retreatThreshold: -1, complianceThreshold: 60 }, // Run-n-Gun
-  Patient_Flank:        { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 80 }, // Lurker
-  Coordinated_Execute:  { aggression: +10, retreatThreshold: 0,  complianceThreshold: 75 }, // Entry
-  Solo_Frag:            { aggression: +15, retreatThreshold: -1, complianceThreshold: 30 }, // Ego
-  Scatter_Push:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 40 }, // Lone Wolf
-  Aggressive_Peek:      { aggression: +20, retreatThreshold: 0,  complianceThreshold: 50 }, // Hot Head
+  // Promoted plays (v0.28.0) — the genuinely-distinct concepts kept when the
+  // trait-unlock strategy system was retired in Pass 2a. Demanding (higher
+  // compliance threshold so a low-Discipline roster pays for picking them).
+  // Pass 7: the 12 retired trait-unlock entries (Anchor_Hold, Mobile_Push,
+  // Solo_Frag, …) were dead data — deleted.
+  Mind_Games:           { aggression:   0, retreatThreshold: 0,  complianceThreshold: 60 }, // fake-and-swing (D+A)
+  Coordinated_Lockdown: { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 75 }, // all-5 stack
+  Rotate_Stack:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 50 }, // rotating mobile D
 };
 
 // Match length: first team to this many round wins.
