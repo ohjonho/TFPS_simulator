@@ -39,6 +39,7 @@ import type { Directive } from './types.ts';
 import {
   CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
+  HERO_ABILITIES_ENABLED,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
@@ -391,6 +392,8 @@ function applyTraitStrategySynergies(
   strategyId: string,
 ): import('./types.ts').CardFlags {
   void strategyId;
+  // Pass 5 — hero-neutral measurement toggle: skip arming entirely when off.
+  if (!HERO_ABILITIES_ENABLED) return flags;
   // Pass 3 — arm each hero's once-per-round active + weak passive at round start.
   //   Cursed → Mark Target (markTargetPending; fires on first enemy spotted) +
   //            hunterBonus weak passive (flat self +HR, read in combat).
@@ -419,6 +422,7 @@ function computeHeroPassiveEffects(
 ): import('./types.ts').ActiveCardEffect[] {
   void currentTick;
   const out: import('./types.ts').ActiveCardEffect[] = [];
+  if (!HERO_ABILITIES_ENABLED) return out; // Pass 5 hero-neutral toggle.
   for (const u of units) {
     if (u.state !== 'alive') continue;
     if (u.hero === 'Bulwark') {

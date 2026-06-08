@@ -28,7 +28,7 @@ import type {
 } from './types.ts';
 import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
 import { neighbors } from './pathfind.ts';
-import { ATTRIBUTES, VISION, HERO_ABILITIES } from './config.ts';
+import { ATTRIBUTES, VISION, HERO_ABILITIES, HERO_ABILITIES_ENABLED } from './config.ts';
 
 // --- Keys / angle helpers ---------------------------------------------------
 
@@ -86,7 +86,7 @@ function coneHalfRad(unit: Unit, state: GameState): number {
   halfDeg += vBonus;
   // Pass 3 — Techy weak passive: a slightly wider cone (the "recon" identity;
   // mirrors the retired Eagle Eye bonus, now hero-gated instead of trait-gated).
-  if (unit.hero === 'Techy') halfDeg += HERO_ABILITIES.techyConeBonusDeg;
+  if (HERO_ABILITIES_ENABLED && unit.hero === 'Techy') halfDeg += HERO_ABILITIES.techyConeBonusDeg;
   return (halfDeg * Math.PI) / 180;
 }
 

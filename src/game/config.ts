@@ -899,6 +899,19 @@ export const HERO_ABILITIES = {
   bulwarkFortify: { radius: 2, durationTicks: 6, hitPenaltyPp: 12 },
 } as const;
 
+// Pass 5 — hero-neutral measurement toggle (test seam). When false, NO hero
+// effect originates: arming (match.applyTraitStrategySynergies), the Bulwark
+// passive (match.computeHeroPassiveEffects), and the Techy cone bonus
+// (vision.coneHalfRad) all no-op, so every downstream combat/vision/tick hook
+// reads inert. Lets the harness measure the pure STRUCTURAL A/D floor without
+// hero noise (Cursed is no longer a neutral baseline post Pass 4). Module-global
+// + deterministic (set once before a board; not part of the seed). Default true
+// (live play always has heroes).
+export let HERO_ABILITIES_ENABLED = true;
+export function setHeroAbilitiesEnabled(enabled: boolean): void {
+  HERO_ABILITIES_ENABLED = enabled;
+}
+
 // AI plays a card this fraction of rounds (spec §15.6).
 export const AI_CARD_PLAY_CHANCE = 0.7;
 
