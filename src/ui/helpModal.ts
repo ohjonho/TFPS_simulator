@@ -313,6 +313,18 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.32.0 — Canyon reshaped (defendable B site)</h3>
+    <ul>
+      <li><strong>Canyon's layout was reworked, mainly to fix the B site.</strong>
+        The old B was a one-way corner pocket: once attackers planted there,
+        defenders had a single exposed approach and essentially never retook it.
+        The site and its entry points were reshaped (with clearer choke / entry /
+        main lanes) so a B retake is now winnable from more than one angle. Net
+        effect: Canyon goes from heavily attacker-sided to a fair fight on both
+        sites.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.31.0 — hero abilities reworked + a new defender hero</h3>
     <ul>
       <li><strong>The three hero actives were retuned to feel like real roles, and a
