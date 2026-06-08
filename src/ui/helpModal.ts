@@ -313,6 +313,163 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.33.0 — lever rebalance (no single hero or trait swings a match)</h3>
+    <ul>
+      <li><strong>Hero and trait power levels were tuned down so that picking one
+        is a meaningful identity choice, not a match-decider.</strong> Two heroes
+        were over-tuned: <strong>Bulwark</strong>'s Fortify is weaker and shorter
+        (it was strong enough to drag rounds into stalemate), and
+        <strong>Angelic</strong>'s heal now restores a big chunk of health instead
+        of a full heal (the full reset over-sustained pushes). On the trait side,
+        the biggest mechanical edges were trimmed — <strong>Marksman</strong>,
+        <strong>Flanker</strong>, and <strong>Aggressor</strong>'s combat bonuses
+        are smaller. Every hero and trait now lands within a tight band, so the
+        draft adds flavor and counterplay without handing anyone a free round.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.32.0 — Canyon reshaped (defendable B site)</h3>
+    <ul>
+      <li><strong>Canyon's layout was reworked, mainly to fix the B site.</strong>
+        The old B was a one-way corner pocket: once attackers planted there,
+        defenders had a single exposed approach and essentially never retook it.
+        The site and its entry points were reshaped (with clearer choke / entry /
+        main lanes) so a B retake is now winnable from more than one angle. Net
+        effect: Canyon goes from heavily attacker-sided to a fair fight on both
+        sites.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.31.0 — hero abilities reworked + a new defender hero</h3>
+    <ul>
+      <li><strong>The three hero actives were retuned to feel like real roles, and a
+        fourth hero joins.</strong> <strong>Angelic</strong> is now a true medic:
+        the first time a teammate in sight is hurt but survives, the Angelic rushes
+        a step to them, heals them to full, and buffs their aim for a few ticks
+        (replaces the old aura + rally). <strong>Techy</strong>'s Tactical Scan is
+        now targeted — instead of revealing the whole map, it briefly reveals
+        enemies lurking around the nearer bomb site, held until first contact.
+        <strong>Cursed</strong>'s mark is now a hunt: it reveals the first enemy
+        spotted and gives your team +HR/+HS against it until you damage it or the
+        hunt times out (no more round-long wallhack). New hero
+        <strong>Bulwark</strong> — a defensive anchor: a little extra max HP, and
+        the first time it's hit, it and nearby allies harden up so enemies hit them
+        less for a few ticks. Numbers are provisional and will be tuned with the
+        broader balance pass.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.30.0 — heroes now have a signature move</h3>
+    <ul>
+      <li><strong>Heroes used to be flat, always-on passives. Now each one keeps a
+        weaker passive AND gains a once-per-round active that fires automatically
+        the moment a tactical condition is met.</strong> The active is where the
+        hero earns its pick — it triggers at the right beat instead of doing the
+        same thing every tick. <strong>Angelic</strong> — Guardian aura shrinks
+        to 3 hex (passive); <strong>Rally</strong> fires on your team’s first
+        death, steeling nearby allies to commit fights they’d otherwise flinch
+        from (and hit harder) for a few ticks — it blunts the snowball after first
+        blood. <strong>Techy</strong> — slightly wider vision cone (passive);
+        <strong>Tactical Scan</strong> is now <em>held</em> until your team makes
+        first contact, then reveals every enemy briefly so you commit with full
+        info, instead of being wasted at spawn. <strong>Cursed</strong> — a small
+        flat aim edge (passive); <strong>Mark Target</strong> is unchanged (the
+        first enemy your team spots is marked all round). Exact numbers are
+        provisional and will be tuned alongside roles and traits.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.29.0 — trait roster overhaul (tactical traits + personality)</h3>
+    <ul>
+      <li><strong>The old three-pool trait system (skill / behavioral /
+        personality) is gone. Every unit now draws two distinct
+        <em>tactical traits</em> from one pool, plus a single
+        <em>personality</em>.</strong> The old pools were a third dead and full
+        of near-duplicates; this collapses them into eight clean, distinct
+        levers that each span attack and defense play.
+        <strong>Tactical traits:</strong> <strong>Aggressor</strong> (picks
+        fights, never retreats, hunts after the plant),
+        <strong>Anchor</strong> (holds position, deadly while set),
+        <strong>Freelancer</strong> (goes off-plan for the solo play),
+        <strong>Disciplined</strong> (executes the called strategy),
+        <strong>Flanker</strong> (perimeter routes, lurks until it fires),
+        <strong>Trader</strong> (sharper right after an ally shoots),
+        <strong>Marksman</strong> (a flat aim edge — the prized one),
+        <strong>Clutch</strong> (rises when last alive).</li>
+      <li><strong>Personalities</strong> — <strong>Firebrand</strong>,
+        <strong>Catalyst</strong>, <strong>Analyst</strong>,
+        <strong>Stabilizer</strong> (extroversion × task/people) — give only a
+        small in-match stat nudge for now. Their real weight arrives with the
+        team-management layer (locker-room chemistry, sponsors, quests).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.28.0 — one strategy menu for every roster</h3>
+    <ul>
+      <li><strong>Strategies are no longer locked behind specific traits — every
+        team picks from the same consolidated menu.</strong> The old system
+        expanded your menu based on which traits your units happened to roll, and
+        most of those unlocks were near-duplicate "hold deeper" / "rush variant"
+        plays. We trimmed those and kept the genuinely distinct ones. Defenders:
+        Hold, Stack, Pressure, <strong>Mind Games</strong> (show one site, swing
+        the other), <strong>Coordinated Lockdown</strong> (stack all five on one
+        site), <strong>Rotate</strong> (rotating mobile defense). Attackers:
+        Execute, Rush, Control, <strong>Mind Games</strong>. Earning new strategies
+        will return later through the management/progression layer rather than
+        trait luck.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.27.0 — roles now play differently (positioning + posture)</h3>
+    <ul>
+      <li><strong>A unit's role used to be just an aggression number, so a Warden
+        and a Vanguard holding the same spot played identically. Now role shapes
+        WHERE a unit sets up and HOW it fights — and it adapts to the side you're
+        on.</strong> <strong>Vanguard</strong> sets up forward and takes the entry
+        duel on attack, and peeks aggressively for info on defense.
+        <strong>Warden</strong> anchors deep in a crossfire on defense (two Wardens
+        on a site fan apart so an attacker is caught from two angles) and plays
+        disciplined support on attack — never dead weight. <strong>Tactician</strong>
+        and <strong>Specialist</strong> stay flexible. Stacking the same role still
+        works — you just get a lopsided setup (e.g. no frontline) — and units never
+        pile onto the same spot. This is the foundation for the trait and hero
+        reworks coming next; the exact numbers are still being tuned.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.26.0 — Hot Head and Ego now play differently</h3>
+    <ul>
+      <li><strong>Ego and Hot Head used to be the exact same trait under two
+        names — now they're distinct.</strong> Both simply lowered a unit's bar
+        for picking fights. Now <strong>Hot Head</strong> stays the on-sight
+        aggressor (peeks and takes duels readily), while <strong>Ego</strong> is
+        the high-ceiling <em>freelancer</em> — it ignores the team plan more
+        often, breaking off its assigned hold or angle to do its own thing. On
+        defense that freelancing tends to backfire (an Ego player abandons a good
+        angle and gets caught out), matching the "talented but uncoachable"
+        archetype. The overall <em>magnitude</em> of aggressive traits is still
+        being tuned and will land in the upcoming trait/role/hero rebalance.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.25.0 — skill wins fights, it no longer picks them</h3>
+    <ul>
+      <li><strong>A unit's aim and skill traits no longer secretly make it take
+        more fights — only win the ones it takes.</strong> The AI decided whether
+        to commit to a duel from a unit's full combat power, so a high-aim or
+        skill-trait player saw better odds and peeked far more often. On maps
+        where a defender should hold their angle, that over-peeking backfired —
+        so a "+aim" trait could swing a map's win rate wildly, flip sign between
+        maps, and even make a side <em>worse</em>, with no consistent value. Now
+        the commit decision reads mostly the tactical matchup (weapon, range,
+        cover, numbers) while skill still decides who <em>wins</em> the fight, so
+        traits behave far more predictably. Skill counts at half-weight in the
+        decision — going fully neutral over-corrected and made the AI ignore
+        genuinely strong opponents. Groundwork for rebalancing roles, heroes, and
+        traits next.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.24.0 — Atoll II rebuilt</h3>
     <ul>
       <li><strong>Atoll II is a real map now.</strong> It replaces the old

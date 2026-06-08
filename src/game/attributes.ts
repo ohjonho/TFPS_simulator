@@ -20,45 +20,49 @@
 // of the global distribution.
 
 import type {
-  Attributes, BehavioralTrait, Hero, PersonalityTrait, Role, SkillTrait, Unit,
+  Attributes, Hero, Personality, Role, TacticalTrait, Unit,
   VisibleAttributes, Weapon,
 } from './types.ts';
 import type { Rng } from './rng.ts';
 import {
-  ATTRIBUTES, BEHAVIORAL_TRAIT_IDS, LOADOUT_POOL,
-  PERSONALITY_TRAIT_IDS, ROLE_AGGRESSION, SKILL_TRAIT_IDS, TRAITS_BY_ID,
+  ATTRIBUTES, LOADOUT_POOL, PERSONALITIES, PERSONALITY_IDS,
+  ROLE_AGGRESSION, TACTICAL_TRAITS, TACTICAL_TRAIT_IDS,
 } from './config.ts';
 
-const SKILL_TRAITS: readonly SkillTrait[] = SKILL_TRAIT_IDS as readonly SkillTrait[];
-const BEHAVIORAL_TRAITS: readonly BehavioralTrait[] = BEHAVIORAL_TRAIT_IDS as readonly BehavioralTrait[];
-const PERSONALITY_TRAITS: readonly PersonalityTrait[] = PERSONALITY_TRAIT_IDS as readonly PersonalityTrait[];
+const TACTICALS: readonly TacticalTrait[] = TACTICAL_TRAIT_IDS as readonly TacticalTrait[];
+const PERSONALITIES_LIST: readonly Personality[] = PERSONALITY_IDS as readonly Personality[];
 const ROLES: readonly Role[] = ['Vanguard', 'Tactician', 'Warden', 'Specialist'];
-const HEROES: readonly Hero[] = ['Angelic', 'Techy', 'Cursed'];
+const HEROES: readonly Hero[] = ['Angelic', 'Techy', 'Cursed', 'Bulwark'];
 
-// Pass H2 — clamp a number to [0, 100] for attribute deltas.
+// Clamp a number to [0, 100] for attribute deltas.
 function clamp100(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
 
-// Pass H2 — apply a trait's sub-attribute bonus deltas to a unit's
-// attributes record. Each trait's `attrBonuses` is a partial map keyed by
-// attribute name; we add the delta and clamp back into [0, 100] so a
-// stacked bonus never escapes the rating scale (e.g. Aim 90 + Sharp Aim
-// +15 = 100, not 105).
-function applyTraitBonuses(u: Unit, traitId: string | null): void {
-  if (!traitId) return;
-  const def = TRAITS_BY_ID[traitId];
-  if (!def) return;
+// Apply a trait/personality's sub-attribute bonus deltas to a unit. Each
+// `attrBonuses` is a partial map keyed by attribute name; we add the delta and
+// clamp into [0, 100] so a stacked bonus never escapes the rating scale.
+function applyAttrBonuses(u: Unit, bonuses: Record<string, number> | undefined): void {
+  if (!bonuses) return;
   const attrs = u.attributes as unknown as Record<string, number>;
-  for (const [key, delta] of Object.entries(def.attrBonuses)) {
-    if (typeof attrs[key] === 'number') {
-      attrs[key] = clamp100(attrs[key] + (delta as number));
-    }
+  for (const [key, delta] of Object.entries(bonuses)) {
+    if (typeof attrs[key] === 'number') attrs[key] = clamp100(attrs[key] + delta);
   }
 }
 
+// Pick two DISTINCT entries from a pool with exactly two seeded draws (no retry
+// loop, so the rng-draw count is fixed → determinism-stable).
+function pickTwoDistinct<T>(rng: Rng, pool: readonly T[]): T[] {
+  const n = pool.length;
+  if (n <= 1) return pool.slice(0, n);
+  const i = rng.int(n);
+  let j = rng.int(n - 1);
+  if (j >= i) j++;
+  return [pool[i], pool[j]];
+}
+
 export type AttributeOverride = Partial<
-  Pick<Unit, 'skillTrait' | 'behavioralTrait' | 'personalityTrait' | 'role' | 'preferredRole' | 'hero'>
+  Pick<Unit, 'tacticalTraits' | 'personality' | 'role' | 'preferredRole' | 'hero'>
 > & {
   // Pass A1 / H1 — pin individual attribute ratings for batch/A-B tests.
   // Any key present here is honored literally (post-trait-bonus application);
@@ -170,19 +174,17 @@ export function rollUnitMeta(
   override: AttributeOverride = {},
   rangeOverride?: { min: number; max: number },
 ): void {
-  // An override key that is *present* is honored literally — even when null
-  // (meaning "no trait"); only an absent key randomizes. This keeps A/B tests
-  // clean (e.g. "vanilla" = explicit nulls).
-  u.skillTrait = 'skillTrait' in override ? override.skillTrait! : rng.pick(SKILL_TRAITS);
-  u.behavioralTrait = 'behavioralTrait' in override
-    ? override.behavioralTrait!
-    : rng.pick(BEHAVIORAL_TRAITS);
-  // Pass H2 — personality (mental + social) trait. Inert combat-wise in H2
-  // but its attrBonuses apply now + its `unlocks` list expands the team's
-  // strategy menu in H3.
-  u.personalityTrait = 'personalityTrait' in override
-    ? override.personalityTrait!
-    : rng.pick(PERSONALITY_TRAITS);
+  // An override key that is *present* is honored literally — even when empty/null
+  // (meaning "no traits"); only an absent key randomizes. This keeps A/B tests
+  // clean (e.g. "vanilla" = explicit []/null).
+  // v0.29.0 — draw TWO distinct tactical traits (from the 8-pool) + ONE
+  // personality (from the 4 quadrants).
+  u.tacticalTraits = 'tacticalTraits' in override
+    ? override.tacticalTraits!
+    : pickTwoDistinct(rng, TACTICALS);
+  u.personality = 'personality' in override
+    ? override.personality!
+    : rng.pick(PERSONALITIES_LIST);
 
   // Default: assigned role == preferred role (no off-position in normal play;
   // off-position is set when a player assigns an off-role — Pass 7 — or via
@@ -205,12 +207,11 @@ export function rollUnitMeta(
   const generated = generateAttributes(rng, rangeOverride);
   u.attributes = { ...generated };
 
-  // Pass H2 — apply trait sub-attribute bonuses on top of the random roll.
-  // Order: skill → behavioral → personality (stacks compose). Each clamps
-  // to [0, 100] so a stacked bonus can never escape the rating scale.
-  applyTraitBonuses(u, u.skillTrait);
-  applyTraitBonuses(u, u.behavioralTrait);
-  applyTraitBonuses(u, u.personalityTrait);
+  // v0.29.0 — apply tactical-trait + personality sub-attribute bonuses on top of
+  // the random roll. Order: tactical traits (in draw order) → personality (stacks
+  // compose). Each clamps to [0, 100] so a stacked bonus can't escape the scale.
+  for (const t of u.tacticalTraits) applyAttrBonuses(u, TACTICAL_TRAITS[t]?.attrBonuses);
+  applyAttrBonuses(u, u.personality ? PERSONALITIES[u.personality]?.attrBonuses : undefined);
 
   // Explicit attribute overrides land LAST so A/B tests can pin a final
   // value regardless of trait bonus interactions.

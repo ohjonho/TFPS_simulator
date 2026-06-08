@@ -41,9 +41,8 @@ function buildPoolUnit(slot: number, weapon: Weapon, rng: Rng): Unit {
     maxHp: UNIT_DEFAULTS.maxHp,
     facing: DEFENDER_FACING,                 // placeholder; reset at finalizeDraft
     state: 'alive',
-    skillTrait: null,
-    behavioralTrait: null,
-    personalityTrait: null,
+    tacticalTraits: [],
+    personality: null,
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',

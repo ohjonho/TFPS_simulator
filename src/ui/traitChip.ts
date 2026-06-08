@@ -8,33 +8,30 @@
 // is unstyled but appears reliably on hover with a small delay; good
 // enough for "what does Paranoid do?" pre-glossary checks.
 
-import { TRAITS_BY_ID } from '../game/config.ts';
+import { TACTICAL_TRAITS, PERSONALITIES } from '../game/config.ts';
 
 // HTML-escape strings going into title="..." attributes.
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-// Format a single trait's tooltip text. Returns a plain string for use as
-// the `title` attribute value (newlines render as line breaks in the
-// browser's native tooltip).
+// Format a single trait/personality tooltip. v0.29.0 — looks up the id in either
+// the tactical-trait or personality registry. Returns a plain string for the
+// `title` attribute (newlines render as line breaks in the native tooltip).
 export function traitTooltip(traitId: string | null): string {
   if (!traitId) return '';
-  const def = TRAITS_BY_ID[traitId];
+  const tac = TACTICAL_TRAITS[traitId];
+  const per = PERSONALITIES[traitId];
+  const def = tac ?? per;
   if (!def) return '';
-  const lines: string[] = [`${traitId} (${def.category} · ${def.tier})`, def.description];
-  // Attribute bonuses — only list non-zero entries.
+  const kind = tac ? `tactical · ${tac.tier}` : 'personality';
+  const lines: string[] = [`${traitId} (${kind})`, def.description];
   const bonusEntries = Object.entries(def.attrBonuses).filter(([, v]) => v !== 0);
   if (bonusEntries.length > 0) {
     const bonusStr = bonusEntries
       .map(([k, v]) => `${(v as number) > 0 ? '+' : ''}${v} ${k}`)
       .join(', ');
     lines.push(`Bonuses: ${bonusStr}`);
-  }
-  // Strategy unlocks (forward-data for H3; safe to show even if the
-  // unlocked strategy isn't built yet).
-  if (def.unlocks.length > 0) {
-    lines.push(`Unlocks: ${def.unlocks.join(', ')}`);
   }
   return lines.join('\n');
 }

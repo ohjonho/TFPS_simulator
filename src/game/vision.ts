@@ -28,7 +28,7 @@ import type {
 } from './types.ts';
 import { hexDistance, hexLine, offsetToPixel } from './hex.ts';
 import { neighbors } from './pathfind.ts';
-import { ATTRIBUTES, VISION } from './config.ts';
+import { ATTRIBUTES, VISION, HERO_ABILITIES, HERO_ABILITIES_ENABLED } from './config.ts';
 
 // --- Keys / angle helpers ---------------------------------------------------
 
@@ -75,9 +75,8 @@ function coneHalfRad(unit: Unit, state: GameState): number {
   if (unit.weapon === 'sniper' && isStationary(unit, state.prevPos[unit.id])) {
     halfDeg = VISION.sniperStationaryHalfDeg;
   }
-  if (unit.skillTrait === 'Eagle Eye') {
-    halfDeg += VISION.eagleEyeBonusHalfDeg;
-  }
+  // v0.29.0 — the Eagle Eye cone bonus was cut (trait retired); cone width is now
+  // purely the Vision attribute below. VISION.eagleEyeBonusHalfDeg is unused.
   // Pass H1 — Vision (was Awareness) widens/narrows the half-cone, capped
   // to ±coneCap deg. Neutral at 50; at the generation tails (10 / 90) the
   // cap kicks in well before the raw value gets extreme.
@@ -85,6 +84,9 @@ function coneHalfRad(unit: Unit, state: GameState): number {
   const rawV = (unit.attributes.vision - 50) * vCfg.coneMultiplier;
   const vBonus = Math.max(-vCfg.coneCap, Math.min(vCfg.coneCap, rawV));
   halfDeg += vBonus;
+  // Pass 3 — Techy weak passive: a slightly wider cone (the "recon" identity;
+  // mirrors the retired Eagle Eye bonus, now hero-gated instead of trait-gated).
+  if (HERO_ABILITIES_ENABLED && unit.hero === 'Techy') halfDeg += HERO_ABILITIES.techyConeBonusDeg;
   return (halfDeg * Math.PI) / 180;
 }
 
@@ -184,15 +186,18 @@ export function computeVisibility(state: GameState): VisibilityComputation {
     for (const k of visible) teamSet.add(k);
   }
 
-  // Pass 8 — Tactical Scan (Techy card): while active for a team, union all
-  // live enemy positions into that team's visibility set (overrides fog).
+  // Pass 8 / Pass 4 — Tactical Scan (Techy): while active, reveal live enemies
+  // within `radius` of the scanned site's plant hexes (targeted recon at the
+  // objective, no longer a whole-map wallhack). Overrides fog for those hexes.
   for (const fx of state.cardEffects) {
     if (fx.kind !== 'tactical_scan') continue;
     if (state.tick > fx.expiresAtTick) continue;
+    const plantHexes = fx.site === 'A' ? state.map.sites.A.plantHexes : state.map.sites.B.plantHexes;
     for (const u of state.units) {
-      if (u.state !== 'alive') continue;
-      if (u.team === fx.team) continue;
-      visibility[fx.team].add(hexKey(u.pos));
+      if (u.state !== 'alive' || u.team === fx.team) continue;
+      if (plantHexes.some((h) => hexDistance(u.pos, h) <= fx.radius)) {
+        visibility[fx.team].add(hexKey(u.pos));
+      }
     }
   }
   // Pass 9 m3 — Mark Target reveal: while revealUntilTick > state.tick, add

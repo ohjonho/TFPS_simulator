@@ -16,12 +16,12 @@
 // its movement (a far shotgun still closes). The smart "flank the lane" reposition
 // is the later approach-IQ concern.
 
-import type { AiState, GameState, Unit } from './types.ts';
+import type { AiState, GameState, Side, Unit } from './types.ts';
 import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { estimateEdpt } from './combat.ts';
 import { staticExposure, suspectedEnemyHexes, threatAt } from './threat.ts';
-import { ENGAGE } from './config.ts';
+import { ENGAGE, ROLE_PROFILE } from './config.ts';
 
 export type EngageAssessment = {
   engage: boolean;
@@ -38,13 +38,17 @@ function aliveTeam(units: readonly Unit[], team: Unit['team']): number {
 
 // Odds (0..1) at which this unit becomes a coin-flip to commit. Lower = takes
 // worse fights. Aggression + risk/patient traits shift it; clamped.
-function engageThreshold(unit: Unit): number {
+function engageThreshold(unit: Unit, side: Side): number {
   let t = ENGAGE.baseThreshold;
   // High aggression lowers the bar (fights more); risk traits are negative
   // deltas (lower the bar further), patient/anchor traits positive (raise it).
   t -= (unit.modifiers.aggression - 50) * ENGAGE.aggressionWeight;
+  // v0.27.0 — side-aware role posture: Vanguard commits (− delta), Warden is more
+  // selective on defense (+ delta) but ~neutral on attack (disciplined support,
+  // not a passive decliner). The explicit half of "Warden ≠ Vanguard".
+  t += ROLE_PROFILE[unit.role][side].engageDelta;
   const tt = ENGAGE.traitThreshold;
-  for (const id of [unit.skillTrait, unit.behavioralTrait, unit.personalityTrait]) {
+  for (const id of [...unit.tacticalTraits, unit.personality]) {
     if (id && tt[id] !== undefined) t += tt[id];
   }
   return Math.max(ENGAGE.minThreshold, Math.min(ENGAGE.maxThreshold, t));
@@ -80,8 +84,8 @@ export function assessEngagement(
   let bestOdds = 0.5;
   for (const e of visibleEnemies) {
     const eLastAlive = aliveTeam(state.units, e.team) === 1;
-    const myEdpt = estimateEdpt(unit, e, state.map, state.buffs[unit.id] ?? [], state.cardEffects, tick, lastAlive);
-    const eEdpt = estimateEdpt(e, unit, state.map, state.buffs[e.id] ?? [], state.cardEffects, tick, eLastAlive);
+    const myEdpt = estimateEdpt(unit, e, state.map, state.buffs[unit.id] ?? [], state.cardEffects, tick, lastAlive, ENGAGE.skillOddsWeight);
+    const eEdpt = estimateEdpt(e, unit, state.map, state.buffs[e.id] ?? [], state.cardEffects, tick, eLastAlive, ENGAGE.skillOddsWeight);
     const odds = myEdpt + eEdpt > 0 ? myEdpt / (myEdpt + eEdpt) : 0.5;
     const marked = isMarked(state, unit.team, e.id, tick);
     const score = odds + 0.15 * (e.maxHp - e.hp) + (marked ? 0.25 : 0) - 0.01 * hexDistance(unit.pos, e.pos);
@@ -109,7 +113,7 @@ export function assessEngagement(
   }
 
   // Probabilistic commit on acquisition.
-  const threshold = engageThreshold(unit);
+  const threshold = engageThreshold(unit, state.teamSide[unit.team]);
   const p = 1 / (1 + Math.exp(-(bestOdds - threshold) / ENGAGE.softness));
   const pClamped = Math.max(ENGAGE.minAccept, Math.min(ENGAGE.maxAccept, p));
   if (rng.chance(pClamped)) {

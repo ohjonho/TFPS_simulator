@@ -31,17 +31,19 @@ import type {
 import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
-import { applyAnchorOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
+import { applyAnchorOffset, applyLateralOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
 import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
 import type { Directive } from './types.ts';
 // H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
 // strategy + hero synergies in applyStrategies (H3.3).
 import {
-  CARD_EFFECTS,
+  CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
+  HERO_ABILITIES_ENABLED,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
+  ROLE_PROFILE,
   UNIT_DEFAULTS,
 } from './config.ts';
 import { hexDistance } from './hex.ts';
@@ -199,6 +201,7 @@ export function applyStrategies(
   aiStrategyId: string,
   rng: Rng,
   playerVariantIdx: number | null = null,
+  aiVariantIdx: number | null = null,
 ): GameState {
   const playerSide = state.teamSide[playerTeam];
   const aiSide = state.teamSide[aiTeam];
@@ -206,8 +209,15 @@ export function applyStrategies(
   const aiStrat = strategyById(aiStrategyId, aiSide, state.map);
   if (!playerStrat || !aiStrat) return state;
 
-  // AI first → its RNG position is stable across player variant choices.
-  const aiVariant = aiStrat.variants[rng.int(aiStrat.variants.length)];
+  // AI first → its RNG position is stable across player variant choices. The
+  // draw is always consumed (RNG position stable); `aiVariantIdx` only overrides
+  // WHICH variant is used (harness seam for forced A/B-site experiments).
+  const aiVariantDraw = rng.int(aiStrat.variants.length);
+  const aiVariantIndex =
+    aiVariantIdx !== null && aiVariantIdx >= 0 && aiVariantIdx < aiStrat.variants.length
+      ? aiVariantIdx
+      : aiVariantDraw;
+  const aiVariant = aiStrat.variants[aiVariantIndex];
   const playerVariantIndex =
     playerVariantIdx !== null && playerVariantIdx >= 0 && playerVariantIdx < playerStrat.variants.length
       ? playerVariantIdx
@@ -234,6 +244,24 @@ export function applyStrategies(
     if (uid) unitToSlotIdx[uid] = i;
   }
 
+  // v0.27.0 — crossfire grouping (Pass 1). Group same-team, same-region Warden
+  // holders so each fans laterally by index (i of n) → divergent angles onto the
+  // choke, and never collapse onto one hex. Deterministic: units + groups in
+  // declaration order. Recomputes each Warden's region the same way the loop does.
+  const crossfireIndex: Record<string, { i: number; n: number }> = {};
+  {
+    const groups: Record<string, string[]> = {};
+    for (const u of state.units) {
+      if (!ROLE_PROFILE[u.role][state.teamSide[u.team]].crossfire) continue;
+      const variant = u.team === playerTeam ? playerVariant : aiVariant;
+      const strat = u.team === playerTeam ? playerStrat : aiStrat;
+      const slotIdx = unitToSlotIdx[u.id];
+      const region = (slotIdx !== undefined ? variant[slotIdx]?.region : undefined) ?? strat.fallbackRegion;
+      (groups[`${u.team}|${region}`] ??= []).push(u.id);
+    }
+    for (const ids of Object.values(groups)) ids.forEach((id, i) => { crossfireIndex[id] = { i, n: ids.length }; });
+  }
+
   const nextUnits: Unit[] = [];
   const nextTargets: Record<string, HexCoord | null> = { ...state.targets };
   for (const u of state.units) {
@@ -254,6 +282,20 @@ export function applyStrategies(
     // Pass 9 — apply the per-slot anchor offset on top of weapon adjustment.
     if (adjusted && slot?.anchorOffset) {
       adjusted = applyAnchorOffset(adjusted, slot.anchorOffset, side, state.map);
+    }
+    // v0.27.0 — role micro-position ON TOP of the slot: deep (Warden) / forward
+    // (Vanguard) via applyAnchorOffset, then the Warden crossfire lateral fan so
+    // same-site Wardens diverge instead of stacking.
+    if (adjusted) {
+      const rp = ROLE_PROFILE[u.role][side];
+      if (rp.positionOffset !== 0) {
+        adjusted = applyAnchorOffset(adjusted, rp.positionOffset, side, state.map);
+      }
+      const cf = crossfireIndex[u.id];
+      if (rp.crossfire && cf && cf.n > 1) {
+        const cols = Math.round((cf.i - (cf.n - 1) / 2) * CROSSFIRE_SPREAD_COLS);
+        adjusted = applyLateralOffset(adjusted, cols, state.map);
+      }
     }
     nextTargets[u.id] = adjusted;
 
@@ -345,87 +387,54 @@ export function applyStrategies(
   };
 }
 
-// H3.3 — strategy + trait synergy mapping. Each entry: if the unit has the
-// listed trait AND the team's strategy id matches, set the cardFlag. Combat
-// hooks unchanged — they already read these flags via the Pass 8 path; only
-// the source of the flags moved from card handlers to strategy commit.
+// Per-unit round-start synergy flags. v0.28.0 — the old trait+strategy synergy
+// branches all keyed off retired trait-unlock strategies and were removed with
+// them (Pass 7 deleted the leftover STRATEGY_MODS entries too). Hero arming is
+// the only per-unit round-start synergy now; the trait reworks (Pass 2b) own the
+// rest of the synergy story. `strategyId` is kept on
+// the signature for the upcoming hero/trait passes.
 function applyTraitStrategySynergies(
   flags: import('./types.ts').CardFlags,
   unit: Unit,
   strategyId: string,
 ): import('./types.ts').CardFlags {
-  // Sentinel + Anchor_Hold → doubles Sentinel's stationary bonus (formerly
-  // the Anchor Position card).
-  if (unit.behavioralTrait === 'Sentinel' && strategyId === 'Anchor_Hold') {
-    flags = { ...flags, anchorPosition: true };
-  }
-  // Run-n-Gun + Mobile_Push → +1 speed, no retreat, +15 HR moving
-  // (formerly Reckless Push card). Even non-Run-n-Gun units on Mobile_Push
-  // get a smaller bump via the strategy aggression mod (already applied).
-  if (unit.behavioralTrait === 'Run-n-Gun' && strategyId === 'Mobile_Push') {
-    flags = { ...flags, recklessPush: true };
-  }
-  // Lurker + Patient_Flank → perimeter routing + invisibility-until-fire
-  // (formerly Slow Flank card). slowFlank flag covers both behaviors.
-  if (unit.behavioralTrait === 'Lurker' && strategyId === 'Patient_Flank') {
-    flags = { ...flags, slowFlank: true, invisibleUntilFire: true };
-  }
-  // Entry + Coordinated_Execute → +30 HR/+15 HS first 3 engagement ticks,
-  // no post-penalty (formerly Opening Pick card).
-  if (unit.behavioralTrait === 'Entry' && strategyId === 'Coordinated_Execute') {
-    flags = { ...flags, openingPickActive: true };
-  }
-  // Spearhead synergy — Vanguard role on Coordinated_Execute leads the
-  // commit; allies follow 2 ticks behind (formerly Spearhead card).
-  if (unit.role === 'Vanguard' && strategyId === 'Coordinated_Execute') {
-    flags = { ...flags, spearhead: true };
-  }
-  // Trader + Crossfire_Lockdown → crossfire buff cascade on ally fire
-  // (formerly Crossfire card).
-  if (unit.behavioralTrait === 'Trader' && strategyId === 'Crossfire_Lockdown') {
-    flags = { ...flags, crossfireEligible: true };
-  }
-  // Clutch + Last_Stand_Defense → trade-window mark on teammate death
-  // (formerly Trade Window card).
-  if (unit.behavioralTrait === 'Clutch' && strategyId === 'Last_Stand_Defense') {
-    flags = { ...flags, tradeWindowEnabled: true };
-  }
-  // H3.3 — Cursed hero → mark-target-pending flag. The hero's passive
-  // ability fires when the unit first spots an enemy this round (existing
-  // Mark Target trigger in tick.ts reads this flag).
+  void strategyId;
+  // Pass 5 — hero-neutral measurement toggle: skip arming entirely when off.
+  if (!HERO_ABILITIES_ENABLED) return flags;
+  // Pass 3 — arm each hero's once-per-round active + weak passive at round start.
+  //   Cursed → Mark Target (markTargetPending; fires on first enemy spotted) +
+  //            hunterBonus weak passive (flat self +HR, read in combat).
+  //   Angelic/Techy → heroActivePending; the trigger condition differs by hero
+  //            (Angelic rally fires in tick.ts's death loop on first ally death;
+  //            Techy scan fires on the team's first enemy contact).
   if (unit.hero === 'Cursed') {
-    flags = { ...flags, markTargetPending: true };
+    flags = { ...flags, markTargetPending: true, hunterBonus: true };
+  } else if (unit.hero === 'Angelic' || unit.hero === 'Techy' || unit.hero === 'Bulwark') {
+    // Angelic Field Medic (first wounded ally), Techy Scan (first contact),
+    // Bulwark Fortify (first damage taken) — all gated by heroActivePending;
+    // the trigger condition differs by hero (handled in tick.ts).
+    flags = { ...flags, heroActivePending: true };
   }
   return flags;
 }
 
-// H3.3 — hero passives. Always-on effects derived from each unit's hero
-// (no card decision required). Three heroes wired:
-//   Angelic → guardian_aura (radius from CARD_EFFECTS.guardianAura)
-//   Techy   → tactical_scan (lasts tacticalScan.ticks at round start)
-//   Cursed  → handled per-unit via markTargetPending flag (see above)
+// Pass 4 — standing hero passives. Most hero identity is now in the triggered
+// actives + per-unit flags (Angelic heal / Techy scan / Cursed mark+hunterBonus,
+// all armed in applyTraitStrategySynergies; cone passive in vision). The only
+// standing cardEffect is Bulwark's weak passive: a radius-0 guardian_aura giving
+// the Bulwark itself +1 maxHP (reusing the aura's maxHp plumbing, self only).
 function computeHeroPassiveEffects(
   units: readonly Unit[],
   currentTick: number,
 ): import('./types.ts').ActiveCardEffect[] {
+  void currentTick;
   const out: import('./types.ts').ActiveCardEffect[] = [];
+  if (!HERO_ABILITIES_ENABLED) return out; // Pass 5 hero-neutral toggle.
   for (const u of units) {
     if (u.state !== 'alive') continue;
-    if (u.hero === 'Angelic') {
-      out.push({
-        kind: 'guardian_aura',
-        team: u.team,
-        sourceId: u.id,
-        radius: CARD_EFFECTS.guardianAura.radius,
-      });
-    } else if (u.hero === 'Techy') {
-      out.push({
-        kind: 'tactical_scan',
-        team: u.team,
-        expiresAtTick: currentTick + CARD_EFFECTS.tacticalScan.ticks,
-      });
+    if (u.hero === 'Bulwark') {
+      out.push({ kind: 'guardian_aura', team: u.team, sourceId: u.id, radius: 0 });
     }
-    // Cursed → markTargetPending flag on the unit (set in applyTraitStrategySynergies).
   }
   return out;
 }

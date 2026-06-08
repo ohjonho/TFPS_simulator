@@ -106,9 +106,8 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
           ${heroChip(u.hero)}
         </div>
         <div class="ru-line3">
-          ${traitSpan(u.skillTrait, 'skill')}
-          ${traitSpan(u.behavioralTrait, 'beh')}
-          ${traitSpan(u.personalityTrait, 'personality')}
+          ${u.tacticalTraits.map((t) => traitSpan(t, 'skill')).join('')}
+          ${traitSpan(u.personality, 'personality')}
         </div>
       </li>`;
   }).join('');
@@ -157,9 +156,8 @@ function unitInfoOrHint(unit: Unit | null, state: GameState): string {
       <dt>AI mode</dt><dd>${mode}${tgt}</dd>
       <dt>Role</dt><dd>${roleChip(unit.role)}${offWarn}</dd>
       <dt>Hero</dt><dd>${heroChip(unit.hero)}</dd>
-      <dt>Skill trait</dt><dd>${traitSpan(unit.skillTrait, 'skill')}</dd>
-      <dt>Behavioral</dt><dd>${traitSpan(unit.behavioralTrait, 'beh')}</dd>
-      <dt>Personality</dt><dd>${traitSpan(unit.personalityTrait, 'personality')}</dd>
+      <dt>Tactical</dt><dd>${unit.tacticalTraits.map((t) => traitSpan(t, 'skill')).join(' ') || '—'}</dd>
+      <dt>Personality</dt><dd>${traitSpan(unit.personality, 'personality')}</dd>
       <dt>Aggr</dt><dd>${unit.modifiers.aggression}</dd>
       <dt>Hex</dt><dd>(${col}, ${row})</dd>
     </dl>

@@ -92,10 +92,9 @@ export function createTeam(
     state: 'alive',
     // Attributes are assigned by assignAttributes() at match start; these are
     // placeholder defaults.
-    skillTrait: null,
-    behavioralTrait: null,
-    // Pass H2 — third trait dimension; assignAttributes/rollUnitMeta picks it.
-    personalityTrait: null,
+    // v0.29.0 — traits assigned by assignAttributes/rollUnitMeta at match start.
+    tacticalTraits: [],
+    personality: null,
     role: 'Specialist',
     preferredRole: 'Specialist',
     hero: 'Angelic',
