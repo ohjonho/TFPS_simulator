@@ -201,6 +201,7 @@ export function applyStrategies(
   aiStrategyId: string,
   rng: Rng,
   playerVariantIdx: number | null = null,
+  aiVariantIdx: number | null = null,
 ): GameState {
   const playerSide = state.teamSide[playerTeam];
   const aiSide = state.teamSide[aiTeam];
@@ -208,8 +209,15 @@ export function applyStrategies(
   const aiStrat = strategyById(aiStrategyId, aiSide, state.map);
   if (!playerStrat || !aiStrat) return state;
 
-  // AI first → its RNG position is stable across player variant choices.
-  const aiVariant = aiStrat.variants[rng.int(aiStrat.variants.length)];
+  // AI first → its RNG position is stable across player variant choices. The
+  // draw is always consumed (RNG position stable); `aiVariantIdx` only overrides
+  // WHICH variant is used (harness seam for forced A/B-site experiments).
+  const aiVariantDraw = rng.int(aiStrat.variants.length);
+  const aiVariantIndex =
+    aiVariantIdx !== null && aiVariantIdx >= 0 && aiVariantIdx < aiStrat.variants.length
+      ? aiVariantIdx
+      : aiVariantDraw;
+  const aiVariant = aiStrat.variants[aiVariantIndex];
   const playerVariantIndex =
     playerVariantIdx !== null && playerVariantIdx >= 0 && playerVariantIdx < playerStrat.variants.length
       ? playerVariantIdx

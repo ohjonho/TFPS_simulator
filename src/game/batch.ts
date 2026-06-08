@@ -117,6 +117,11 @@ export type StrategyRoundOpts = {
   // H3.4 — defenderCardDefId / attackerCardDefId removed (card system deleted).
   mapName?: MapDefinition['name'];
   cap?: number;
+  // Harness seam: force the ATTACKER (AI) strategy variant index (0 = A-site
+  // variant, 1 = B-site) instead of the seeded coin-flip, for controlled
+  // per-site experiments. The RNG draw is still consumed, so a given seed yields
+  // the same round except for the forced site. Undefined → normal random pick.
+  attackerVariantIdx?: number;
   // Pass A5 follow-up: per-unit attribute overrides used to isolate strategy
   // impact from attribute randomization (e.g. all-50 ratings across all
   // units). Layered on top of seed-based generation in assignAttributes.
@@ -152,7 +157,7 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   // Same RNG derivation as main.beginRound so variant picks + AI card picks
   // are bit-identical to what the UI would produce.
   const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
-  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng);
+  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng, null, opts.attackerVariantIdx ?? null);
 
   // H3.4 — commitCards removed; applyStrategies populated synergies + hero
   // passives directly above.
