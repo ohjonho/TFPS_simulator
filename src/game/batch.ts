@@ -6,7 +6,7 @@
 // H3.4 — card-sanity check removed (card system deleted). Strategy matrix
 // + determinism check remain.
 
-import type { GameEvent, GameState, MapDefinition, Team } from './types.ts';
+import type { GameEvent, GameState, HexCoord, MapDefinition, Side, Team } from './types.ts';
 import type { AttributeOverride } from './attributes.ts';
 import { buildInitialState } from './state.ts';
 import { assignAttributes } from './attributes.ts';
@@ -134,6 +134,10 @@ export type StrategyRoundResult = {
   defAlive: number;
   atkAlive: number;
   events: readonly GameEvent[];
+  // Final positions of units that died this round (a dead unit doesn't move, so
+  // end-of-round pos = where it fell). Feeds the fingerprint death-zone
+  // histogram. Pure read of final state; ignored by matrix/determinism.
+  deaths: { team: Team; pos: HexCoord }[];
 };
 
 // One round driven by the real strategy+card pipeline. Mirrors main.beginRound
@@ -196,6 +200,9 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
     defAlive: aliveCount(state, 'defenders'),
     atkAlive: aliveCount(state, 'attackers'),
     events: state.events,
+    deaths: state.units
+      .filter((u) => u.state === 'dead')
+      .map((u) => ({ team: u.team, pos: { ...u.pos } })),
   };
 }
 
@@ -389,3 +396,87 @@ export function determinismCheck(seeds = 10, mapName: MapDefinition['name'] = 'F
 // when the Setup Play / Hold the Line auto-targets switch from "contributor's
 // own pos" to "strategy region centroid" (more sensible default).
 void regionCentroid;
+
+// ---- Strategy fingerprint (distinctness / viability probe) -----------------
+//
+// For one strategy (on a given side), run it vs each opponent strategy over N
+// seeds and aggregate a behavioral fingerprint: win%, plant rate + which site,
+// round length, and where bodies fall (coarse-zone histogram across both
+// teams). Two strategies are "distinct" when their fingerprints differ;
+// "viable" when win% isn't ~0 across every matchup (the known 0%-cell issue for
+// promoted strategies). Derived from the event log + final positions — no new
+// state plumbing. Used while walking strategies map-by-map (Step 7).
+
+const COARSE_ZONES = ['a_site', 'b_site', 'mid', 'a_main', 'b_main', 'def_spawn', 'atk_spawn'] as const;
+
+// hex-key → coarse zone. COARSE_ZONES order = priority (sites/mid before mains),
+// matching how a reader thinks about "where the fight happened." Folded parents
+// (a_site already includes plant/entry/anchor/off) keep the buckets meaningful.
+function buildZoneKey(map: MapDefinition): Record<string, string> {
+  const key: Record<string, string> = {};
+  for (const zone of COARSE_ZONES) {
+    for (const h of map.regions[zone] ?? []) {
+      const k = `${h.col},${h.row}`;
+      if (!(k in key)) key[k] = zone; // earlier (higher-priority) zone wins
+    }
+  }
+  return key;
+}
+
+export type StrategyFingerprint = {
+  strategy: string;
+  side: Side;
+  matchups: number;
+  seeds: number;
+  winPct: number;          // win% for `side`, over all matchups × seeds
+  plantRatePct: number;    // % of rounds that reached a plant
+  plantAPct: number;       // % of PLANTS on site A (vs B)
+  plantBPct: number;
+  avgTicks: number;
+  deathZonePct: Record<string, number>;  // zone → % of all deaths there
+};
+
+export function runStrategyFingerprint(
+  side: Side,
+  strategyId: string,
+  opponents: readonly string[],
+  seeds = 20,
+  mapName: MapDefinition['name'] = 'Foundryv2',
+): StrategyFingerprint {
+  const zoneKey = buildZoneKey(buildInitialState(mapName, 'standard').map);
+  const myTeam: Team = side === 'defender' ? 'defenders' : 'attackers';
+  let wins = 0, rounds = 0, plants = 0, plantA = 0, plantB = 0, totalTicks = 0, totalDeaths = 0;
+  const deathZones: Record<string, number> = {};
+  for (const opp of opponents) {
+    for (let i = 0; i < seeds; i++) {
+      const r = runStrategyRound(7000 + i, {
+        defenderStrategy: side === 'defender' ? strategyId : opp,
+        attackerStrategy: side === 'attacker' ? strategyId : opp,
+        mapName,
+      });
+      rounds++;
+      totalTicks += r.ticks;
+      if (r.winner === myTeam) wins++;
+      for (const e of r.events) {
+        if (e.type === 'plant') { plants++; if (e.site === 'A') plantA++; else plantB++; }
+      }
+      for (const d of r.deaths) {
+        const z = zoneKey[`${d.pos.col},${d.pos.row}`] ?? 'other';
+        deathZones[z] = (deathZones[z] ?? 0) + 1;
+        totalDeaths++;
+      }
+    }
+  }
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+  const deathZonePct: Record<string, number> = {};
+  for (const z of Object.keys(deathZones)) deathZonePct[z] = pct(deathZones[z], totalDeaths);
+  return {
+    strategy: strategyId, side, matchups: opponents.length, seeds,
+    winPct: pct(wins, rounds),
+    plantRatePct: pct(plants, rounds),
+    plantAPct: pct(plantA, plants),
+    plantBPct: pct(plantB, plants),
+    avgTicks: Math.round((totalTicks / Math.max(1, rounds)) * 10) / 10,
+    deathZonePct,
+  };
+}
