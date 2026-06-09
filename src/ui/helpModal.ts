@@ -313,6 +313,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.36.0 — Execute / Mind Games attackers peel for flankers</h3>
+    <ul>
+      <li><strong>On the Execute and Mind Games attacks, committed pushers now
+        break off to deal with a defender flanking them from the mid choke or the
+        near lane, instead of tunnelling straight to the plant.</strong> Rush is
+        unchanged — it stays all-in and head-down. That sharpens the difference
+        between the attacks: Execute trades a little plant speed for safety against
+        mid/flank picks; Rush floods regardless.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.35.0 — point-blank awareness (no more walking past enemies)</h3>
     <ul>
       <li><strong>Units now sense an enemy within a couple of hexes even when
