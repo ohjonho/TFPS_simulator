@@ -235,9 +235,13 @@ function rotateOnTeamContact(
 }
 
 // --- trade_for -------------------------------------------------------------
-// For `windowTicks` after `allyId` fires or dies, engage their last
-// firingTarget if visible. We don't override target hex (let the unit move
-// naturally); we override engagement via visibility of the marked enemy.
+// For `windowTicks` after the watched `allyId` fires (or dies), converge on the
+// teammate's fight so a follow-up peek can trade the duel. Movement only — the
+// +HR side of trading is the Trader trait / Trade-Window mark, not here. Fair
+// info: we steer toward the ALLY's own position (own-team), never the enemy's
+// hidden location. Low priority (40), so this only fires for a unit whose
+// higher-priority directives all declined this tick (a trade-primary slot); it
+// never pulls a committed anchor / pusher / sniper off its job.
 
 function tradeFor(
   d: Extract<Directive, { kind: 'trade_for' }>,
@@ -246,14 +250,14 @@ function tradeFor(
 ): DirectiveDecision | null {
   const allyAi = state.ai[d.allyId];
   if (!allyAi) return null;
-  // Did the ally fire recently?
+  // Did the watched ally fire (or trade into a death) within the window?
   const sinceFire = state.tick - allyAi.lastFiredTick;
   if (sinceFire < 0 || sinceFire > d.windowTicks) return null;
-  // We don't currently override fire targeting (combat picks closest visible);
-  // this directive's main effect comes via the +HR Trader-trait-like bonus
-  // that strategies/cards may add separately. For v0 we leave the position
-  // alone and the unit fires per default engage logic.
-  return null;
+  const ally = state.units.find((u) => u.id === d.allyId);
+  if (!ally) return null;
+  // Move toward the teammate's contact (their pos, or where they fell). Engage
+  // is left to the normal gate once we arrive.
+  return { target: { ...ally.pos }, source: 'trade_for' };
 }
 
 // --- peek_and_retreat ------------------------------------------------------
