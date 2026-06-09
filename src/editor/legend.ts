@@ -29,17 +29,21 @@ const LABELS: Record<string, string> = {
   // A-side site cluster.
   A: 'A site',
   a: 'A plant',
-  e: 'A entry',
-  n: 'A anchor',
-  f: 'A off-angle',
+  e: 'A entry 1',
+  h: 'A entry 2',
+  n: 'A anchor 1',
+  j: 'A anchor 2',
+  f: 'A off-angle 1',
   g: 'A off-angle 2',
 
   // B-side site cluster.
   B: 'B site',
   b: 'B plant',
-  E: 'B entry',
-  N: 'B anchor',
-  F: 'B off-angle',
+  E: 'B entry 1',
+  H: 'B entry 2',
+  N: 'B anchor 1',
+  J: 'B anchor 2',
+  F: 'B off-angle 1',
   G: 'B off-angle 2',
 
   // Main lanes (near = defender end, far = attacker end).
@@ -55,12 +59,16 @@ const LABELS: Record<string, string> = {
   l: 'mid · left',
   r: 'mid · right',
   k: 'mid choke',
+  p: 'mid off-angle',
+  v: 'mid anchor',
 
-  // Standalone chokes + rotational connectors.
+  // Standalone chokes + rotational connectors + lurk pathways.
   c: 'A choke',
   C: 'B choke',
   '7': 'A connector',
   '8': 'B connector',
+  y: 'A lurk path',
+  Y: 'B lurk path',
 };
 
 // Display order for the palette: terrain → spawns → A cluster → B cluster →
@@ -68,11 +76,11 @@ const LABELS: Record<string, string> = {
 // a new char in CHAR_LEGEND still shows.
 const ORDER = [
   '#', '.', 'o', 'D', 'X',
-  'A', 'a', 'e', 'n', 'f', 'g',
-  'B', 'b', 'E', 'N', 'F', 'G',
+  'A', 'a', 'e', 'h', 'n', 'j', 'f', 'g',
+  'B', 'b', 'E', 'H', 'N', 'J', 'F', 'G',
   '1', '3', '4', '2', '5', '6',
-  'M', 'l', 'r', 'k',
-  'c', 'C', '7', '8',
+  'M', 'l', 'r', 'k', 'p', 'v',
+  'c', 'C', '7', '8', 'y', 'Y',
 ];
 
 export const ERASER_CHAR = '.';

@@ -131,7 +131,10 @@ export function rect(
 // a_main/b_main, mid) stay meaningful via the fold below — each fine sub-zone's
 // cells are merged into its parent so strategies referencing the parent see the
 // full footprint, while the sub-zones are available as distinct targets +
-// watch angles. Chokes/connectors are standalone (thin angle/rotate refs, not
+// watch angles. Numbered variants (entry 1/2 = e/h, anchor 1/2 = n/j, off-angle
+// 1/2 = f/g) fold into their unnumbered parent so a generic ref sees both angles
+// while each numbered cell stays a distinct round-to-round target. Chokes/
+// connectors + lurk pathways (y/Y) are standalone (thin angle/rotate refs, not
 // hold zones). Sub-zone CellType is cosmetic (all passable) — picked so the
 // editor groups them sensibly: anchors/off-angles read as 'site', entries +
 // lane segments + chokes + connectors as 'open', mid sub-zones as 'mid'.
@@ -145,8 +148,10 @@ export const CHAR_LEGEND: Record<string, { type: CellType; region?: string }> = 
   // A-side cluster.
   A: { type: 'site', region: 'a_site' },
   a: { type: 'plant', region: 'a_plant' },
-  e: { type: 'open', region: 'a_entry' },     // doorway attackers push through
-  n: { type: 'site', region: 'a_anchor' },    // defender hold pocket (deep/safe)
+  e: { type: 'open', region: 'a_entry' },     // entry 1 (doorway attackers push through)
+  h: { type: 'open', region: 'a_entry2' },    // entry 2 (alternate push angle)
+  n: { type: 'site', region: 'a_anchor' },    // anchor 1 (defender hold pocket, deep/safe)
+  j: { type: 'site', region: 'a_anchor2' },   // anchor 2 (alternate hold angle)
   f: { type: 'site', region: 'a_off' },        // off-angle 1
   g: { type: 'site', region: 'a_off2' },       // off-angle 2
 
@@ -154,7 +159,9 @@ export const CHAR_LEGEND: Record<string, { type: CellType; region?: string }> = 
   B: { type: 'site', region: 'b_site' },
   b: { type: 'plant', region: 'b_plant' },
   E: { type: 'open', region: 'b_entry' },
+  H: { type: 'open', region: 'b_entry2' },
   N: { type: 'site', region: 'b_anchor' },
+  J: { type: 'site', region: 'b_anchor2' },
   F: { type: 'site', region: 'b_off' },
   G: { type: 'site', region: 'b_off2' },
 
@@ -171,12 +178,19 @@ export const CHAR_LEGEND: Record<string, { type: CellType; region?: string }> = 
   l: { type: 'mid', region: 'mid_left' },
   r: { type: 'mid', region: 'mid_right' },
   k: { type: 'mid', region: 'mid_choke' },
+  p: { type: 'mid', region: 'mid_off' },       // mid off-angle (pick from mid)
+  v: { type: 'mid', region: 'mid_anchor' },    // mid anchor hold (deep mid control)
 
   // Standalone chokes + rotational connectors (watch angles / rotate targets).
   c: { type: 'open', region: 'a_choke' },
   C: { type: 'open', region: 'b_choke' },
   '7': { type: 'open', region: 'a_connector' },
   '8': { type: 'open', region: 'b_connector' },
+
+  // Lurk pathways — off-path lanes for a late flank/hold (standalone route refs,
+  // like chokes: not folded into a site/mid parent).
+  y: { type: 'open', region: 'a_lurk' },
+  Y: { type: 'open', region: 'b_lurk' },
 };
 
 /** Passable-hex nearest the centroid of `pool` (avoids site pillars). */
@@ -234,11 +248,19 @@ export function mapFromCharGrid(rows: readonly string[]): {
     for (const c of children) for (const h of regions[c] ?? []) merged.push(h);
     if (merged.length > 0) regions[parent] = merged;
   };
+  // Numbered variants fold into their unnumbered parent FIRST so the parent
+  // (a_entry / a_anchor) carries both angles; the site fold then picks up the
+  // merged parent transitively (no double-count). Each numbered child region
+  // stays intact for round-to-round angle targeting.
+  fold('a_entry', ['a_entry2']);
+  fold('b_entry', ['b_entry2']);
+  fold('a_anchor', ['a_anchor2']);
+  fold('b_anchor', ['b_anchor2']);
   fold('a_site', ['a_plant', 'a_entry', 'a_anchor', 'a_off', 'a_off2']);
   fold('b_site', ['b_plant', 'b_entry', 'b_anchor', 'b_off', 'b_off2']);
   fold('a_main', ['a_main_near', 'a_main_far']);
   fold('b_main', ['b_main_near', 'b_main_far']);
-  fold('mid', ['mid_left', 'mid_right', 'mid_choke']);
+  fold('mid', ['mid_left', 'mid_right', 'mid_choke', 'mid_off', 'mid_anchor']);
 
   const aPlant = regions['a_plant'] ?? [];
   const bPlant = regions['b_plant'] ?? [];
