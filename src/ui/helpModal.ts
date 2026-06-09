@@ -313,6 +313,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.34.0 — units turn to face who's shooting them</h3>
+    <ul>
+      <li><strong>A unit shot from outside its vision cone now turns to face the
+        shooter — even when the shot misses.</strong> Before, a unit only reacted
+        once it actually took damage, so it could be peppered with near-misses from
+        the flank or behind and keep staring the wrong way. Now any incoming fire
+        snaps the target around to look at its attacker, so it can spot them and
+        return fire on the next tick.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.33.0 — lever rebalance (no single hero or trait swings a match)</h3>
     <ul>
       <li><strong>Hero and trait power levels were tuned down so that picking one

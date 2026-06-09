@@ -648,10 +648,13 @@ export function stepTick(state: GameState): GameState {
   // consumed in stable unit order; damage applied simultaneously below.
   const rng = createRng(hashSeed(state.seed, tick));
   const damage: Record<string, number> = {};
-  // Pass 7.7 turn-on-hit: last shooter to land a hit on each target this tick.
-  // After damage application, surviving targets snap facing toward that shooter
-  // so they can engage next tick (covers shots from outside the cone).
+  // Pass 7.7 turn-on-hit: shooter to react to per target this tick. `damagedBy`
+  // = last shooter to LAND A HIT; `shotAtBy` = last shooter to FIRE AT the
+  // target (hit or miss). After damage application, surviving targets snap
+  // facing toward their shooter (preferring a hitter) so they can engage next
+  // tick — covers being shot at from outside the cone even when the shot misses.
   const damagedBy: Record<string, string> = {};
+  const shotAtBy: Record<string, string> = {};
   for (const u of working) {
     if (u.state !== 'alive') continue;
     const ai = newAi[u.id];
@@ -692,6 +695,9 @@ export function stepTick(state: GameState): GameState {
       firstSightShot,
     };
     const shot = resolveShot(u, target, state.map, ctxInput, state.buffs[u.id] ?? [], state.cardEffects, tick, rng);
+    // Record the shot regardless of outcome so the target turns to face anyone
+    // shooting at it (hit OR miss) — not only when it takes damage.
+    shotAtBy[target.id] = u.id;
     if (shot.hit) {
       damage[target.id] = (damage[target.id] ?? 0) + shot.damage;
       damagedBy[target.id] = u.id;
@@ -757,13 +763,16 @@ export function stepTick(state: GameState): GameState {
     }
   }
 
-  // Pass 7.7 turn-on-hit: surviving targets snap facing toward the last shooter
-  // that hit them this tick — so units shot from outside their cone turn to
-  // engage on the next tick (overrides the face-threat-on-hold set earlier).
-  for (const targetId of Object.keys(damagedBy)) {
+  // Pass 7.7 turn-on-hit (extended): surviving targets snap facing toward the
+  // shooter that fired at them this tick — so units shot from outside their cone
+  // turn to engage next tick (the end-of-tick vision pass then reveals the
+  // shooter → tracking acquires it). Covers misses too, not just hits; prefer a
+  // shooter that actually landed a hit over one that only shot at us. Overrides
+  // the face-threat-on-hold set earlier this tick.
+  for (const targetId of Object.keys(shotAtBy)) {
     const t = workingById[targetId];
     if (!t || t.state !== 'alive') continue;
-    const shooter = workingById[damagedBy[targetId]];
+    const shooter = workingById[damagedBy[targetId] ?? shotAtBy[targetId]];
     if (!shooter) continue;
     t.facing = nearestFacing(t.pos, shooter.pos);
   }
