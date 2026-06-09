@@ -313,6 +313,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.35.0 — point-blank awareness (no more walking past enemies)</h3>
+    <ul>
+      <li><strong>Units now sense an enemy within a couple of hexes even when
+        facing away.</strong> Before, perception was strictly the vision cone, so
+        two opponents could walk right past each other if their cones didn't happen
+        to cross. A short-range proximity sense closes that blind spot — anyone who
+        gets close (with line of sight) is noticed and can be engaged.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.34.0 — units turn to face who's shooting them</h3>
     <ul>
       <li><strong>A unit shot from outside its vision cone now turns to face the

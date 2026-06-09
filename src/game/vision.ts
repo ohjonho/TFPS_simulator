@@ -186,6 +186,24 @@ export function computeVisibility(state: GameState): VisibilityComputation {
     for (const k of visible) teamSet.add(k);
   }
 
+  // Short-range proximity sense (VISION.proximityRadius): a unit notices any
+  // live enemy within a few hexes with a clear LoS even when facing away — no
+  // point-blank blind spot. Added to the unit's own visible set (so engagement
+  // + tracking act on it) and the team fog. Pure + deterministic; no RNG.
+  for (const u of state.units) {
+    if (u.state !== 'alive') continue;
+    const mine = perUnit[u.id];
+    if (!mine) continue;
+    for (const e of state.units) {
+      if (e.team === u.team || e.state !== 'alive') continue;
+      if (hexDistance(u.pos, e.pos) > VISION.proximityRadius) continue;
+      if (!isVisibleAlongLine(u.pos, e.pos, state.map)) continue;
+      const k = hexKey(e.pos);
+      mine.add(k);
+      visibility[u.team].add(k);
+    }
+  }
+
   // Pass 8 / Pass 4 — Tactical Scan (Techy): while active, reveal live enemies
   // within `radius` of the scanned site's plant hexes (targeted recon at the
   // objective, no longer a whole-map wallhack). Overrides fog for those hexes.

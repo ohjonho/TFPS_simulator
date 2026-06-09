@@ -139,6 +139,11 @@ export const VISION = {
   eagleEyeBonusHalfDeg: 15,
   ghostTicks: 5,
   trackLossThreshold: 3,
+  // Short-range peripheral sense: a live enemy within this many hexes (with a
+  // clear line of sight) is noticed regardless of facing, so units don't walk
+  // past each other when their cones happen not to cross. Feeds tracking +
+  // engagement, not just fog.
+  proximityRadius: 2,
 } as const;
 
 // 'v' / 'V' toggles the debug vision overlay.
