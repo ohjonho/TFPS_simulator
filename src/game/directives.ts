@@ -160,6 +160,9 @@ function evaluateOne(
 
     case 'commit_site':
       return commitSite(d, unit, state, visibleEnemies);
+
+    case 'read_and_commit':
+      return readAndCommit(d, unit, state);
   }
 }
 
@@ -272,7 +275,13 @@ function peekAndRetreat(
   _prevAi: AiState,
 ): DirectiveDecision {
   const phase = Math.floor(state.tick / Math.max(1, d.cadenceTicks)) % 2;
-  const wantHex = phase === 0 ? d.peekHex : d.coverHex;
+  // Retreat to the unit's assigned hold (local), NOT d.coverHex — which
+  // defaulted to OWN SPAWN and yo-yo'd every peeker across the whole map (they
+  // died in transit + left their position undefended). Falling back to the
+  // assigned hold keeps peek a short, local pop-and-duck near its angle; the
+  // authored coverHex stays only as a fallback when a unit has no target.
+  const retreatHex = state.targets[unit.id] ?? d.coverHex;
+  const wantHex = phase === 0 ? d.peekHex : retreatHex;
   const atPeek = hexDistance(unit.pos, d.peekHex) === 0;
   const suppressEngage = !atPeek;
   return {
@@ -306,6 +315,41 @@ function commitSite(
     suppressEngage = !enemyInLeaveRegion;
   }
   return { target: d.siteHex, suppressEngage, source: 'commit_site' };
+}
+
+// --- read_and_commit -------------------------------------------------------
+// The "read the defense" attacker mechanic. Count the defenders the viewer's
+// team currently knows about — either standing on a hex the team can see
+// (state.visibility) or remembered at a ghost's last-seen hex — bucketed by
+// which site region contains them. Below `minKnown` total → null (no confident
+// read yet; the unit keeps advancing via lower-priority directives / legacy
+// tree). At/above it → commit to the plant of the site with FEWER known
+// defenders (ties → defaultSite). Fair info only: visibility + ghosts are the
+// same observable signals threat.ts uses — no omniscient peek at hidden units.
+
+function readAndCommit(
+  d: Extract<Directive, { kind: 'read_and_commit' }>,
+  unit: Unit,
+  state: GameState,
+): DirectiveDecision | null {
+  const viewerTeam = unit.team;
+  const enemyTeam = viewerTeam === 'attackers' ? 'defenders' : 'attackers';
+  const seen = state.visibility[viewerTeam];
+  const ghosts = state.ghosts[viewerTeam];
+  let a = 0;
+  let b = 0;
+  for (const e of state.units) {
+    if (e.team !== enemyTeam || e.state !== 'alive') continue;
+    let hex: HexCoord | null = null;
+    if (seen.has(`${e.pos.col},${e.pos.row}`)) hex = e.pos;
+    else if (ghosts[e.id]) hex = ghosts[e.id].hex;
+    if (!hex) continue;
+    if (hexInAnyRegion(hex, d.siteARegions, state)) a++;
+    else if (hexInAnyRegion(hex, d.siteBRegions, state)) b++;
+  }
+  if (a + b < d.minKnown) return null;
+  const site = a < b ? 'a' : b < a ? 'b' : d.defaultSite;
+  return { target: site === 'a' ? d.plantAHex : d.plantBHex, source: 'read_and_commit' };
 }
 
 function hexInAnyRegion(hex: HexCoord, regions: readonly string[], state: GameState): boolean {
@@ -343,7 +387,11 @@ export type DirectiveSpec =
   | { kind: 'rotate_on_team_contact'; priority?: number; rotateTo: HexRef; watch: string[]; delayTicks?: number }
   | { kind: 'trade_for'; priority?: number; ally: string; windowTicks?: number }
   | { kind: 'peek_and_retreat'; priority?: number; peek: HexRef; cover?: HexRef; cadenceTicks?: number }
-  | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] };
+  | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] }
+  // Authoring is map-agnostic: the resolver fills the standard a_plant/b_plant
+  // targets + a_site/b_site buckets. `defaultSite` is the fallback before a read
+  // forms / on a tie; `minKnown` is the read-confidence threshold (default 2).
+  | { kind: 'read_and_commit'; priority?: number; defaultSite: 'a' | 'b'; minKnown?: number };
 
 export type ResolutionContext = {
   map: MapDefinition;
@@ -436,6 +484,23 @@ export function resolveDirectiveSpec(
         priority,
         siteHex: site,
         leaveOnContactInRegions: spec.leaveOnContactInRegions ?? [],
+      };
+    }
+    case 'read_and_commit': {
+      // Map-agnostic: standard plant targets + site buckets. Drop the directive
+      // if either plant centroid is missing (caller falls back to legacy tree).
+      const plantA = regionCentroid(ctx.map, 'a_plant');
+      const plantB = regionCentroid(ctx.map, 'b_plant');
+      if (!plantA || !plantB) return null;
+      return {
+        kind: 'read_and_commit',
+        priority,
+        plantAHex: plantA,
+        plantBHex: plantB,
+        siteARegions: ['a_site'],
+        siteBRegions: ['b_site'],
+        defaultSite: spec.defaultSite,
+        minKnown: spec.minKnown ?? 2,
       };
     }
   }

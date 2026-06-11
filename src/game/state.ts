@@ -40,6 +40,7 @@ import { atoll } from '../maps/atoll.ts';
 import { canyon } from '../maps/canyon.ts';
 import { foundryv2 } from '../maps/foundryv2.ts';
 import { foundryv3 } from '../maps/foundryv3.ts';
+import { foundryv4 } from '../maps/foundryv4.ts';
 import { atoll_v2 } from '../maps/atoll_v2.ts';
 import type { MapDefinition } from './types.ts';
 import { AI, RNG_SEED_DEFAULT } from './config.ts';
@@ -66,6 +67,7 @@ export function buildInitialState(
   const MAPS: Record<MapDefinition['name'], MapDefinition> = {
     Foundry: foundry, Atoll: atoll, Canyon: canyon,
     Foundryv2: foundryv2, Atoll_v2: atoll_v2, Foundryv3: foundryv3,
+    Foundryv4: foundryv4,
   };
   const map = MAPS[mapName] ?? foundry;
 

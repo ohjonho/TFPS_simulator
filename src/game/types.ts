@@ -212,7 +212,15 @@ export type Directive =
   | { kind: 'rotate_on_team_contact'; priority: number; rotateToHex: HexCoord; watchAllies: string[]; delayTicks: number }
   | { kind: 'trade_for'; priority: number; allyId: string; windowTicks: number }
   | { kind: 'peek_and_retreat'; priority: number; peekHex: HexCoord; coverHex: HexCoord; cadenceTicks: number }
-  | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] };
+  | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] }
+  // read_and_commit — the "read the defense" attacker mechanic. Once the team
+  // knows (sees or remembers via ghosts) at least `minKnown` defenders, commit
+  // to the plant of the site holding FEWER of them; until then, null (the unit
+  // keeps advancing/gathering via lower directives). Punishes a defensive fake:
+  // showing strength at one site routes the reader into the other — where the
+  // fake's real strength has collapsed. Used only by the "reading" attacks
+  // (Control, attacker Mind Games); direct attacks (Rush/Execute) ignore it.
+  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; defaultSite: 'a' | 'b'; minKnown: number };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each

@@ -122,6 +122,10 @@ export type StrategyRoundOpts = {
   // per-site experiments. The RNG draw is still consumed, so a given seed yields
   // the same round except for the forced site. Undefined → normal random pick.
   attackerVariantIdx?: number;
+  // Harness seam: force the DEFENDER (player) strategy variant index (0 = A-site,
+  // 1 = B-site), for right-stack vs wrong-stack analysis of site-committing
+  // defenses (Stack / Coordinated_Lockdown). Undefined → normal random pick.
+  defenderVariantIdx?: number;
   // Pass A5 follow-up: per-unit attribute overrides used to isolate strategy
   // impact from attribute randomization (e.g. all-50 ratings across all
   // units). Layered on top of seed-based generation in assignAttributes.
@@ -161,7 +165,7 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   // Same RNG derivation as main.beginRound so variant picks + AI card picks
   // are bit-identical to what the UI would produce.
   const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
-  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng, null, opts.attackerVariantIdx ?? null);
+  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng, opts.defenderVariantIdx ?? null, opts.attackerVariantIdx ?? null);
 
   // H3.4 — commitCards removed; applyStrategies populated synergies + hero
   // passives directly above.

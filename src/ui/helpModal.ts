@@ -313,6 +313,52 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.40.0 — Control reads the defense</h3>
+    <ul>
+      <li><strong>The Control attack now probes both lanes, then commits its push to
+        whichever site is held by fewer defenders</strong> — instead of passively
+        holding mid. It punishes a lopsided defense (over-stack one site and Control
+        takes the other). An even hold gives it nothing to read, so it stays a measured,
+        info-first attack.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.39.0 — live unit stats on both sides during the match</h3>
+    <ul>
+      <li><strong>The match view now shows both teams' units in the side columns —
+        your team on the left, the enemy on the right.</strong> Each unit has a live
+        HP bar (green → amber → red), its current state (holding / moving / in fight /
+        falling back / DEAD), weapon and role, plus a per-team alive count. Updates
+        every tick, so you can read the round at a glance instead of hovering units
+        one at a time. Hovering a unit still shows its full detail below the enemy column.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.38.0 — Foundry IV gets a defense built for its size</h3>
+    <ul>
+      <li><strong>New defender strategy on Foundry IV — Mid Control:</strong> three
+        players garrison the central rotation hub while one anchors each site; whichever
+        site gets hit, the hub floods it from short range. It's the dedicated answer to
+        slow, methodical attacks (Control) on the big map, where an even split can't
+        reinforce across the long A↔B rotation in time.</li>
+      <li><strong>Pressure is no longer offered on Foundry IV.</strong> Pushing mid off
+        spawn abandons too much ground on a map this large — there's no way back to a
+        site once it's committed, so it lost nearly every round there. Pressure stays a
+        solid pick on the smaller maps; Mid Control takes its place in Foundry IV's menu.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.37.0 — Rotate defense actually rotates now</h3>
+    <ul>
+      <li><strong>Rotate was badly broken — its defenders never actually rotated and
+        bled out crossing the map, leaving sites undefended (attackers planted nearly
+        every round).</strong> Fixed: they now hold their angle and swap sites as a
+        pair when a teammate makes contact — a real mobile defense. It's gone from
+        nearly unwinnable to a genuine pick (strong on the tight maps; still weak to
+        fast direct hits, as intended).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.36.0 — Execute / Mind Games attackers peel for flankers</h3>
     <ul>
       <li><strong>On the Execute and Mind Games attacks, committed pushers now

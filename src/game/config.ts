@@ -651,6 +651,10 @@ export const STRATEGY_MODS: Record<string, {
   Mind_Games:           { aggression:   0, retreatThreshold: 0,  complianceThreshold: 60 }, // fake-and-swing (D+A)
   Coordinated_Lockdown: { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 75 }, // all-5 stack
   Rotate_Stack:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 50 }, // rotating mobile D
+  // Mid_Control — large-map defense: 3 hold the central rotation hub + 1 anchors
+  // each site; the hub collapses onto whichever site makes contact. Scale-fit
+  // answer to maps where an even split can't reinforce across a long rotation.
+  Mid_Control:          { aggression:   0, retreatThreshold: 0,  complianceThreshold: 55 },
 };
 
 // Match length: first team to this many round wins.

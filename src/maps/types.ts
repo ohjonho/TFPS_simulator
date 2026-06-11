@@ -56,7 +56,7 @@ export type SiteData = {
 // ---------------------------------------------------------------------------
 
 export type MapDefinition = {
-  name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv3';
+  name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv3' | 'Foundryv4';
   /** Always 30 — the grid is fixed for v0. */
   width: 30;
   /** Always 40 — the grid is fixed for v0. */

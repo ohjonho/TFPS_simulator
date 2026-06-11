@@ -93,8 +93,17 @@ const tradeFor = (allySlot: string, windowTicks = 4): DirectiveSpec =>
   ({ kind: 'trade_for', ally: allySlot, windowTicks, priority: 40 });
 const commitSite = (site: { region: string }, leaveOnContactInRegions: string[] = []): DirectiveSpec =>
   ({ kind: 'commit_site', site, leaveOnContactInRegions, priority: 70 });
+// `cover` is an OPTIONAL explicit retreat override; when omitted the unit falls
+// back to its assigned hold (see directives.peekAndRetreat) — NOT own spawn,
+// which used to yo-yo peekers across the whole map.
 const peek = (peekRef: { region: string }, cover?: { region: string } | typeof ownSpawn): DirectiveSpec =>
-  ({ kind: 'peek_and_retreat', peek: peekRef, cover: cover ?? ownSpawn, cadenceTicks: 4, priority: 65 });
+  ({ kind: 'peek_and_retreat', peek: peekRef, ...(cover ? { cover } : {}), cadenceTicks: 4, priority: 65 });
+// read_and_commit — the "read the defense" attacker call. Once the team knows
+// ≥minKnown defenders, commit to the plant of the lighter-held site. Priority 70
+// (same as commit_site) so it drives the commit once a read forms; returns null
+// before then, leaving the unit to advance/gather via lower directives.
+const readAndCommit = (defaultSite: 'a' | 'b', minKnown = 2): DirectiveSpec =>
+  ({ kind: 'read_and_commit', defaultSite, minKnown, priority: 70 });
 
 // --- Slot assignment -------------------------------------------------------
 
@@ -216,16 +225,21 @@ const ATK: Strategy[] = [
   },
   {
     id: 'Control', name: 'Control', side: 'attacker',
-    description: 'Slow info — two rifles take the far end of each main lane; sniper holds the mid choke for long picks. Rotate to a site on team contact.',
+    description: 'Slow read — two rifles probe each main lane to read where the defenders are, then all four commit to whichever site is held lighter; sniper holds the mid choke for long picks. Punishes a defense that over-shows one site (and gets baited by a fake).',
+    // v0.40.0 — Control now READS the defense (read_and_commit): it stages on both
+    // main lanes to gather vision, then commits to the site holding fewer known
+    // defenders. (The matching defensive-fake payoff is parked behind the threat-
+    // matrix — see the Mind Games note — but Control committing the lighter site is
+    // a standalone improvement over its old passive mid-consolidation.)
     variants: [[
       { id: 'flank_a',    pick: rifle,      region: 'a_main_far', anchorOffset: 4, usePerimeterPath: true,
-        directives: [holdAngle(reg('a_entry')), rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+        directives: [readAndCommit('a'), holdAngle(reg('a_entry'))] },
       { id: 'flank_a2',   pick: rifle,      region: 'a_main_far', usePerimeterPath: true,
-        directives: [holdAngle(reg('a_entry')), tradeFor('flank_a', 4)] },
+        directives: [readAndCommit('a'), holdAngle(reg('a_entry')), tradeFor('flank_a', 4)] },
       { id: 'flank_b',    pick: rifle,      region: 'b_main_far', anchorOffset: 4, usePerimeterPath: true,
-        directives: [holdAngle(reg('b_entry')), rotateOnContact(reg('mid'), ['mid_sniper'], 4)] },
+        directives: [readAndCommit('b'), holdAngle(reg('b_entry'))] },
       { id: 'flank_b2',   pick: rifle,      region: 'b_main_far', usePerimeterPath: true,
-        directives: [holdAngle(reg('b_entry')), tradeFor('flank_b', 4)] },
+        directives: [readAndCommit('b'), holdAngle(reg('b_entry')), tradeFor('flank_b', 4)] },
       { id: 'mid_sniper', pick: sniperPref, region: 'mid_choke', anchorOffset: 6,
         directives: [holdAngle(enemySpawn), safeSniper(enemySpawn), tradeFor('flank_a', 5)] },
     ]],
@@ -349,6 +363,11 @@ const DEF: Strategy[] = [
   {
     id: 'Mind_Games', name: 'Mind Games', side: 'defender',
     description: 'Fake-and-swing — two defenders show one site (peek then rotate), two more hold the other from the anchor + off-angle, sniper reads from the mid choke. Punishes attacker over-commits to the fake.',
+    // NOTE: the "bait a reading attacker into the trap" rework was reverted (v0.40.0
+    // experiment) — it needs a richer perception substrate than the sim has: the
+    // attacker can't reliably perceive the show (maxKnown ~2 visible defenders), so
+    // the bait doesn't register. Parked behind the threat-matrix; this is the
+    // original fake-and-swing (still beats attacker Mind Games, loses to Control).
     variants: [
       [
         { id: 'fake',  pick: rifle,      region: 'a_anchor', anchorOffset: 1,
@@ -421,16 +440,21 @@ const DEF: Strategy[] = [
   // baseline in v0.28.0 (was a Roamer trait-unlock); rich-vocab regions.
   {
     id: 'Rotate_Stack', name: 'Rotate', side: 'defender',
-    description: 'Rotating mobile defense — defenders peek and swap sites in pairs instead of holding one angle. Weak to fast direct hits; strong against patient or split attacks.',
+    description: 'Rotating mobile defense — defenders hold an angle, then swap sites in pairs when a teammate makes contact. Weak to fast direct hits; strong against patient or split attacks.',
+    // Rotators HOLD their angle (holdAngle, priority 50) and rotate on a
+    // teammate's contact (rotateOnContact, priority 60 — now un-shadowed; the
+    // old peek at priority 65 both shadowed the rotation AND yo-yo'd the unit to
+    // its own spawn every cadence, so Rotate never actually rotated and bled
+    // ~42% of deaths in transit).
     variants: [[
       { id: 'rotator_a',  pick: rifle,      region: 'a_anchor', anchorOffset: 1,
-        directives: [peek(reg('a_entry')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
+        directives: [holdAngle(reg('a_entry')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
       { id: 'rotator_a2', pick: rifle,      region: 'a_off',
-        directives: [peek(reg('a_main_near')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
+        directives: [holdAngle(reg('a_main_near')), rotateOnContact(reg('b_site'), ['rotator_b'], 2)] },
       { id: 'rotator_b',  pick: rifle,      region: 'b_anchor', anchorOffset: 1,
-        directives: [peek(reg('b_entry')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
+        directives: [holdAngle(reg('b_entry')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
       { id: 'rotator_b2', pick: rifle,      region: 'b_off',
-        directives: [peek(reg('b_main_near')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
+        directives: [holdAngle(reg('b_main_near')), rotateOnContact(reg('a_site'), ['rotator_a'], 2)] },
       { id: 'mid',        pick: sniperPref, region: 'mid_choke', anchorOffset: 4,
         directives: [safeSniper(enemySpawn)] },
     ]],
@@ -440,6 +464,46 @@ const DEF: Strategy[] = [
     complianceThreshold: STRATEGY_MODS.Rotate_Stack.complianceThreshold,
   },
 ];
+
+// --- Map-specific defenses -------------------------------------------------
+// Mid Control — a LARGE-MAP defense. On a big layout an even split (Hold) is too
+// thin and can't reinforce across the long A↔B rotation, so attackers win the
+// force-concentration race. Mid Control instead garrisons the central rotation
+// hub with three (one positioned toward each site + a central sniper) and leaves
+// one tripwire anchor on each site; the hub collapses onto whichever site the
+// anchor makes contact at, winning the man-count at the point of contact from a
+// shorter, central distance than a cross-map rotation. Single variant (the play
+// is site-agnostic — it reacts to the read rather than pre-committing).
+const MID_CONTROL: Strategy = {
+  id: 'Mid_Control', name: 'Mid Control', side: 'defender',
+  description: 'Hold the center, collapse on contact — three garrison the central rotation hub (one leaning each site, sniper on the choke) while one tripwire anchors each site. Whichever site is hit, the hub floods it from short range. Built for large maps where an even split can\'t reinforce in time.',
+  variants: [[
+    // The two site tripwires — hold their entry, trigger the collapse on contact.
+    { id: 'a_anchor', pick: rifle,      region: 'a_anchor', anchorOffset: 1,
+      directives: [holdAngle(reg('a_entry'))] },
+    { id: 'b_anchor', pick: rifle,      region: 'b_anchor', anchorOffset: 1,
+      directives: [holdAngle(reg('b_entry'))] },
+    // The hub — three hold the center, each collapses to whichever site contacts.
+    // mid_off leans toward A (top), mid_anchor leans toward B (bottom) so each
+    // site has a near reinforcer; the sniper holds the central choke long lane.
+    { id: 'hub_a',    pick: rifle,      region: 'mid_off',
+      directives: [rotateOnContact(reg('a_site'), ['a_anchor'], 2),
+                   rotateOnContact(reg('b_site'), ['b_anchor'], 2),
+                   holdAngle(reg('a_main_near')), tradeFor('a_anchor', 4)] },
+    { id: 'hub_b',    pick: rifle,      region: 'mid_anchor',
+      directives: [rotateOnContact(reg('b_site'), ['b_anchor'], 2),
+                   rotateOnContact(reg('a_site'), ['a_anchor'], 2),
+                   holdAngle(reg('b_main_near')), tradeFor('b_anchor', 4)] },
+    { id: 'hub_mid',  pick: sniperPref, region: 'mid_choke', anchorOffset: 4,
+      directives: [rotateOnContact(reg('a_site'), ['a_anchor'], 2),
+                   rotateOnContact(reg('b_site'), ['b_anchor'], 2),
+                   safeSniper(enemySpawn)] },
+  ]],
+  fallbackRegion: 'mid',
+  aggressionMod: STRATEGY_MODS.Mid_Control.aggression,
+  retreatThresholdMod: STRATEGY_MODS.Mid_Control.retreatThreshold,
+  complianceThreshold: STRATEGY_MODS.Mid_Control.complianceThreshold,
+};
 
 // v0.28.0 — one consolidated, rich-vocab strategy set for every map. The live
 // maps (Foundryv2 / Atoll_v2 / Canyon) share it; the retired v1 maps point here
@@ -453,6 +517,13 @@ const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   Foundryv2: ALL_STRATEGIES,
   Atoll_v2: ALL_STRATEGIES,
   Foundryv3: ALL_STRATEGIES,
+  // Foundry IV (large/diagonal) swaps the shared mid-stack Pressure — which is
+  // structurally broken on a large map (mass-mid can't reinforce the far sites in
+  // time; measured 28% def) — for MID_CONTROL, a scale-fit central-garrison defense
+  // that holds the rotation hub and collapses onto the contacted site (45% def, the
+  // Control-counter). Pressure stays available on every other (smaller) map, where
+  // it's healthy. Mid Control kept map-specific pending a wider viability check.
+  Foundryv4: [...ALL_STRATEGIES.filter((s) => s.id !== 'Pressure'), MID_CONTROL],
 };
 
 export function strategiesFor(side: Side, map: MapDefinition): Strategy[] {
