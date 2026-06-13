@@ -85,4 +85,15 @@ export type MapDefinition = {
    * to off when omitted.
    */
   optimizeSpawns?: boolean;
+  /**
+   * Opt-in threat-matrix collapse targeting (tick.ts defensive collapse). When
+   * true, a converging defender heads to the best CELL of the contacted site
+   * (low threat + LoS to the attacker mass + cover, via bestHoldCellInRegion)
+   * instead of the site centroid. Per-map because it's geometry-dependent
+   * (trace-verified): on a LARGE map spreading across covered site cells beats
+   * the centroid pile (+14pp def on Foundry IV's floor); on TIGHT maps the
+   * centroid IS the contesting spot and a safety-biased cell cedes the breach
+   * to a rush (−6pp Canyon). Defaults to off when omitted.
+   */
+  threatTargeting?: boolean;
 };

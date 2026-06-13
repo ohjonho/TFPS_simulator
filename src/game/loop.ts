@@ -123,6 +123,7 @@ export class PlaybackLoop {
       playback: { ...state.playback, playing: false },
       visibility: { defenders: new Set(), attackers: new Set() },
       ghosts: resetGhosts,
+      beliefs: { defenders: [], attackers: [] },
       tracking: resetTracking,
       prevPos: resetPrevPos,
       ai: resetAi,

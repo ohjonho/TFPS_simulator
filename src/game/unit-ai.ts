@@ -182,6 +182,57 @@ export function findThreatAwareHoldHex(
   return best;
 }
 
+// bestHoldCellInRegion — threat-matrix MACRO target selection (Pillar B, Phase 1).
+// Unlike findThreatAwareHoldHex (which refines within a small radius of where the
+// unit ALREADY stands), this scores EVERY passable cell of a target region and
+// returns the best one to head TO: low threat, line of sight to the watch angle,
+// sightline-blocking cover on the threat side, and near the region centre so the
+// pick stays in position. Pure + deterministic (fixed iteration; strict > keeps
+// the first-best on ties). Returns null if no cell qualifies (caller keeps its
+// centroid fallback).
+export function bestHoldCellInRegion(
+  candidates: readonly HexCoord[],
+  map: MapDefinition,
+  occupied: ReadonlySet<string>,
+  threatOf: (h: HexCoord) => number,
+  angleHex: HexCoord | null,
+  weights: { safety: number; los: number; cover: number; dist: number },
+): HexCoord | null {
+  if (candidates.length === 0) return null;
+  // Region centre = the dist-term anchor (keeps the pick "in position").
+  let cc = 0;
+  let cr = 0;
+  for (const h of candidates) { cc += h.col; cr += h.row; }
+  const center: HexCoord = {
+    col: Math.round(cc / candidates.length),
+    row: Math.round(cr / candidates.length),
+  };
+  const score = (h: HexCoord): number => {
+    const threat = threatOf(h);
+    const los = angleHex && isVisibleAlongLine(h, angleHex, map) ? 1 : 0;
+    const cover = angleHex ? sightlineCoverScore(h, map, angleHex) / 4 : 0;
+    const dist = hexDistance(h, center);
+    return (
+      -weights.safety * threat +
+      weights.los * los +
+      weights.cover * cover -
+      weights.dist * dist
+    );
+  };
+  let best: HexCoord | null = null;
+  let bestScore = -Infinity;
+  for (const h of candidates) {
+    if (!passableAt(map, h)) continue;
+    if (occupied.has(`${h.col},${h.row}`)) continue;
+    const s = score(h);
+    if (s > bestScore) {
+      bestScore = s;
+      best = h;
+    }
+  }
+  return best;
+}
+
 // Sightline-aware cover scoring (Pass 7.8). Rank the candidate's 6 neighbors by
 // how close their bearing is to the threat bearing — the "front" neighbor is
 // the one in the threat's direction. A wall there fully blocks LoS (4); cover

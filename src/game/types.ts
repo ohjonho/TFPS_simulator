@@ -213,14 +213,16 @@ export type Directive =
   | { kind: 'trade_for'; priority: number; allyId: string; windowTicks: number }
   | { kind: 'peek_and_retreat'; priority: number; peekHex: HexCoord; coverHex: HexCoord; cadenceTicks: number }
   | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] }
-  // read_and_commit — the "read the defense" attacker mechanic. Once the team
-  // knows (sees or remembers via ghosts) at least `minKnown` defenders, commit
-  // to the plant of the site holding FEWER of them; until then, null (the unit
-  // keeps advancing/gathering via lower directives). Punishes a defensive fake:
-  // showing strength at one site routes the reader into the other — where the
-  // fake's real strength has collapsed. Used only by the "reading" attacks
-  // (Control, attacker Mind Games); direct attacks (Rush/Execute) ignore it.
-  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; defaultSite: 'a' | 'b'; minKnown: number };
+  // read_and_commit — the "read the defense" attacker mechanic, driven by the
+  // persistent belief store (belief.ts): commit to the plant of the site whose
+  // believed defender mass is LIGHTER, once the gap exceeds `margin` (expected
+  // enemies). Below the margin → null (no confident read; the unit keeps
+  // advancing/gathering via lower directives). Because beliefs persist, decay,
+  // and respect negative evidence, a defensive fake finally has a channel to
+  // bite through: showing strength at one site routes the reader into the
+  // other. Used only by the "reading" attacks (Control, attacker Mind Games);
+  // direct attacks (Rush/Execute) ignore it.
+  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each
@@ -461,6 +463,11 @@ export type GameState = {
   moves: Record<string, MoveState>;
   // --- Pass 3 ---
   visibility: Visibility;
+  // Persistent per-team belief store (belief.ts): per-cell expectation of
+  // where the alive ENEMIES of each team are (flat row-major width×height).
+  // Empty array = uninitialized (round start); updated at tick end alongside
+  // ghosts/tracking, consumed by the next tick's AI (same one-tick lag).
+  beliefs: Record<Team, number[]>;
   ghosts: Record<Team, Record<string, GhostEntry>>;
   tracking: Record<string, TrackEntry | null>;
   // Pre-tick positions, used for the sniper-stationary cone test.

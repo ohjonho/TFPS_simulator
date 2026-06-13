@@ -133,6 +133,7 @@ export function buildStateFromUnits(
     moves,
     visibility: { defenders: new Set(), attackers: new Set() },
     ghosts,
+    beliefs: { defenders: [], attackers: [] },
     tracking,
     prevPos,
     ai,

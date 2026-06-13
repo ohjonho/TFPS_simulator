@@ -36,6 +36,7 @@ import {
   visibleEnemiesByTeam,
 } from './vision.ts';
 import {
+  bestHoldCellInRegion,
   findCoverHoldHex,
   findCoverWithLosTo,
   findThreatAwareHoldHex,
@@ -46,6 +47,9 @@ import {
 import { assessEngagement } from './engage.ts';
 import { staticExposure, suspectedEnemyHexes, threatAt } from './threat.ts';
 import { situationAggressionDelta } from './situation.ts';
+import { traceTick, traceUnit } from './trace.ts';
+import type { DecisionSource } from './trace.ts';
+import { beliefInRegions, updateBeliefs } from './belief.ts';
 import { evaluateDirectives, holdsChannelUnderRetreat } from './directives.ts';
 import { resolveShot } from './combat.ts';
 import type { ShotContextInput } from './combat.ts';
@@ -65,6 +69,8 @@ import {
   POSITIONING,
   POST_PLANT_HUNT,
   ROTATE_AFTER_HOLD_TICKS,
+  THREAT_TARGETING,
+  THREAT_TARGETING_OVERRIDE,
   ROUND_TICK_LIMIT,
   SITUATION,
   STAY_ENGAGED_TICKS,
@@ -158,6 +164,7 @@ export function stepTick(state: GameState): GameState {
   // the off-site defenders onto it, keeping `minWatchers` nearest the quiet
   // site so a fake-and-switch can't walk in free. Pure/deterministic — no RNG.
   let collapseHex: HexCoord | null = null;
+  let collapseSiteRegion: string | null = null;
   const collapseExempt = new Set<string>();
   if (!state.plant.planted) {
     const cenA = state.map.sites.A.centerHex;
@@ -180,8 +187,8 @@ export function stepTick(state: GameState): GameState {
       else if (dB <= DEFENSIVE_COLLAPSE.readRadius && dB < dA) nearB++;
     }
     let collapseSite: 'A' | 'B' | null = null;
-    if (nearA >= DEFENSIVE_COLLAPSE.commitThreshold && nearA > nearB) { collapseSite = 'A'; collapseHex = cenA; }
-    else if (nearB >= DEFENSIVE_COLLAPSE.commitThreshold && nearB > nearA) { collapseSite = 'B'; collapseHex = cenB; }
+    if (nearA >= DEFENSIVE_COLLAPSE.commitThreshold && nearA > nearB) { collapseSite = 'A'; collapseHex = cenA; collapseSiteRegion = 'a_site'; }
+    else if (nearB >= DEFENSIVE_COLLAPSE.commitThreshold && nearB > nearA) { collapseSite = 'B'; collapseHex = cenB; collapseSiteRegion = 'b_site'; }
     if (collapseSite) {
       const quietHex = collapseSite === 'A' ? cenB : cenA;
       const aliveDef = working
@@ -196,6 +203,19 @@ export function stepTick(state: GameState): GameState {
       }
     }
   }
+
+  // Phase 1.5 observability — per-tick belief/collapse record (no-op unless a
+  // trace sink is installed by the harness; the thunk defers the site sums).
+  traceTick(tick, collapseSiteRegion, suspectedByTeam.defenders.length, suspectedByTeam.attackers.length, () => ({
+    defenders: {
+      aSite: beliefInRegions(state.beliefs.defenders, ['a_site'], state.map),
+      bSite: beliefInRegions(state.beliefs.defenders, ['b_site'], state.map),
+    },
+    attackers: {
+      aSite: beliefInRegions(state.beliefs.attackers, ['a_site'], state.map),
+      bSite: beliefInRegions(state.beliefs.attackers, ['b_site'], state.map),
+    },
+  }));
 
   // 2. AI decisions + 3. movement (per unit, stable order).
   for (const u of working) {
@@ -247,6 +267,9 @@ export function stepTick(state: GameState): GameState {
     let mode: AiState['mode'];
     let firingTarget: string | null = null;
     let effectiveTarget: HexCoord | null = null;
+    // Phase 1.5 observability — which cascade branch finalized this unit's
+    // action (recorded via traceUnit below; assignment-only, no behavior).
+    let targetSource: DecisionSource = 'hold';
     // Pass 9: directive-supplied facing override for hold modes (applied below
     // when face-on-hold runs).
     let directiveFacing: HexCoord | null = directiveDecision?.facing ?? null;
@@ -266,25 +289,30 @@ export function stepTick(state: GameState): GameState {
     if (retreat) {
       mode = 'retreating';
       effectiveTarget = nearestWallRetreatHex(u, state.map);
+      targetSource = 'retreat';
     } else if (engage.engage && !directiveSuppressesEngage) {
       mode = 'engaged';
       firingTarget = engage.targetId;
+      targetSource = 'engage';
     } else if (stickyEngage) {
       // Keep the previous engagement alive briefly. Keep the prior firingTarget
       // if it's still alive (combat will skip the shot if not), so a unit that
       // re-acquires next tick continues a clean engagement.
       mode = 'engaged';
       firingTarget = prevAi.firingTarget;
+      targetSource = 'engage-sticky';
     } else if (directiveDecision?.target) {
       // Pass 9 — directive supplied a target. 'holding' when target === pos,
       // else 'moving'. Bypasses the legacy region/push/rotation tree below.
       effectiveTarget = directiveDecision.target;
       mode = sameHex(directiveDecision.target, u.pos) ? 'holding' : 'moving';
+      targetSource = `directive:${directiveDecision.source ?? 'unknown'}`;
     } else if (ticksSinceEnemySeen >= AI.resumeAfterTicks) {
       const region = state.targets[u.id];
       if (region && !sameHex(u.pos, region)) {
         mode = 'moving';
         effectiveTarget = region;
+        targetSource = 'region';
       } else if (!region && u.modifiers.aggression >= AGGRESSION_PUSH_THRESHOLD) {
         // No assigned region: high-aggression roles advance toward the enemy
         // spawn (lightweight role tendency; superseded by Pass 7 strategy).
@@ -292,6 +320,7 @@ export function stepTick(state: GameState): GameState {
         if (push && !sameHex(u.pos, push)) {
           mode = 'moving';
           effectiveTarget = push;
+          targetSource = 'push';
         } else {
           mode = 'holding';
         }
@@ -314,6 +343,7 @@ export function stepTick(state: GameState): GameState {
       ) {
         mode = 'moving';
         effectiveTarget = track.lastKnownHex;
+        targetSource = 'track-chase';
       } else {
         mode = 'holding';
       }
@@ -326,6 +356,7 @@ export function stepTick(state: GameState): GameState {
     if (engage.holdForSafety && mode !== 'engaged' && mode !== 'retreating' && !directiveDecision?.target) {
       mode = 'holding';
       effectiveTarget = null;
+      targetSource = 'hold-safety';
     }
 
     // Pass 7.7 — light stalemate breaker: a unit that's been idle for a long
@@ -343,6 +374,7 @@ export function stepTick(state: GameState): GameState {
         mode = 'moving';
         effectiveTarget = midGoal;
         nextTargets[u.id] = midGoal;
+        targetSource = 'stalemate-mid';
       }
     }
 
@@ -356,8 +388,43 @@ export function stepTick(state: GameState): GameState {
       && u.team === defenderTeamId && !collapseExempt.has(u.id)
       && hexDistance(u.pos, collapseHex) > DEFENSIVE_COLLAPSE.siteRadius) {
       mode = 'moving';
-      effectiveTarget = collapseHex;
-      nextTargets[u.id] = collapseHex;
+      targetSource = 'collapse';
+      let collapseTarget = collapseHex;
+      // Threat-matrix target selection (THREAT_TARGETING): converge on the safest
+      // good CELL of the contacted site — LoS to the attacker approach + cover —
+      // instead of the raw site centroid. A/B-flagged; centroid fallback if no
+      // cell qualifies. `claimed` spreads converging defenders across distinct cells.
+      if ((THREAT_TARGETING_OVERRIDE ?? state.map.threatTargeting ?? false) && collapseSiteRegion) {
+        const cells = state.map.regions[collapseSiteRegion];
+        if (cells && cells.length > 0) {
+          const team = u.team;
+          const threatOf = (h: HexCoord) => threatAt(state, team, h, exposure, suspectedByTeam[team]);
+          // Watch angle = the suspected-enemy mass (where the team reads the
+          // attackers pouring into the site), NOT the distant enemy spawn — so the
+          // chosen cell CONTESTS the breach instead of tucking toward a spawn-facing
+          // corner. Fall back to the enemy spawn bearing if nothing is suspected yet.
+          const susp = suspectedByTeam[team];
+          let angleHex: HexCoord | null = enemySpawnForSide(u, state) ?? null;
+          if (susp.length > 0) {
+            let sc = 0;
+            let sr = 0;
+            for (const h of susp) { sc += h.col; sr += h.row; }
+            angleHex = { col: Math.round(sc / susp.length), row: Math.round(sr / susp.length) };
+          }
+          const best = bestHoldCellInRegion(cells, state.map, claimed, threatOf, angleHex, {
+            safety: THREAT_TARGETING.wSafety,
+            los: THREAT_TARGETING.wLos,
+            cover: THREAT_TARGETING.wCover,
+            dist: THREAT_TARGETING.wDist,
+          });
+          if (best) {
+            collapseTarget = best;
+            targetSource = 'collapse-matrix';
+          }
+        }
+      }
+      effectiveTarget = collapseTarget;
+      nextTargets[u.id] = collapseTarget;
     }
 
     // Pass F — coordinated defender retake on plant (was Pass B's "everyone
@@ -392,6 +459,7 @@ export function stepTick(state: GameState): GameState {
             effectiveTarget = goal;
           }
           nextTargets[u.id] = effectiveTarget ?? u.pos;
+          targetSource = 'retake-defuse';
         }
       } else if (mode !== 'engaged') {
         // Coverer — hold a covered angle with LoS to the spike to trade for the
@@ -402,6 +470,7 @@ export function stepTick(state: GameState): GameState {
           mode = 'moving';
           effectiveTarget = cover;
           nextTargets[u.id] = cover;
+          targetSource = 'retake-cover';
         }
       }
     }
@@ -426,6 +495,7 @@ export function stepTick(state: GameState): GameState {
           if (coverHex && !sameHex(u.pos, coverHex)) {
             mode = 'moving';
             effectiveTarget = coverHex;
+            targetSource = 'postplant-cover';
             // Persist the override so the user-visible "target" in the side
             // panel reflects the post-plant cover seek rather than the stale
             // pre-plant strategy target.
@@ -453,6 +523,7 @@ export function stepTick(state: GameState): GameState {
         mode = 'moving';
         effectiveTarget = site;
         nextTargets[u.id] = site;
+        targetSource = 'urgency-plant';
       }
     }
 
@@ -496,8 +567,13 @@ export function stepTick(state: GameState): GameState {
         mode = 'moving';
         effectiveTarget = hold;
         nextTargets[u.id] = hold;
+        targetSource = 'hold-tuck';
       }
     }
+
+    // Phase 1.5 observability — record the finalized decision (no-op unless a
+    // trace sink is installed by the harness).
+    traceUnit(tick, u.id, mode, targetSource, u.pos, effectiveTarget);
 
     // Pass 8 — Spearhead delays non-Vanguard allies for the first N ticks of
     // the round (allies follow behind). While the delay window is active, the
@@ -885,6 +961,9 @@ export function stepTick(state: GameState): GameState {
   const prevVisibleByTeam = visibleEnemiesByTeam(state, state.visibility);
   const currVisibleByTeam = visibleEnemiesByTeam(postMove, visibility);
   const ghosts = updateGhosts(state.units, state.ghosts, prevVisibleByTeam, currVisibleByTeam, tick);
+  // Belief store advances on the same post-move visibility as ghosts/tracking;
+  // like them it's consumed by the NEXT tick's AI (one-tick lag, fair info).
+  const beliefs = updateBeliefs(state.beliefs, working, visibility, state.map);
 
   // Pass 9 m3 / Pass 3 — vision-triggered hero actives, evaluated on post-move
   // visibility so they fire the tick the condition first holds: Cursed Mark
@@ -913,6 +992,7 @@ export function stepTick(state: GameState): GameState {
     visibility,
     tracking,
     ghosts,
+    beliefs,
     cardEffects: triggeredEffects,
     plant: plantUpdate.plant,
     events: [...postMove.events, ...plantUpdate.events],

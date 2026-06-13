@@ -124,6 +124,7 @@ export function startDraft(map: MapDefinition, seed: number): GameState {
     moves: {},
     visibility: { defenders: new Set(), attackers: new Set() },
     ghosts: { defenders: {}, attackers: {} },
+    beliefs: { defenders: [], attackers: [] },
     tracking: {},
     prevPos: {},
     ai: {},

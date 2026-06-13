@@ -313,6 +313,35 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.42.0 — teams keep a running read of where you are</h3>
+    <ul>
+      <li><strong>Each team now maintains a live mental map of where its unseen
+        enemies probably are</strong> — sightings persist and fade instead of being
+        forgotten in seconds, and clearing an area now actually means something
+        ("we can see A is empty, so they're at B"). This is the foundation for
+        smarter reads across the game.</li>
+      <li><strong>Control uses it:</strong> its site call now comes from that running
+        read, so it commits more often and more sensibly — and showing it a lopsided
+        defense reliably routes it at the lighter site.</li>
+      <li><strong>Mind Games' ambush now springs properly:</strong> the show-site
+        defenders collapse when the QUIET site gets hit, not only when they're
+        contacted themselves. Before, an attacker that ignored the fake was met
+        4-v-2 while the fakers idled at the empty site.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.41.0 — Foundry IV defenders set up smart retakes</h3>
+    <ul>
+      <li><strong>On Foundry IV, defenders converging on an attacked site now spread
+        into covered positions with a line on the attackers' approach</strong> —
+        instead of everyone piling onto the same center spot and getting traded out.
+        Watch a retake: the collapse now sets up a crossfire across the site. Foundry
+        IV only — its sites are big enough that positioning inside them matters; on
+        the tighter maps the old direct convergence is still the right call (meeting
+        the rush head-on beats taking a safe angle).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.40.0 — Control reads the defense</h3>
     <ul>
       <li><strong>The Control attack now probes both lanes, then commits its push to

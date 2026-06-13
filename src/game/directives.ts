@@ -28,7 +28,8 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
-import { CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
+import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
+import { beliefInRegions } from './belief.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
 // adhere); ±0.4 per Discipline pt; ±0.2 per Composure pt; demanding
@@ -318,37 +319,27 @@ function commitSite(
 }
 
 // --- read_and_commit -------------------------------------------------------
-// The "read the defense" attacker mechanic. Count the defenders the viewer's
-// team currently knows about — either standing on a hex the team can see
-// (state.visibility) or remembered at a ghost's last-seen hex — bucketed by
-// which site region contains them. Below `minKnown` total → null (no confident
-// read yet; the unit keeps advancing via lower-priority directives / legacy
-// tree). At/above it → commit to the plant of the site with FEWER known
-// defenders (ties → defaultSite). Fair info only: visibility + ghosts are the
-// same observable signals threat.ts uses — no omniscient peek at hidden units.
+// The "read the defense" attacker mechanic, on the persistent belief store
+// (belief.ts). The old version counted directly-seen + ghost-remembered
+// defenders and was starved (a team rarely knows >2 of 5, and forgets in
+// ticks); the store keeps a full, always-defined distribution with decay,
+// negative evidence, and redistribution — so "which site is lighter?" always
+// has an answer, at varying confidence. Commit to the plant of the lighter
+// site once the believed-mass gap exceeds `margin` (in expected enemies);
+// below it → null (no confident read; lower directives keep gathering). Fair
+// info: the store is built from the team's own visibility only.
 
 function readAndCommit(
   d: Extract<Directive, { kind: 'read_and_commit' }>,
   unit: Unit,
   state: GameState,
 ): DirectiveDecision | null {
-  const viewerTeam = unit.team;
-  const enemyTeam = viewerTeam === 'attackers' ? 'defenders' : 'attackers';
-  const seen = state.visibility[viewerTeam];
-  const ghosts = state.ghosts[viewerTeam];
-  let a = 0;
-  let b = 0;
-  for (const e of state.units) {
-    if (e.team !== enemyTeam || e.state !== 'alive') continue;
-    let hex: HexCoord | null = null;
-    if (seen.has(`${e.pos.col},${e.pos.row}`)) hex = e.pos;
-    else if (ghosts[e.id]) hex = ghosts[e.id].hex;
-    if (!hex) continue;
-    if (hexInAnyRegion(hex, d.siteARegions, state)) a++;
-    else if (hexInAnyRegion(hex, d.siteBRegions, state)) b++;
-  }
-  if (a + b < d.minKnown) return null;
-  const site = a < b ? 'a' : b < a ? 'b' : d.defaultSite;
+  const weights = state.beliefs[unit.team];
+  if (weights.length === 0) return null; // round start — store not advanced yet
+  const a = beliefInRegions(weights, d.siteARegions, state.map);
+  const b = beliefInRegions(weights, d.siteBRegions, state.map);
+  if (Math.abs(a - b) < d.margin) return null;
+  const site = a < b ? 'a' : 'b';
   return { target: site === 'a' ? d.plantAHex : d.plantBHex, source: 'read_and_commit' };
 }
 
@@ -389,9 +380,9 @@ export type DirectiveSpec =
   | { kind: 'peek_and_retreat'; priority?: number; peek: HexRef; cover?: HexRef; cadenceTicks?: number }
   | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] }
   // Authoring is map-agnostic: the resolver fills the standard a_plant/b_plant
-  // targets + a_site/b_site buckets. `defaultSite` is the fallback before a read
-  // forms / on a tie; `minKnown` is the read-confidence threshold (default 2).
-  | { kind: 'read_and_commit'; priority?: number; defaultSite: 'a' | 'b'; minKnown?: number };
+  // targets + a_site/b_site buckets. `margin` is the belief-mass gap (expected
+  // enemies) required before committing; defaults to config.BELIEF.readMargin.
+  | { kind: 'read_and_commit'; priority?: number; margin?: number };
 
 export type ResolutionContext = {
   map: MapDefinition;
@@ -499,8 +490,7 @@ export function resolveDirectiveSpec(
         plantBHex: plantB,
         siteARegions: ['a_site'],
         siteBRegions: ['b_site'],
-        defaultSite: spec.defaultSite,
-        minKnown: spec.minKnown ?? 2,
+        margin: spec.margin ?? BELIEF.readMargin,
       };
     }
   }

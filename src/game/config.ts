@@ -209,6 +209,55 @@ export const POSITIONING = {
   wDist: 0.15,
 } as const;
 
+// --- Threat-matrix target selection (AI competence — Pillar B, Phase 1) -----
+// Lifts MACRO target selection from raw region/site centroids to the threat
+// matrix: a converging defender picks the best CELL in its target region
+// (safest, with LoS to the watch angle + cover) instead of the geometric
+// centroid. Distinct from POSITIONING, which only refines the final tuck within
+// a few hexes of where the unit already stands — this chooses WHICH cell to head
+// to. A/B flag: the inert-AI law demands we PROVE a target change moves outcomes,
+// so the harness probes ON vs OFF. Pure + deterministic (no RNG; fixed iteration).
+export const THREAT_TARGETING = {
+  // Score weights for bestHoldCellInRegion (same shape as POSITIONING): safety
+  // pulls toward low-threat cells (dominant); los keeps a sightline to the watch
+  // angle; cover rewards sightline-blocking geometry; dist gently prefers cells
+  // near the region centroid so the pick stays "in position".
+  wSafety: 1.0,
+  wLos: 0.6,
+  wCover: 0.25,
+  wDist: 0.1,
+} as const;
+// --- Persistent belief store (AI read/adapt substrate, Phase 2) -------------
+// Tunables for src/game/belief.ts — the per-team "where are the unseen enemies"
+// grid that fixes perception starvation (teams previously knew ≤2/5 enemies and
+// forgot in ~3 ticks). Three properties make reads/fakes well-defined:
+// decay-not-deletion, negative evidence (watched-empty cells zero out), and a
+// redistribution prior (alive enemies always sum to full mass somewhere).
+export const BELIEF = {
+  // Per-tick blend of the prior toward uniform: 0 = beliefs never fade,
+  // 1 = no memory at all. ~0.08 ≈ a stale sighting halves in ~8 ticks.
+  decayLambda: 0.08,
+  // Floor added to every unobserved cell's redistribution factor so fully
+  // decayed maps still spread mass (and the normalizer can't hit 0).
+  epsilon: 0.0001,
+  // read_and_commit: commit to the lighter site only when the belief-mass gap
+  // between sites exceeds this (in expected enemies). Below it → no confident
+  // read → the directive stays silent. 0.75 ≈ "about one defender heavier",
+  // safely above the site-size asymmetry of a uniform spread (~0.05).
+  readMargin: 0.75,
+} as const;
+
+// Per-map enablement lives on MapDefinition.threatTargeting (the optimizeSpawns
+// precedent — trace-verified geometry-dependent lever: on a LARGE map, spreading
+// collapsers across covered site cells beats the centroid pile; on TIGHT maps the
+// centroid IS the contesting spot and the safety-weighted cell cedes the breach).
+// This mutable override (mirrors HERO_ABILITIES_ENABLED) lets the harness force
+// ON/OFF regardless of map for A/B boards; null = use the map's own field.
+export let THREAT_TARGETING_OVERRIDE: boolean | null = null;
+export function setThreatTargetingOverride(v: boolean | null): void {
+  THREAT_TARGETING_OVERRIDE = v;
+}
+
 // --- Spawn placement -------------------------------------------------------
 // Two layers (see units.placeSpawns + match.applyStrategies):
 //

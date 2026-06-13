@@ -98,12 +98,13 @@ const commitSite = (site: { region: string }, leaveOnContactInRegions: string[] 
 // which used to yo-yo peekers across the whole map.
 const peek = (peekRef: { region: string }, cover?: { region: string } | typeof ownSpawn): DirectiveSpec =>
   ({ kind: 'peek_and_retreat', peek: peekRef, ...(cover ? { cover } : {}), cadenceTicks: 4, priority: 65 });
-// read_and_commit — the "read the defense" attacker call. Once the team knows
-// ≥minKnown defenders, commit to the plant of the lighter-held site. Priority 70
-// (same as commit_site) so it drives the commit once a read forms; returns null
-// before then, leaving the unit to advance/gather via lower directives.
-const readAndCommit = (defaultSite: 'a' | 'b', minKnown = 2): DirectiveSpec =>
-  ({ kind: 'read_and_commit', defaultSite, minKnown, priority: 70 });
+// read_and_commit — the "read the defense" attacker call, on the persistent
+// belief store: commit to the plant of the site whose believed defender mass is
+// lighter, once the gap exceeds `margin` (default config.BELIEF.readMargin).
+// Priority 70 (same as commit_site) so it drives the commit once a read forms;
+// below the margin it stays silent and lower directives keep gathering.
+const readAndCommit = (margin?: number): DirectiveSpec =>
+  ({ kind: 'read_and_commit', ...(margin !== undefined ? { margin } : {}), priority: 70 });
 
 // --- Slot assignment -------------------------------------------------------
 
@@ -233,13 +234,13 @@ const ATK: Strategy[] = [
     // a standalone improvement over its old passive mid-consolidation.)
     variants: [[
       { id: 'flank_a',    pick: rifle,      region: 'a_main_far', anchorOffset: 4, usePerimeterPath: true,
-        directives: [readAndCommit('a'), holdAngle(reg('a_entry'))] },
+        directives: [readAndCommit(), holdAngle(reg('a_entry'))] },
       { id: 'flank_a2',   pick: rifle,      region: 'a_main_far', usePerimeterPath: true,
-        directives: [readAndCommit('a'), holdAngle(reg('a_entry')), tradeFor('flank_a', 4)] },
+        directives: [readAndCommit(), holdAngle(reg('a_entry')), tradeFor('flank_a', 4)] },
       { id: 'flank_b',    pick: rifle,      region: 'b_main_far', anchorOffset: 4, usePerimeterPath: true,
-        directives: [readAndCommit('b'), holdAngle(reg('b_entry'))] },
+        directives: [readAndCommit(), holdAngle(reg('b_entry'))] },
       { id: 'flank_b2',   pick: rifle,      region: 'b_main_far', usePerimeterPath: true,
-        directives: [readAndCommit('b'), holdAngle(reg('b_entry')), tradeFor('flank_b', 4)] },
+        directives: [readAndCommit(), holdAngle(reg('b_entry')), tradeFor('flank_b', 4)] },
       { id: 'mid_sniper', pick: sniperPref, region: 'mid_choke', anchorOffset: 6,
         directives: [holdAngle(enemySpawn), safeSniper(enemySpawn), tradeFor('flank_a', 5)] },
     ]],
@@ -363,35 +364,40 @@ const DEF: Strategy[] = [
   {
     id: 'Mind_Games', name: 'Mind Games', side: 'defender',
     description: 'Fake-and-swing — two defenders show one site (peek then rotate), two more hold the other from the anchor + off-angle, sniper reads from the mid choke. Punishes attacker over-commits to the fake.',
-    // NOTE: the "bait a reading attacker into the trap" rework was reverted (v0.40.0
-    // experiment) — it needs a richer perception substrate than the sim has: the
-    // attacker can't reliably perceive the show (maxKnown ~2 visible defenders), so
-    // the bait doesn't register. Parked behind the threat-matrix; this is the
-    // original fake-and-swing (still beats attacker Mind Games, loses to Control).
+    // v0.42.0 — ambush springs on EITHER contact: the show units (and mid sniper)
+    // watch ['fake', 'real'], so the collapse fires when the TRAP is hit too. The
+    // old self-only watch (['fake']) meant a reading attacker that bought the fake
+    // and went straight at the real site was met 4-v-2 while the fakers idled.
+    // NOTE (v0.43 loud-show attempt, reverted): tried 3 sustained holders to bait a
+    // belief-reading Control into the trap. Trace-falsified — the attacker genuinely
+    // can't perceive the show pre-commit (the belief lean is ~0.1 enemies, dominated
+    // by the diffuse prior, and flip-flops); forcing a commit on that = routing on
+    // noise. A perception-fake can't reliably beat a reader; Mid Control is the
+    // dependable anti-Control pick. MG stays the anti-attacker-fake specialist.
     variants: [
       [
         { id: 'fake',  pick: rifle,      region: 'a_anchor', anchorOffset: 1,
-          directives: [peek(reg('a_entry')), rotateOnContact(reg('b_site'), ['fake'], 5)] },
+          directives: [peek(reg('a_entry')), rotateOnContact(reg('b_site'), ['fake', 'real'], 5)] },
         { id: 'fake2', pick: rifle,      region: 'a_off',
-          directives: [peek(reg('a_main_near')), rotateOnContact(reg('b_site'), ['fake'], 5)] },
+          directives: [peek(reg('a_main_near')), rotateOnContact(reg('b_site'), ['fake', 'real'], 5)] },
         { id: 'real',  pick: rifle,      region: 'b_anchor', anchorOffset: 1,
           directives: [holdAngle(reg('b_entry'))] },
         { id: 'real2', pick: rifle,      region: 'b_off',
           directives: [holdAngle(reg('b_main_near')), tradeFor('real', 4)] },
         { id: 'mid',   pick: sniperPref, region: 'mid_choke', anchorOffset: 4,
-          directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['fake'], 3)] },
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('b_site'), ['fake', 'real'], 3)] },
       ],
       [
         { id: 'fake',  pick: rifle,      region: 'b_anchor', anchorOffset: 1,
-          directives: [peek(reg('b_entry')), rotateOnContact(reg('a_site'), ['fake'], 5)] },
+          directives: [peek(reg('b_entry')), rotateOnContact(reg('a_site'), ['fake', 'real'], 5)] },
         { id: 'fake2', pick: rifle,      region: 'b_off',
-          directives: [peek(reg('b_main_near')), rotateOnContact(reg('a_site'), ['fake'], 5)] },
+          directives: [peek(reg('b_main_near')), rotateOnContact(reg('a_site'), ['fake', 'real'], 5)] },
         { id: 'real',  pick: rifle,      region: 'a_anchor', anchorOffset: 1,
           directives: [holdAngle(reg('a_entry'))] },
         { id: 'real2', pick: rifle,      region: 'a_off',
           directives: [holdAngle(reg('a_main_near')), tradeFor('real', 4)] },
         { id: 'mid',   pick: sniperPref, region: 'mid_choke', anchorOffset: 4,
-          directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['fake'], 3)] },
+          directives: [safeSniper(enemySpawn), rotateOnContact(reg('a_site'), ['fake', 'real'], 3)] },
       ],
     ],
     fallbackRegion: 'mid',

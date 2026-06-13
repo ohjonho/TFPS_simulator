@@ -77,4 +77,10 @@ export const foundryv4: MapDefinition = {
   // Large/spread layout → defenders start nearer their holds to cut the long
   // exposed approach. Measured +8pp def on v4.0; kept on through the reshapes.
   optimizeSpawns: true,
+  // Large sites → a collapsing defender picks the best covered cell of the
+  // contacted site instead of piling on the centroid (trace-verified: spread
+  // setups win retakes the centroid pile lost; +14pp def floor, 7/20 paired
+  // seeds flipped atk->def, 0 reverse). Tight maps keep this OFF — there the
+  // centroid is the contesting spot.
+  threatTargeting: true,
 };

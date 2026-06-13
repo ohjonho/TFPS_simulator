@@ -164,6 +164,7 @@ export function startRound(state: GameState): GameState {
     tracking: nextTracking,
     prevPos: nextPrevPos,
     ghosts: nextGhosts,
+    beliefs: { defenders: [], attackers: [] },
     visibility: { defenders: new Set(), attackers: new Set() },
     tick: 0,
     playback: { ...state.playback, playing: false },
