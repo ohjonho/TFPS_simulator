@@ -72,8 +72,8 @@ const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
 
 const shell = buildShell(root);
-// Open on Foundry II — the canonical live map (Foundry/Atoll v1 retired).
-let state: GameState = buildInitialState('Foundryv2');
+// Open on Foundry IV — the canonical live map (Foundry II / v1 retired from the picker).
+let state: GameState = buildInitialState('Foundryv4');
 
 // Snapshot taken at the start of each round's resolution; used by Replay and
 // Back-to-Planning to restore the round's starting unit setup.
@@ -764,7 +764,7 @@ if (import.meta.env.DEV) {
       initialUnitsById = snapshotUnits(state.units);
       rerenderAll();
     },
-    setMap: (name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2') => {
+    setMap: (name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv4') => {
       clearPlanningUiState();
       state = buildInitialState(name, matchMode, matchSeed);
       initialUnitsById = snapshotUnits(state.units);

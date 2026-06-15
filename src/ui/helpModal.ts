@@ -313,6 +313,15 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.45.0 — Foundry IV is the default Foundry map</h3>
+    <ul>
+      <li><strong>The map picker now offers Foundry IV in place of Foundry II</strong>,
+        and the game opens on it. Foundry IV is the large, diagonal layout the recent
+        defense work (Mid Control, smart retakes) was built and balanced for. Foundry II
+        is still in the build but no longer in the picker.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.44.0 — the round recap now tells you WHY</h3>
     <ul>
       <li><strong>The round-end screen opens with the matchup and how it was

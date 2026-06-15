@@ -14,7 +14,7 @@ export type TopBarCallbacks = {
   onTimeout: () => void;
   onToggleShowEnemies: () => void;
   showEnemiesPlanning: boolean;
-  onSetMap: (name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2') => void;
+  onSetMap: (name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv4') => void;
   // Pass D — region-name overlay toggle (mirrors `R` keybind).
   onToggleRegionLabels: () => void;
   showRegionLabels: boolean;
@@ -44,15 +44,16 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   const mapName = document.createElement('div');
   mapName.className = 'map-name';
   const MAP_LABEL: Record<string, string> = {
-    Canyon: 'Canyon', Foundryv2: 'Foundry II', Atoll_v2: 'Atoll II',
+    Canyon: 'Canyon', Foundryv4: 'Foundry IV', Atoll_v2: 'Atoll II',
   };
   const MAP_TIP: Record<string, string> = {
     Canyon: 'Dense, winding, asymmetric pillar sites.',
-    Foundryv2: 'Open-sightlines redesign on the richer region vocabulary.',
+    Foundryv4: 'Large, diagonal layout — long rotations, scale-fit defenses.',
     Atoll_v2: 'Tight, asymmetric redesign (work in progress).',
   };
-  // Foundry / Atoll v1 retired — superseded by the II redesigns; not selectable.
-  for (const m of ['Foundryv2', 'Atoll_v2', 'Canyon'] as const) {
+  // Foundry II / Foundry / Atoll v1 retired from the picker — superseded by the
+  // Foundry IV (large) + Atoll II redesigns; still in the build, not selectable.
+  for (const m of ['Foundryv4', 'Atoll_v2', 'Canyon'] as const) {
     const b = document.createElement('button');
     b.textContent = MAP_LABEL[m] ?? m;
     if (state.map.name === m) b.classList.add('selected');
