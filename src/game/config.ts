@@ -139,6 +139,11 @@ export const VISION = {
   eagleEyeBonusHalfDeg: 15,
   ghostTicks: 5,
   trackLossThreshold: 3,
+  // Short-range peripheral sense: a live enemy within this many hexes (with a
+  // clear line of sight) is noticed regardless of facing, so units don't walk
+  // past each other when their cones happen not to cross. Feeds tracking +
+  // engagement, not just fog.
+  proximityRadius: 2,
 } as const;
 
 // 'v' / 'V' toggles the debug vision overlay.
@@ -174,6 +179,72 @@ export const THREAT = {
   distanceFalloff: 0.08,
 } as const;
 
+// --- Attacker pre-round site appraisal (AI competence) ---------------------
+// The AI attacker's A/B-site variant pick was a blind coin flip. At round start
+// the belief store is empty (no enemies seen yet), so the only fair signal is
+// STATIC map geometry: which site is easier to take/hold, via the attacker-side
+// exposure of its plant hexes (threat.siteAttackDifficulty). The pick is a SOFT
+// weighted draw toward the easier site — not argmax — so it stays unpredictable
+// (a hard-stack defender can't simply pre-counter it). A mid-round re-read is a
+// separate concern (read_and_commit, belief-driven, Control only). Cross-round
+// scouting (remember last round's setup) is the future legibility layer.
+export const ATTACKER_APPRAISAL = {
+  // Lean strength: weight_i = max(0.05, 1 − bias·difficulty_i), difficulty 0..1.
+  // 0 = coin flip; 1 = strongly favor the easier site. 0.6 ≈ ~70/30 at full
+  // exposure asymmetry — a real lean that still picks the hard site sometimes.
+  bias: 0.6,
+} as const;
+// A/B flag (mirrors HERO_ABILITIES_ENABLED): the harness flips it to probe ON vs
+// OFF. Default false until a measured ON proves it doesn't over-favor attackers.
+export let ATTACKER_SITE_APPRAISAL_ENABLED = false;
+export function setAttackerSiteAppraisalEnabled(enabled: boolean): void {
+  ATTACKER_SITE_APPRAISAL_ENABLED = enabled;
+}
+
+// --- Cross-round scouting (AI read/adapt — Workstream B slice) --------------
+// The defender gets a deterministic per-roster site LEAN (a scoutable "tell");
+// the attacker accumulates a decayed cross-round read of the enemy's defensive
+// site and biases its variant pick toward the soft (under-defended) site. Soft
+// on both ends so a correct read TILTS (~55-65%), never predetermines. Only
+// manifests across rounds (runMatch) — so it can't touch the per-round floor/
+// matrices (those force picks). A/B-flagged; determinism-safe (seeded, fixed order).
+export const SCOUTING = {
+  // Roster-hash defender lean toward variant 0, clamped to [lo, hi].
+  defenderLeanLo: 0.32,
+  defenderLeanHi: 0.68,
+  // Per-round memory: prior scouting counts decay by this before the new round's
+  // site is added (recent rounds weigh more; ~0.6 ≈ a 2–3 round horizon).
+  decay: 0.6,
+  // How hard the attacker favors the under-defended site (0 = ignore the read,
+  // 1 = strong). Soft so the tilt stays bounded.
+  attackerExploitBias: 0.6,
+} as const;
+export let SCOUTING_ENABLED = false;
+export function setScoutingEnabled(enabled: boolean): void {
+  SCOUTING_ENABLED = enabled;
+}
+// Test seam: force the defender's variant-0 lean (all teams) for a clean A/B;
+// null = use the roster-hash lean.
+export let SCOUTING_DEFENDER_LEAN_OVERRIDE: number | null = null;
+export function setScoutingDefenderLeanOverride(p: number | null): void {
+  SCOUTING_DEFENDER_LEAN_OVERRIDE = p;
+}
+
+// --- Strategy-pick history (for the pre-round Scout / legibility) -----------
+// Each team's picks accumulate a decayed lean per strategy id (state.strategyLean,
+// recorded in match.applyStrategies). The pre-round Scout surfaces the ENEMY's
+// lean ("they've leaned Stack this match") so the player's pick becomes a read,
+// not a gamble. Read-only data — nothing in the sim acts on it (determinism-safe).
+// NOTE: an AI counter-pick consumer of this was tried and removed — the
+// defender's existing win-momentum (pickAiStrategy `1 + wins`) already self-adapts
+// to a repeated opponent, so an explicit read was redundant + inert (see memory
+// matrix-forced-vs-realistic).
+export const STRATEGY_LEAN = {
+  // Prior picks decay by this before the new round's pick (+1) is added
+  // (recent rounds weigh more; ~0.6 ≈ a 2–3 round horizon).
+  decay: 0.6,
+} as const;
+
 // --- Threat-aware in-region positioning (AI competence — Pillar B) ---------
 // When a unit settles into 'holding', instead of the legacy ≤2-hex spawn-bearing
 // cover shuffle (findCoverHoldHex) it scores nearby candidate hexes by the
@@ -203,6 +274,55 @@ export const POSITIONING = {
   wCover: 0.25,
   wDist: 0.15,
 } as const;
+
+// --- Threat-matrix target selection (AI competence — Pillar B, Phase 1) -----
+// Lifts MACRO target selection from raw region/site centroids to the threat
+// matrix: a converging defender picks the best CELL in its target region
+// (safest, with LoS to the watch angle + cover) instead of the geometric
+// centroid. Distinct from POSITIONING, which only refines the final tuck within
+// a few hexes of where the unit already stands — this chooses WHICH cell to head
+// to. A/B flag: the inert-AI law demands we PROVE a target change moves outcomes,
+// so the harness probes ON vs OFF. Pure + deterministic (no RNG; fixed iteration).
+export const THREAT_TARGETING = {
+  // Score weights for bestHoldCellInRegion (same shape as POSITIONING): safety
+  // pulls toward low-threat cells (dominant); los keeps a sightline to the watch
+  // angle; cover rewards sightline-blocking geometry; dist gently prefers cells
+  // near the region centroid so the pick stays "in position".
+  wSafety: 1.0,
+  wLos: 0.6,
+  wCover: 0.25,
+  wDist: 0.1,
+} as const;
+// --- Persistent belief store (AI read/adapt substrate, Phase 2) -------------
+// Tunables for src/game/belief.ts — the per-team "where are the unseen enemies"
+// grid that fixes perception starvation (teams previously knew ≤2/5 enemies and
+// forgot in ~3 ticks). Three properties make reads/fakes well-defined:
+// decay-not-deletion, negative evidence (watched-empty cells zero out), and a
+// redistribution prior (alive enemies always sum to full mass somewhere).
+export const BELIEF = {
+  // Per-tick blend of the prior toward uniform: 0 = beliefs never fade,
+  // 1 = no memory at all. ~0.08 ≈ a stale sighting halves in ~8 ticks.
+  decayLambda: 0.08,
+  // Floor added to every unobserved cell's redistribution factor so fully
+  // decayed maps still spread mass (and the normalizer can't hit 0).
+  epsilon: 0.0001,
+  // read_and_commit: commit to the lighter site only when the belief-mass gap
+  // between sites exceeds this (in expected enemies). Below it → no confident
+  // read → the directive stays silent. 0.75 ≈ "about one defender heavier",
+  // safely above the site-size asymmetry of a uniform spread (~0.05).
+  readMargin: 0.75,
+} as const;
+
+// Per-map enablement lives on MapDefinition.threatTargeting (the optimizeSpawns
+// precedent — trace-verified geometry-dependent lever: on a LARGE map, spreading
+// collapsers across covered site cells beats the centroid pile; on TIGHT maps the
+// centroid IS the contesting spot and the safety-weighted cell cedes the breach).
+// This mutable override (mirrors HERO_ABILITIES_ENABLED) lets the harness force
+// ON/OFF regardless of map for A/B boards; null = use the map's own field.
+export let THREAT_TARGETING_OVERRIDE: boolean | null = null;
+export function setThreatTargetingOverride(v: boolean | null): void {
+  THREAT_TARGETING_OVERRIDE = v;
+}
 
 // --- Spawn placement -------------------------------------------------------
 // Two layers (see units.placeSpawns + match.applyStrategies):
@@ -646,6 +766,10 @@ export const STRATEGY_MODS: Record<string, {
   Mind_Games:           { aggression:   0, retreatThreshold: 0,  complianceThreshold: 60 }, // fake-and-swing (D+A)
   Coordinated_Lockdown: { aggression:  -5, retreatThreshold: 0,  complianceThreshold: 75 }, // all-5 stack
   Rotate_Stack:         { aggression:  +5, retreatThreshold: 0,  complianceThreshold: 50 }, // rotating mobile D
+  // Mid_Control — large-map defense: 3 hold the central rotation hub + 1 anchors
+  // each site; the hub collapses onto whichever site makes contact. Scale-fit
+  // answer to maps where an even split can't reinforce across a long rotation.
+  Mid_Control:          { aggression:   0, retreatThreshold: 0,  complianceThreshold: 55 },
 };
 
 // Match length: first team to this many round wins.

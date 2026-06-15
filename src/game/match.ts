@@ -24,6 +24,7 @@ import type {
   GhostEntry,
   HexCoord,
   MoveState,
+  Side,
   Team,
   TrackEntry,
   Unit,
@@ -37,6 +38,12 @@ import type { Directive } from './types.ts';
 // H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
 // strategy + hero synergies in applyStrategies (H3.3).
 import {
+  ATTACKER_APPRAISAL,
+  ATTACKER_SITE_APPRAISAL_ENABLED,
+  SCOUTING,
+  SCOUTING_ENABLED,
+  SCOUTING_DEFENDER_LEAN_OVERRIDE,
+  STRATEGY_LEAN,
   CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
   HERO_ABILITIES_ENABLED,
@@ -46,6 +53,8 @@ import {
   ROLE_PROFILE,
   UNIT_DEFAULTS,
 } from './config.ts';
+import { siteAttackDifficulty } from './threat.ts';
+import type { StrategyVariant } from './strategies.ts';
 import { hexDistance } from './hex.ts';
 import { placeSpawns } from './units.ts';
 import type { Rng } from './rng.ts';
@@ -164,6 +173,7 @@ export function startRound(state: GameState): GameState {
     tracking: nextTracking,
     prevPos: nextPrevPos,
     ghosts: nextGhosts,
+    beliefs: { defenders: [], attackers: [] },
     visibility: { defenders: new Set(), attackers: new Set() },
     tick: 0,
     playback: { ...state.playback, playing: false },
@@ -182,6 +192,84 @@ export function startRound(state: GameState): GameState {
   };
   const { visibility } = computeVisibility(seed);
   return { ...seed, visibility };
+}
+
+// Which bomb site a variant commits to, by the majority of its plant-region
+// slots ('a_plant' vs 'b_plant'). Null when neither dominates (single-lane /
+// no-plant variants) → caller falls back to a uniform pick. Robust to fakes:
+// Mind Games' REAL slots target the true plant, so the shown site doesn't win.
+function variantCommitSite(variant: StrategyVariant): 'A' | 'B' | null {
+  let a = 0;
+  let b = 0;
+  for (const slot of variant) {
+    if (slot.region === 'a_plant') a++;
+    else if (slot.region === 'b_plant') b++;
+  }
+  if (a > b) return 'A';
+  if (b > a) return 'B';
+  return null;
+}
+
+// Pick a variant index from per-variant weights using one pre-drawn float in
+// [0,1). With uniform weights this equals `rng.int(len)` exactly, so a disabled
+// appraisal/scouting layer is byte-identical to the old coin flip.
+function weightedIndex(weights: readonly number[], roll: number): number {
+  const total = weights.reduce((s, w) => s + w, 0);
+  let acc = roll * total;
+  for (let i = 0; i < weights.length; i++) {
+    acc -= weights[i];
+    if (acc < 0) return i;
+  }
+  return weights.length - 1;
+}
+
+// Deterministic per-roster lean toward variant 0 (the defender's scoutable
+// "tell"), clamped to [lo, hi]. Same roster → same lean every match; flat
+// rosters → a fixed (still scoutable) lean. FNV-ish hash over stable attrs.
+function rosterVariantLean(teamUnits: readonly Unit[]): number {
+  let h = 2166136261;
+  for (const u of teamUnits) {
+    const a = u.attributes;
+    h = Math.imul(h ^ (a.aim + 7 * a.mapIQ + 13 * a.composure + 17 * a.tenacity), 16777619);
+  }
+  const f = ((h >>> 0) % 1000) / 1000;
+  return SCOUTING.defenderLeanLo + (SCOUTING.defenderLeanHi - SCOUTING.defenderLeanLo) * f;
+}
+
+// Per-variant pick weights for a team. ATTACKER: static site difficulty (easier
+// favored) × the cross-round scouting read of the ENEMY (under-defended site
+// favored). DEFENDER: roster-derived lean toward variant 0 (the scoutable tell).
+// Uniform when the relevant flags are off / single-variant → byte-identical pick.
+function variantWeights(strat: { variants: StrategyVariant[] }, team: Team, side: Side, state: GameState): number[] {
+  const n = strat.variants.length;
+  const uniform = strat.variants.map(() => 1);
+  if (n <= 1) return uniform;
+  if (side === 'attacker') {
+    if (!ATTACKER_SITE_APPRAISAL_ENABLED && !SCOUTING_ENABLED) return uniform;
+    const enemy: Team = team === 'defenders' ? 'attackers' : 'defenders';
+    const scout = state.scouting[enemy];
+    const scoutTotal = scout.a + scout.b;
+    return strat.variants.map((v) => {
+      const cs = variantCommitSite(v);
+      if (!cs) return 1;
+      // Static base: favor the statically-easier site.
+      let w = Math.max(0.05, 1 - ATTACKER_APPRAISAL.bias * siteAttackDifficulty(state.map, cs));
+      // Scouting: favor the site the enemy has UNDER-defended.
+      if (SCOUTING_ENABLED && scoutTotal > 0) {
+        const enemyLean = (cs === 'A' ? scout.a : scout.b) / scoutTotal;
+        w *= Math.max(0.05, 1 - SCOUTING.attackerExploitBias * enemyLean);
+      }
+      return w;
+    });
+  }
+  // Defender tendency (only A/B-variant defenses have a site). The test override
+  // forces the lean even with scouting off, so an A/B can isolate the attacker's
+  // exploit (defender leans the same in both arms).
+  if ((SCOUTING_ENABLED || SCOUTING_DEFENDER_LEAN_OVERRIDE !== null) && n === 2) {
+    const lean0 = SCOUTING_DEFENDER_LEAN_OVERRIDE ?? rosterVariantLean(state.units.filter((u) => u.team === team));
+    return [lean0, 1 - lean0];
+  }
+  return uniform;
 }
 
 // Resolve both teams' picks into per-unit targets + aggression/retreat mods,
@@ -209,19 +297,25 @@ export function applyStrategies(
   const aiStrat = strategyById(aiStrategyId, aiSide, state.map);
   if (!playerStrat || !aiStrat) return state;
 
-  // AI first → its RNG position is stable across player variant choices. The
-  // draw is always consumed (RNG position stable); `aiVariantIdx` only overrides
-  // WHICH variant is used (harness seam for forced A/B-site experiments).
-  const aiVariantDraw = rng.int(aiStrat.variants.length);
+  // AI first → its RNG position is stable across player variant choices. The AI
+  // draw is always consumed; `aiVariantIdx` only overrides WHICH variant is used
+  // (harness seam). The pick is weighted by side (variantWeights): an attacker
+  // appraises site difficulty + reads the enemy's scouted tendency; a defender
+  // leans by roster. Uniform weights (flags off / single variant) reproduce the
+  // old coin flip exactly, so disabled = byte-identical.
+  const aiVariantDraw = weightedIndex(variantWeights(aiStrat, aiTeam, aiSide, state), rng.next());
   const aiVariantIndex =
     aiVariantIdx !== null && aiVariantIdx >= 0 && aiVariantIdx < aiStrat.variants.length
       ? aiVariantIdx
       : aiVariantDraw;
   const aiVariant = aiStrat.variants[aiVariantIndex];
+  // Player team: an explicit UI pick wins; otherwise a same-weighted draw — so an
+  // AI-vs-AI match (runMatch) gives BOTH teams the smart pick. One draw only when
+  // not overridden, preserving the AI-first RNG order.
   const playerVariantIndex =
     playerVariantIdx !== null && playerVariantIdx >= 0 && playerVariantIdx < playerStrat.variants.length
       ? playerVariantIdx
-      : rng.int(playerStrat.variants.length);
+      : weightedIndex(variantWeights(playerStrat, playerTeam, playerSide, state), rng.next());
   const playerVariant = playerStrat.variants[playerVariantIndex];
 
   // Pass A strategy review — slot-based assignment. For each team, walk the
@@ -374,6 +468,55 @@ export function applyStrategies(
   // fresh list per round; H3.4 will drop the cards-on-top layer entirely.
   const heroEffects = computeHeroPassiveEffects(placedUnits, state.tick);
 
+  // Cross-round scouting: record which site the DEFENDER set up on this round —
+  // its resolved holds bucketed by a_site/b_site (mid holds are neutral) —
+  // decayed into the per-team tally so next round's attacker reads the enemy's
+  // entry. Only when enabled (else scouting stays inert). A balanced Hold records
+  // ~0.5/0.5; a fake (Mind Games) records its shown setup, faithfully neutral.
+  let nextScouting = state.scouting;
+  if (SCOUTING_ENABLED) {
+    const defTeam: Team | null =
+      state.teamSide[playerTeam] === 'defender' ? playerTeam
+      : state.teamSide[aiTeam] === 'defender' ? aiTeam : null;
+    if (defTeam) {
+      const aCells = new Set((state.map.regions['a_site'] ?? []).map((h) => `${h.col},${h.row}`));
+      const bCells = new Set((state.map.regions['b_site'] ?? []).map((h) => `${h.col},${h.row}`));
+      let ca = 0;
+      let cb = 0;
+      for (const u of placedUnits) {
+        if (u.team !== defTeam) continue;
+        const t = nextTargets[u.id];
+        if (!t) continue;
+        const k = `${t.col},${t.row}`;
+        if (aCells.has(k)) ca++;
+        else if (bCells.has(k)) cb++;
+      }
+      const tot = ca + cb;
+      if (tot > 0) {
+        const prev = state.scouting[defTeam];
+        nextScouting = {
+          ...state.scouting,
+          [defTeam]: { a: SCOUTING.decay * prev.a + ca / tot, b: SCOUTING.decay * prev.b + cb / tot },
+        };
+      }
+    }
+  }
+
+  // Cross-round strategy lean (for the pre-round Scout): decay each team's prior
+  // picks and add this round's pick (+1). Always recorded — read-only data the
+  // Scout UI surfaces; nothing in the sim acts on it, so determinism holds.
+  const bump = (lean: Record<string, number>, id: string): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const k in lean) out[k] = lean[k] * STRATEGY_LEAN.decay;
+    out[id] = (out[id] ?? 0) + 1;
+    return out;
+  };
+  const nextStrategyLean = {
+    ...state.strategyLean,
+    [playerTeam]: bump(state.strategyLean[playerTeam], playerStrategyId),
+    [aiTeam]: bump(state.strategyLean[aiTeam], aiStrategyId),
+  };
+
   return {
     ...state,
     phase: 'resolution',
@@ -384,6 +527,8 @@ export function applyStrategies(
     playerStrategy: playerStrategyId,
     aiStrategy: aiStrategyId,
     cardEffects: heroEffects,
+    scouting: nextScouting,
+    strategyLean: nextStrategyLean,
   };
 }
 
@@ -553,7 +698,10 @@ export function halftimeSwap(state: GameState): GameState {
     defenders: state.teamSide.defenders === 'attacker' ? 'defender' : 'attacker',
     attackers: state.teamSide.attackers === 'attacker' ? 'defender' : 'attacker',
   };
-  return { ...state, teamSide: flipped };
+  // Sides swap → each team's strategy pool changes, so the cross-round pick lean
+  // (the Scout's read) no longer applies — a team's attacking tendencies don't
+  // predict its defending ones. Reset it; the second half builds a fresh read.
+  return { ...state, teamSide: flipped, strategyLean: { defenders: {}, attackers: {} } };
 }
 
 export function isHalftime(state: GameState): boolean {

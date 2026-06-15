@@ -123,6 +123,69 @@ body {
   color: var(--text-dim);
   line-height: 1.45;
 }
+
+/* Pre-round Scout — enemy tendency read above the strategy menu (scoutPanel.ts). */
+#card-panel .scout {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: rgba(250, 204, 21, 0.05);
+  border: 1px solid var(--panel-border);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+}
+#card-panel .scout-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+#card-panel .scout-body {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+#card-panel .scout-lean {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#card-panel .scout-share {
+  font-weight: 400;
+  color: var(--text-dim);
+}
+#card-panel .scout-tell,
+#card-panel .scout-counter {
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+#card-panel .scout-tag {
+  display: inline-block;
+  min-width: 48px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-dim);
+  margin-right: 4px;
+}
+#card-panel .scout-alt {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+#card-panel .scout-empty {
+  color: var(--text-dim);
+  font-style: italic;
+}
+#card-panel .scout-onboard {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+#card-panel .scout-onboard:last-child {
+  margin-bottom: 0;
+}
 #card-panel .c-source {
   display: block;
   font-size: 10.5px;
@@ -547,6 +610,34 @@ body {
   font-weight: 600;
 }
 
+/* Round-end "why you won/lost" block (roundEndPanel.ts whyBlock). */
+.re-why {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  background: rgba(250, 204, 21, 0.05);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+}
+.re-matchup {
+  font-size: 12.5px;
+  color: var(--fg);
+}
+.re-side {
+  color: var(--muted);
+  font-weight: 400;
+}
+.re-outcome {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.re-zones {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 .re-team, .me-team {
   display: flex;
   flex-direction: column;
@@ -671,6 +762,107 @@ body {
 .unit-stats dd {
   margin: 0;
   color: var(--text);
+}
+
+/* Live per-unit stats columns (match phase) — left = your team, right = enemy.
+   Scoped to .live-roster so the same markup renders in both side gutters. */
+.live-roster h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.live-roster .lr-side {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+.live-roster .lr-alive {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.live-roster ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.live-roster .lu {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+}
+.live-roster .lu-dead {
+  opacity: 0.4;
+}
+.live-roster .lu-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.live-roster .lu-top strong {
+  font-size: 12.5px;
+}
+.live-roster .lu-weapon {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.live-roster .lu-status {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.live-roster .lu-status.engaged { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+.live-roster .lu-status.retreat { background: rgba(250, 204, 21, 0.15); color: #fde047; }
+.live-roster .lu-status.dead    { background: rgba(248, 113, 113, 0.22); color: #fca5a5; font-weight: 700; }
+.live-roster .lu-hpbar {
+  position: relative;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+.live-roster .lu-hpfill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  transition: width 0.2s linear;
+}
+.live-roster .lu-hpfill.hp-ok  { background: rgba(74, 222, 128, 0.55); }
+.live-roster .lu-hpfill.hp-mid { background: rgba(250, 204, 21, 0.55); }
+.live-roster .lu-hpfill.hp-low { background: rgba(248, 113, 113, 0.6); }
+.live-roster .lu-hptext {
+  position: absolute;
+  right: 5px;
+  top: 0;
+  line-height: 13px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.live-roster .lu-meta {
+  display: flex;
+  gap: 4px;
 }
 
 .side-action {

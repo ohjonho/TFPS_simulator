@@ -28,7 +28,8 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
-import { CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
+import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
+import { beliefInRegions } from './belief.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
 // adhere); ±0.4 per Discipline pt; ±0.2 per Composure pt; demanding
@@ -160,6 +161,9 @@ function evaluateOne(
 
     case 'commit_site':
       return commitSite(d, unit, state, visibleEnemies);
+
+    case 'read_and_commit':
+      return readAndCommit(d, unit, state);
   }
 }
 
@@ -235,9 +239,13 @@ function rotateOnTeamContact(
 }
 
 // --- trade_for -------------------------------------------------------------
-// For `windowTicks` after `allyId` fires or dies, engage their last
-// firingTarget if visible. We don't override target hex (let the unit move
-// naturally); we override engagement via visibility of the marked enemy.
+// For `windowTicks` after the watched `allyId` fires (or dies), converge on the
+// teammate's fight so a follow-up peek can trade the duel. Movement only — the
+// +HR side of trading is the Trader trait / Trade-Window mark, not here. Fair
+// info: we steer toward the ALLY's own position (own-team), never the enemy's
+// hidden location. Low priority (40), so this only fires for a unit whose
+// higher-priority directives all declined this tick (a trade-primary slot); it
+// never pulls a committed anchor / pusher / sniper off its job.
 
 function tradeFor(
   d: Extract<Directive, { kind: 'trade_for' }>,
@@ -246,14 +254,14 @@ function tradeFor(
 ): DirectiveDecision | null {
   const allyAi = state.ai[d.allyId];
   if (!allyAi) return null;
-  // Did the ally fire recently?
+  // Did the watched ally fire (or trade into a death) within the window?
   const sinceFire = state.tick - allyAi.lastFiredTick;
   if (sinceFire < 0 || sinceFire > d.windowTicks) return null;
-  // We don't currently override fire targeting (combat picks closest visible);
-  // this directive's main effect comes via the +HR Trader-trait-like bonus
-  // that strategies/cards may add separately. For v0 we leave the position
-  // alone and the unit fires per default engage logic.
-  return null;
+  const ally = state.units.find((u) => u.id === d.allyId);
+  if (!ally) return null;
+  // Move toward the teammate's contact (their pos, or where they fell). Engage
+  // is left to the normal gate once we arrive.
+  return { target: { ...ally.pos }, source: 'trade_for' };
 }
 
 // --- peek_and_retreat ------------------------------------------------------
@@ -268,7 +276,13 @@ function peekAndRetreat(
   _prevAi: AiState,
 ): DirectiveDecision {
   const phase = Math.floor(state.tick / Math.max(1, d.cadenceTicks)) % 2;
-  const wantHex = phase === 0 ? d.peekHex : d.coverHex;
+  // Retreat to the unit's assigned hold (local), NOT d.coverHex — which
+  // defaulted to OWN SPAWN and yo-yo'd every peeker across the whole map (they
+  // died in transit + left their position undefended). Falling back to the
+  // assigned hold keeps peek a short, local pop-and-duck near its angle; the
+  // authored coverHex stays only as a fallback when a unit has no target.
+  const retreatHex = state.targets[unit.id] ?? d.coverHex;
+  const wantHex = phase === 0 ? d.peekHex : retreatHex;
   const atPeek = hexDistance(unit.pos, d.peekHex) === 0;
   const suppressEngage = !atPeek;
   return {
@@ -302,6 +316,31 @@ function commitSite(
     suppressEngage = !enemyInLeaveRegion;
   }
   return { target: d.siteHex, suppressEngage, source: 'commit_site' };
+}
+
+// --- read_and_commit -------------------------------------------------------
+// The "read the defense" attacker mechanic, on the persistent belief store
+// (belief.ts). The old version counted directly-seen + ghost-remembered
+// defenders and was starved (a team rarely knows >2 of 5, and forgets in
+// ticks); the store keeps a full, always-defined distribution with decay,
+// negative evidence, and redistribution — so "which site is lighter?" always
+// has an answer, at varying confidence. Commit to the plant of the lighter
+// site once the believed-mass gap exceeds `margin` (in expected enemies);
+// below it → null (no confident read; lower directives keep gathering). Fair
+// info: the store is built from the team's own visibility only.
+
+function readAndCommit(
+  d: Extract<Directive, { kind: 'read_and_commit' }>,
+  unit: Unit,
+  state: GameState,
+): DirectiveDecision | null {
+  const weights = state.beliefs[unit.team];
+  if (weights.length === 0) return null; // round start — store not advanced yet
+  const a = beliefInRegions(weights, d.siteARegions, state.map);
+  const b = beliefInRegions(weights, d.siteBRegions, state.map);
+  if (Math.abs(a - b) < d.margin) return null;
+  const site = a < b ? 'a' : 'b';
+  return { target: site === 'a' ? d.plantAHex : d.plantBHex, source: 'read_and_commit' };
 }
 
 function hexInAnyRegion(hex: HexCoord, regions: readonly string[], state: GameState): boolean {
@@ -339,7 +378,11 @@ export type DirectiveSpec =
   | { kind: 'rotate_on_team_contact'; priority?: number; rotateTo: HexRef; watch: string[]; delayTicks?: number }
   | { kind: 'trade_for'; priority?: number; ally: string; windowTicks?: number }
   | { kind: 'peek_and_retreat'; priority?: number; peek: HexRef; cover?: HexRef; cadenceTicks?: number }
-  | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] };
+  | { kind: 'commit_site'; priority?: number; site: HexRef; leaveOnContactInRegions?: string[] }
+  // Authoring is map-agnostic: the resolver fills the standard a_plant/b_plant
+  // targets + a_site/b_site buckets. `margin` is the belief-mass gap (expected
+  // enemies) required before committing; defaults to config.BELIEF.readMargin.
+  | { kind: 'read_and_commit'; priority?: number; margin?: number };
 
 export type ResolutionContext = {
   map: MapDefinition;
@@ -432,6 +475,22 @@ export function resolveDirectiveSpec(
         priority,
         siteHex: site,
         leaveOnContactInRegions: spec.leaveOnContactInRegions ?? [],
+      };
+    }
+    case 'read_and_commit': {
+      // Map-agnostic: standard plant targets + site buckets. Drop the directive
+      // if either plant centroid is missing (caller falls back to legacy tree).
+      const plantA = regionCentroid(ctx.map, 'a_plant');
+      const plantB = regionCentroid(ctx.map, 'b_plant');
+      if (!plantA || !plantB) return null;
+      return {
+        kind: 'read_and_commit',
+        priority,
+        plantAHex: plantA,
+        plantBHex: plantB,
+        siteARegions: ['a_site'],
+        siteBRegions: ['b_site'],
+        margin: spec.margin ?? BELIEF.readMargin,
       };
     }
   }

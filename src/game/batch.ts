@@ -6,15 +6,19 @@
 // H3.4 — card-sanity check removed (card system deleted). Strategy matrix
 // + determinism check remain.
 
-import type { GameEvent, GameState, MapDefinition, Team } from './types.ts';
+import type { GameEvent, GameState, HexCoord, MapDefinition, Side, Team } from './types.ts';
 import type { AttributeOverride } from './attributes.ts';
 import { buildInitialState } from './state.ts';
 import { assignAttributes } from './attributes.ts';
 import { assignTarget } from './movement.ts';
 import { roundFinished, stepTick } from './tick.ts';
 import { createRng } from './rng.ts';
-import { applyStrategies, eliminationWinner, defenderTeam } from './match.ts';
-import { ROUND_TICK_LIMIT } from './config.ts';
+import {
+  applyStrategies, eliminationWinner, defenderTeam,
+  endRound, recordStrategyWin, isHalftime, halftimeSwap, advanceToNextRound,
+} from './match.ts';
+import { pickAiStrategy } from './aiOpponent.ts';
+import { ROUND_TICK_LIMIT, MATCH_ROUND_COUNT, MATCH_WIN_SCORE } from './config.ts';
 import { regionCentroid } from './strategies.ts';
 
 export type SkirmishOpts = {
@@ -94,6 +98,77 @@ export function runBatch(matches: number, opts: SkirmishOpts = {}, baseSeed = 1)
   };
 }
 
+// --- Full multi-round match (cross-round scouting) -------------------------
+export type MatchRoundRow = {
+  round: number;
+  defenders: Team;      // which team defended this round
+  winner: Team;
+  playerStrat: string;
+  aiStrat: string;
+  defScoutA: number;    // defender team's cumulative scouting A/B (post-this-round)
+  defScoutB: number;
+};
+export type MatchResult = {
+  winner: Team | null;  // first to MATCH_WIN_SCORE, else null (no sudden-death here)
+  scores: Record<Team, number>;
+  rounds: MatchRoundRow[];
+};
+
+export type MatchOpts = {
+  mapName?: MapDefinition['name'];
+  overrides?: Record<string, AttributeOverride>;
+  // Force both teams' strategies (clean A/B); omit → pickAiStrategy each round.
+  // NOTE: forced strategies are side-specific — a defender-only id breaks after
+  // the halftime swap. Use `maxRounds: 3` to stay within the first half.
+  playerStrategyId?: string;
+  aiStrategyId?: string;
+  // Stop after this many rounds (e.g. 3 = first half only, no side swap).
+  maxRounds?: number;
+};
+
+// Full AI-vs-AI match: both teams pick strategy (pickAiStrategy) + variant
+// (applyStrategies' weighted draw) freely, carrying cross-round state
+// (aiStrategyWins + scouting). The ONLY way to exercise cross-round scouting —
+// the single-round runStrategyRound forces both picks. Determinism: per-round
+// pickRng = seed^(round·const), mirroring the live flow.
+export function runMatch(seed: number, opts: MatchOpts = {}): MatchResult {
+  let state = buildInitialState(opts.mapName, 'standard');
+  assignAttributes(state.units, createRng(seed ^ 0x5f3759df), opts.overrides ?? {});
+  const rounds: MatchRoundRow[] = [];
+  let guard = 0;
+  while (!state.matchOver && guard++ < MATCH_ROUND_COUNT + 4) {
+    if (opts.maxRounds && rounds.length >= opts.maxRounds) break;
+    const playerTeam = state.playerTeam;
+    const aiTeam: Team = playerTeam === 'defenders' ? 'attackers' : 'defenders';
+    const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
+    const playerStrat = opts.playerStrategyId ?? pickAiStrategy(state, playerTeam, state.teamSide[playerTeam], pickRng);
+    const aiStrat = opts.aiStrategyId ?? pickAiStrategy(state, aiTeam, state.teamSide[aiTeam], pickRng);
+    const defenders = defenderTeam(state); // side is stable for the round
+    let s = applyStrategies(state, playerTeam, playerStrat, aiTeam, aiStrat, pickRng, null, null);
+    const defScout = s.scouting[defenders];
+    let winner: Team | null = null;
+    for (let i = 0; i < ROUND_TICK_LIMIT; i++) {
+      s = stepTick(s);
+      if (s.roundResult && s.roundResult.winner !== 'draw') { winner = s.roundResult.winner; break; }
+      winner = eliminationWinner(s);
+      if (winner) break;
+    }
+    const w: Team = winner ?? defenderTeam(s);
+    s = endRound(s, w);
+    s = recordStrategyWin(s, w, w === playerTeam ? playerStrat : aiStrat);
+    rounds.push({ round: state.round, defenders, winner: w, playerStrat, aiStrat, defScoutA: defScout.a, defScoutB: defScout.b });
+    if (!s.matchOver) {
+      if (isHalftime(s)) s = halftimeSwap(s);
+      s = advanceToNextRound(s);
+    }
+    state = s;
+  }
+  const mw: Team | null =
+    state.scores.defenders >= MATCH_WIN_SCORE ? 'defenders'
+    : state.scores.attackers >= MATCH_WIN_SCORE ? 'attackers' : null;
+  return { winner: mw, scores: { ...state.scores }, rounds };
+}
+
 function midSpawn(state: GameState, team: Team) {
   const spawns = state.map.spawns[team];
   return spawns[Math.floor(spawns.length / 2)];
@@ -122,6 +197,10 @@ export type StrategyRoundOpts = {
   // per-site experiments. The RNG draw is still consumed, so a given seed yields
   // the same round except for the forced site. Undefined → normal random pick.
   attackerVariantIdx?: number;
+  // Harness seam: force the DEFENDER (player) strategy variant index (0 = A-site,
+  // 1 = B-site), for right-stack vs wrong-stack analysis of site-committing
+  // defenses (Stack / Coordinated_Lockdown). Undefined → normal random pick.
+  defenderVariantIdx?: number;
   // Pass A5 follow-up: per-unit attribute overrides used to isolate strategy
   // impact from attribute randomization (e.g. all-50 ratings across all
   // units). Layered on top of seed-based generation in assignAttributes.
@@ -134,6 +213,10 @@ export type StrategyRoundResult = {
   defAlive: number;
   atkAlive: number;
   events: readonly GameEvent[];
+  // Final positions of units that died this round (a dead unit doesn't move, so
+  // end-of-round pos = where it fell). Feeds the fingerprint death-zone
+  // histogram. Pure read of final state; ignored by matrix/determinism.
+  deaths: { team: Team; pos: HexCoord }[];
 };
 
 // One round driven by the real strategy+card pipeline. Mirrors main.beginRound
@@ -157,7 +240,7 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
   // Same RNG derivation as main.beginRound so variant picks + AI card picks
   // are bit-identical to what the UI would produce.
   const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
-  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng, null, opts.attackerVariantIdx ?? null);
+  state = applyStrategies(state, playerTeam, opts.defenderStrategy, aiTeam, opts.attackerStrategy, pickRng, opts.defenderVariantIdx ?? null, opts.attackerVariantIdx ?? null);
 
   // H3.4 — commitCards removed; applyStrategies populated synergies + hero
   // passives directly above.
@@ -196,6 +279,9 @@ export function runStrategyRound(seed: number, opts: StrategyRoundOpts): Strateg
     defAlive: aliveCount(state, 'defenders'),
     atkAlive: aliveCount(state, 'attackers'),
     events: state.events,
+    deaths: state.units
+      .filter((u) => u.state === 'dead')
+      .map((u) => ({ team: u.team, pos: { ...u.pos } })),
   };
 }
 
@@ -389,3 +475,87 @@ export function determinismCheck(seeds = 10, mapName: MapDefinition['name'] = 'F
 // when the Setup Play / Hold the Line auto-targets switch from "contributor's
 // own pos" to "strategy region centroid" (more sensible default).
 void regionCentroid;
+
+// ---- Strategy fingerprint (distinctness / viability probe) -----------------
+//
+// For one strategy (on a given side), run it vs each opponent strategy over N
+// seeds and aggregate a behavioral fingerprint: win%, plant rate + which site,
+// round length, and where bodies fall (coarse-zone histogram across both
+// teams). Two strategies are "distinct" when their fingerprints differ;
+// "viable" when win% isn't ~0 across every matchup (the known 0%-cell issue for
+// promoted strategies). Derived from the event log + final positions — no new
+// state plumbing. Used while walking strategies map-by-map (Step 7).
+
+const COARSE_ZONES = ['a_site', 'b_site', 'mid', 'a_main', 'b_main', 'def_spawn', 'atk_spawn'] as const;
+
+// hex-key → coarse zone. COARSE_ZONES order = priority (sites/mid before mains),
+// matching how a reader thinks about "where the fight happened." Folded parents
+// (a_site already includes plant/entry/anchor/off) keep the buckets meaningful.
+function buildZoneKey(map: MapDefinition): Record<string, string> {
+  const key: Record<string, string> = {};
+  for (const zone of COARSE_ZONES) {
+    for (const h of map.regions[zone] ?? []) {
+      const k = `${h.col},${h.row}`;
+      if (!(k in key)) key[k] = zone; // earlier (higher-priority) zone wins
+    }
+  }
+  return key;
+}
+
+export type StrategyFingerprint = {
+  strategy: string;
+  side: Side;
+  matchups: number;
+  seeds: number;
+  winPct: number;          // win% for `side`, over all matchups × seeds
+  plantRatePct: number;    // % of rounds that reached a plant
+  plantAPct: number;       // % of PLANTS on site A (vs B)
+  plantBPct: number;
+  avgTicks: number;
+  deathZonePct: Record<string, number>;  // zone → % of all deaths there
+};
+
+export function runStrategyFingerprint(
+  side: Side,
+  strategyId: string,
+  opponents: readonly string[],
+  seeds = 20,
+  mapName: MapDefinition['name'] = 'Foundryv2',
+): StrategyFingerprint {
+  const zoneKey = buildZoneKey(buildInitialState(mapName, 'standard').map);
+  const myTeam: Team = side === 'defender' ? 'defenders' : 'attackers';
+  let wins = 0, rounds = 0, plants = 0, plantA = 0, plantB = 0, totalTicks = 0, totalDeaths = 0;
+  const deathZones: Record<string, number> = {};
+  for (const opp of opponents) {
+    for (let i = 0; i < seeds; i++) {
+      const r = runStrategyRound(7000 + i, {
+        defenderStrategy: side === 'defender' ? strategyId : opp,
+        attackerStrategy: side === 'attacker' ? strategyId : opp,
+        mapName,
+      });
+      rounds++;
+      totalTicks += r.ticks;
+      if (r.winner === myTeam) wins++;
+      for (const e of r.events) {
+        if (e.type === 'plant') { plants++; if (e.site === 'A') plantA++; else plantB++; }
+      }
+      for (const d of r.deaths) {
+        const z = zoneKey[`${d.pos.col},${d.pos.row}`] ?? 'other';
+        deathZones[z] = (deathZones[z] ?? 0) + 1;
+        totalDeaths++;
+      }
+    }
+  }
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+  const deathZonePct: Record<string, number> = {};
+  for (const z of Object.keys(deathZones)) deathZonePct[z] = pct(deathZones[z], totalDeaths);
+  return {
+    strategy: strategyId, side, matchups: opponents.length, seeds,
+    winPct: pct(wins, rounds),
+    plantRatePct: pct(plants, rounds),
+    plantAPct: pct(plantA, plants),
+    plantBPct: pct(plantB, plants),
+    avgTicks: Math.round((totalTicks / Math.max(1, rounds)) * 10) / 10,
+    deathZonePct,
+  };
+}

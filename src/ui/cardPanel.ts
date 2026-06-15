@@ -8,6 +8,8 @@
 import type { GameState, Side } from '../game/types.ts';
 import { strategyById } from '../game/strategies.ts';
 import { availableStrategies } from '../game/traits.ts';
+import { liveTeamStatsHtml } from './unitStatsPanel.ts';
+import { scoutReportHtml } from './scoutPanel.ts';
 
 export type CardPanelCallbacks = {
   onPickStrategy: (id: string) => void;
@@ -19,15 +21,19 @@ export function renderCardPanel(
   state: GameState,
   cb: CardPanelCallbacks,
 ): void {
-  // Empty during draft (the draft overlay covers the screen) + resolution
-  // (no strategy can be picked once the round is running).
+  // During the match (resolution) the left gutter shows YOUR team's live unit
+  // stats; empty during draft (the draft overlay covers the screen).
+  if (state.phase === 'resolution') {
+    host.innerHTML = liveTeamStatsHtml(state, state.playerTeam, 'Your Team');
+    return;
+  }
   if (state.phase !== 'planning') {
     host.innerHTML = '';
     return;
   }
 
   const playerSide = state.teamSide[state.playerTeam];
-  host.innerHTML = strategyMenuHtml(state, playerSide);
+  host.innerHTML = scoutReportHtml(state) + strategyMenuHtml(state, playerSide);
 
   host.querySelectorAll<HTMLButtonElement>('button[data-strategy]').forEach((btn) => {
     btn.addEventListener('click', () => {

@@ -5,6 +5,7 @@
 import type { GameState, Team, Unit } from '../game/types.ts';
 import type { RoundStats } from '../game/stats.ts';
 import { computeRoundStats } from '../game/stats.ts';
+import { strategyById } from '../game/strategies.ts';
 
 function teamLabel(team: Team): string {
   return team === 'defenders' ? 'D' : 'A';
@@ -60,6 +61,77 @@ function teamSection(
   `;
 }
 
+// Coarse death-zones, checked in order (site before its approach lane). Parent
+// regions fold in their children, so 'a_site' covers anchor/off/entry/plant etc.
+const COARSE_ZONES: { region: string; label: string }[] = [
+  { region: 'a_site', label: 'A site' },
+  { region: 'b_site', label: 'B site' },
+  { region: 'mid', label: 'Mid' },
+  { region: 'a_main', label: 'A approach' },
+  { region: 'b_main', label: 'B approach' },
+];
+
+function zoneOf(state: GameState, pos: { col: number; row: number }): string {
+  for (const z of COARSE_ZONES) {
+    const cells = state.map.regions[z.region];
+    if (cells && cells.some((h) => h.col === pos.col && h.row === pos.row)) return z.label;
+  }
+  return 'the flanks';
+}
+
+// "Why you won/lost" — the matchup (ties back to the Scout's pre-round read), the
+// mechanism that decided it, and where the fighting happened. Turns a result into
+// a lesson: "my Stack held their Rush at A". Pure read of the completed round.
+function whyBlock(state: GameState, roundIndex: number): string {
+  const pTeam = state.playerTeam;
+  const eTeam: Team = pTeam === 'defenders' ? 'attackers' : 'defenders';
+  const pSide = state.teamSide[pTeam];
+  const eSide = state.teamSide[eTeam];
+
+  // Matchup from the round's strategyPick event (robust to post-round resets).
+  const pickEv = state.events.find((e) => e.roundIndex === roundIndex && e.type === 'strategyPick');
+  let pId: string | null = state.playerStrategy;
+  let eId: string | null = state.aiStrategy;
+  if (pickEv && pickEv.type === 'strategyPick') {
+    if (pickEv.playerTeam === pTeam) { pId = pickEv.playerStrategy; eId = pickEv.aiStrategy; }
+    else { pId = pickEv.aiStrategy; eId = pickEv.playerStrategy; }
+  }
+  const pName = (pId && strategyById(pId, pSide, state.map)?.name) || pId || '—';
+  const eName = (eId && strategyById(eId, eSide, state.map)?.name) || eId || '—';
+  const matchup = `You played <strong>${pName}</strong> <span class="re-side">(${pSide})</span> vs their <strong>${eName}</strong> <span class="re-side">(${eSide})</span>.`;
+
+  // Mechanism that decided the round.
+  const roundEvents = state.events.filter((e) => e.roundIndex === roundIndex);
+  const detonate = roundEvents.find((e) => e.type === 'detonate');
+  const hasDefuse = roundEvents.some((e) => e.type === 'defuse');
+  const atkAlive = state.units.filter((u) => u.team === 'attackers' && u.state === 'alive').length;
+  const defAlive = state.units.filter((u) => u.team === 'defenders' && u.state === 'alive').length;
+  let outcome: string;
+  if (detonate && detonate.type === 'detonate') outcome = `Spike detonated at ${detonate.site} — attackers took the site.`;
+  else if (hasDefuse) outcome = 'Spike defused — defenders saved the round.';
+  else if (atkAlive === 0) outcome = 'Attackers eliminated.';
+  else if (defAlive === 0) outcome = 'Defenders eliminated.';
+  else outcome = 'Time expired — defenders held.';
+
+  // Where the fighting was decided (dead units fell where they died).
+  const dead = state.units.filter((u) => u.state === 'dead');
+  const counts: Record<string, number> = {};
+  for (const u of dead) { const z = zoneOf(state, u.pos); counts[z] = (counts[z] ?? 0) + 1; }
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  let zoneLine = '';
+  if (top && dead.length >= 3) {
+    zoneLine = top[1] / dead.length >= 0.45
+      ? `<div class="re-zones">Fighting centered on <strong>${top[0]}</strong> — ${top[1]} of ${dead.length} falls there.</div>`
+      : `<div class="re-zones">Fighting spread across the map (${dead.length} falls).</div>`;
+  }
+
+  return `<div class="re-why">
+      <div class="re-matchup">${matchup}</div>
+      <div class="re-outcome">${outcome}</div>
+      ${zoneLine}
+    </div>`;
+}
+
 // Render the round-end stats body for the given completed round. Reads
 // state.events filtered to roundIndex.
 export function renderRoundEndStats(state: GameState, roundIndex: number): string {
@@ -76,6 +148,7 @@ export function renderRoundEndStats(state: GameState, roundIndex: number): strin
   return `
     <div class="round-end">
       <div class="re-summary">${winnerLine} <span class="re-score">${scoreLine}</span></div>
+      ${whyBlock(state, roundIndex)}
       ${teamSection(state, 'defenders', stats)}
       ${teamSection(state, 'attackers', stats)}
     </div>

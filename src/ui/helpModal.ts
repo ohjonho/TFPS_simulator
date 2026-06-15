@@ -313,6 +313,146 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.45.0 — Foundry IV is the default Foundry map</h3>
+    <ul>
+      <li><strong>The map picker now offers Foundry IV in place of Foundry II</strong>,
+        and the game opens on it. Foundry IV is the large, diagonal layout the recent
+        defense work (Mid Control, smart retakes) was built and balanced for. Foundry II
+        is still in the build but no longer in the picker.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.44.0 — the round recap now tells you WHY</h3>
+    <ul>
+      <li><strong>The round-end screen opens with the matchup and how it was
+        decided</strong> — e.g. "You played Stack (defender) vs their Rush (attacker)",
+        then "Spike defused — defenders saved the round", then "Fighting centered on
+        A site". A win or loss now reads as a lesson, not a dice roll — and it trains
+        your own read for the next round (pairs with the pre-round Scout).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.43.0 — Scout report: read the enemy before you pick</h3>
+    <ul>
+      <li><strong>A Scout panel now sits above the strategy menu</strong> and reads the
+        enemy's tendencies this match — e.g. "Stack — strongly favors, 67% of recent
+        picks" — with a one-line tell and a counter hint, so your pre-round pick is a
+        read instead of a coin flip. The first round of a match shows no read yet; the
+        Scout builds one as the enemy's picks accumulate.</li>
+      <li>The read can't lie — it reflects the picks the enemy actually made, not a
+        scripted hint.</li>
+      <li>Your first match opens with a short explainer of how reading works (no read
+        yet); after you've seen a real read, it's just the enemy report from then on.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.42.0 — teams keep a running read of where you are</h3>
+    <ul>
+      <li><strong>Each team now maintains a live mental map of where its unseen
+        enemies probably are</strong> — sightings persist and fade instead of being
+        forgotten in seconds, and clearing an area now actually means something
+        ("we can see A is empty, so they're at B"). This is the foundation for
+        smarter reads across the game.</li>
+      <li><strong>Control uses it:</strong> its site call now comes from that running
+        read, so it commits more often and more sensibly — and showing it a lopsided
+        defense reliably routes it at the lighter site.</li>
+      <li><strong>Mind Games' ambush now springs properly:</strong> the show-site
+        defenders collapse when the QUIET site gets hit, not only when they're
+        contacted themselves. Before, an attacker that ignored the fake was met
+        4-v-2 while the fakers idled at the empty site.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.41.0 — Foundry IV defenders set up smart retakes</h3>
+    <ul>
+      <li><strong>On Foundry IV, defenders converging on an attacked site now spread
+        into covered positions with a line on the attackers' approach</strong> —
+        instead of everyone piling onto the same center spot and getting traded out.
+        Watch a retake: the collapse now sets up a crossfire across the site. Foundry
+        IV only — its sites are big enough that positioning inside them matters; on
+        the tighter maps the old direct convergence is still the right call (meeting
+        the rush head-on beats taking a safe angle).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.40.0 — Control reads the defense</h3>
+    <ul>
+      <li><strong>The Control attack now probes both lanes, then commits its push to
+        whichever site is held by fewer defenders</strong> — instead of passively
+        holding mid. It punishes a lopsided defense (over-stack one site and Control
+        takes the other). An even hold gives it nothing to read, so it stays a measured,
+        info-first attack.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.39.0 — live unit stats on both sides during the match</h3>
+    <ul>
+      <li><strong>The match view now shows both teams' units in the side columns —
+        your team on the left, the enemy on the right.</strong> Each unit has a live
+        HP bar (green → amber → red), its current state (holding / moving / in fight /
+        falling back / DEAD), weapon and role, plus a per-team alive count. Updates
+        every tick, so you can read the round at a glance instead of hovering units
+        one at a time. Hovering a unit still shows its full detail below the enemy column.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.38.0 — Foundry IV gets a defense built for its size</h3>
+    <ul>
+      <li><strong>New defender strategy on Foundry IV — Mid Control:</strong> three
+        players garrison the central rotation hub while one anchors each site; whichever
+        site gets hit, the hub floods it from short range. It's the dedicated answer to
+        slow, methodical attacks (Control) on the big map, where an even split can't
+        reinforce across the long A↔B rotation in time.</li>
+      <li><strong>Pressure is no longer offered on Foundry IV.</strong> Pushing mid off
+        spawn abandons too much ground on a map this large — there's no way back to a
+        site once it's committed, so it lost nearly every round there. Pressure stays a
+        solid pick on the smaller maps; Mid Control takes its place in Foundry IV's menu.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.37.0 — Rotate defense actually rotates now</h3>
+    <ul>
+      <li><strong>Rotate was badly broken — its defenders never actually rotated and
+        bled out crossing the map, leaving sites undefended (attackers planted nearly
+        every round).</strong> Fixed: they now hold their angle and swap sites as a
+        pair when a teammate makes contact — a real mobile defense. It's gone from
+        nearly unwinnable to a genuine pick (strong on the tight maps; still weak to
+        fast direct hits, as intended).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.36.0 — Execute / Mind Games attackers peel for flankers</h3>
+    <ul>
+      <li><strong>On the Execute and Mind Games attacks, committed pushers now
+        break off to deal with a defender flanking them from the mid choke or the
+        near lane, instead of tunnelling straight to the plant.</strong> Rush is
+        unchanged — it stays all-in and head-down. That sharpens the difference
+        between the attacks: Execute trades a little plant speed for safety against
+        mid/flank picks; Rush floods regardless.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.35.0 — point-blank awareness (no more walking past enemies)</h3>
+    <ul>
+      <li><strong>Units now sense an enemy within a couple of hexes even when
+        facing away.</strong> Before, perception was strictly the vision cone, so
+        two opponents could walk right past each other if their cones didn't happen
+        to cross. A short-range proximity sense closes that blind spot — anyone who
+        gets close (with line of sight) is noticed and can be engaged.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.34.0 — units turn to face who's shooting them</h3>
+    <ul>
+      <li><strong>A unit shot from outside its vision cone now turns to face the
+        shooter — even when the shot misses.</strong> Before, a unit only reacted
+        once it actually took damage, so it could be peppered with near-misses from
+        the flank or behind and keep staring the wrong way. Now any incoming fire
+        snaps the target around to look at its attacker, so it can spot them and
+        return fire on the next tick.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.33.0 — lever rebalance (no single hero or trait swings a match)</h3>
     <ul>
       <li><strong>Hero and trait power levels were tuned down so that picking one

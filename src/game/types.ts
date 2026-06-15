@@ -212,7 +212,17 @@ export type Directive =
   | { kind: 'rotate_on_team_contact'; priority: number; rotateToHex: HexCoord; watchAllies: string[]; delayTicks: number }
   | { kind: 'trade_for'; priority: number; allyId: string; windowTicks: number }
   | { kind: 'peek_and_retreat'; priority: number; peekHex: HexCoord; coverHex: HexCoord; cadenceTicks: number }
-  | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] };
+  | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] }
+  // read_and_commit — the "read the defense" attacker mechanic, driven by the
+  // persistent belief store (belief.ts): commit to the plant of the site whose
+  // believed defender mass is LIGHTER, once the gap exceeds `margin` (expected
+  // enemies). Below the margin → null (no confident read; the unit keeps
+  // advancing/gathering via lower directives). Because beliefs persist, decay,
+  // and respect negative evidence, a defensive fake finally has a channel to
+  // bite through: showing strength at one site routes the reader into the
+  // other. Used only by the "reading" attacks (Control, attacker Mind Games);
+  // direct attacks (Rush/Execute) ignore it.
+  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each
@@ -453,6 +463,16 @@ export type GameState = {
   moves: Record<string, MoveState>;
   // --- Pass 3 ---
   visibility: Visibility;
+  // Persistent per-team belief store (belief.ts): per-cell expectation of
+  // where the alive ENEMIES of each team are (flat row-major width×height).
+  // Empty array = uninitialized (round start); updated at tick end alongside
+  // ghosts/tracking, consumed by the next tick's AI (same one-tick lag).
+  beliefs: Record<Team, number[]>;
+  // Cross-round scouting (match.ts): per team, the decayed A/B counts of which
+  // site it set up on when DEFENDING. An attacker reads the ENEMY team's entry
+  // to pick the soft (under-defended) site. Persists across rounds within a
+  // match (mirrors aiStrategyWins); reset only at match start.
+  scouting: Record<Team, { a: number; b: number }>;
   ghosts: Record<Team, Record<string, GhostEntry>>;
   tracking: Record<string, TrackEntry | null>;
   // Pre-tick positions, used for the sniper-stationary cone test.
@@ -479,6 +499,12 @@ export type GameState = {
   timeoutUsed: Record<Team, boolean>;
   // AI win-rate tracker per team for §16 weighted strategy pick.
   aiStrategyWins: Record<Team, Record<string, number>>;
+  // Cross-round strategy-pick lean (match.ts): per team, the decayed count of
+  // each strategy id it has picked this match. The opponent reads this in
+  // pickAiStrategy to counter-pick (they keep playing Stack → pick the
+  // stack-punisher); read strength is comms-gated. Persists across rounds
+  // within a match (mirrors aiStrategyWins); reset only at match start.
+  strategyLean: Record<Team, Record<string, number>>;
   matchOver: boolean;
   matchWinner: Team | 'draw' | null;
   // --- Pass 8: cards ---

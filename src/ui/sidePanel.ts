@@ -10,6 +10,7 @@ import type { GameState, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';
 import { traitSpan } from './traitChip.ts';
 import { roleChip, heroChip } from './unitMetaChip.ts';
+import { liveTeamStatsHtml } from './unitStatsPanel.ts';
 
 export type SidePanelCallbacks = {
   // Pass A1: hover-driven attributes panel. Roster `<li>` items emit hover
@@ -34,10 +35,14 @@ export function renderSidePanel(
     return;
   }
 
+  // Resolution: the right gutter shows the ENEMY team's live unit stats, with
+  // the hovered unit's full detail appended below when the player hovers one.
+  const enemyTeam = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
   host.innerHTML =
     state.phase === 'planning'
       ? planningHtml(state)
-      : unitInfoOrHint(hoveredUnit, state);
+      : liveTeamStatsHtml(state, enemyTeam, 'Enemy') +
+        (hoveredUnit ? unitInfoOrHint(hoveredUnit, state) : '');
 
   if (state.phase === 'planning') {
     // Pass E m5 — Randomize seed input + Regenerate. Only rendered in

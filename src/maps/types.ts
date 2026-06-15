@@ -56,7 +56,7 @@ export type SiteData = {
 // ---------------------------------------------------------------------------
 
 export type MapDefinition = {
-  name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv3';
+  name: 'Foundry' | 'Atoll' | 'Canyon' | 'Foundryv2' | 'Atoll_v2' | 'Foundryv3' | 'Foundryv4';
   /** Always 30 — the grid is fixed for v0. */
   width: 30;
   /** Always 40 — the grid is fixed for v0. */
@@ -85,4 +85,15 @@ export type MapDefinition = {
    * to off when omitted.
    */
   optimizeSpawns?: boolean;
+  /**
+   * Opt-in threat-matrix collapse targeting (tick.ts defensive collapse). When
+   * true, a converging defender heads to the best CELL of the contacted site
+   * (low threat + LoS to the attacker mass + cover, via bestHoldCellInRegion)
+   * instead of the site centroid. Per-map because it's geometry-dependent
+   * (trace-verified): on a LARGE map spreading across covered site cells beats
+   * the centroid pile (+14pp def on Foundry IV's floor); on TIGHT maps the
+   * centroid IS the contesting spot and a safety-biased cell cedes the breach
+   * to a rush (−6pp Canyon). Defaults to off when omitted.
+   */
+  threatTargeting?: boolean;
 };

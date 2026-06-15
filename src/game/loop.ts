@@ -123,6 +123,10 @@ export class PlaybackLoop {
       playback: { ...state.playback, playing: false },
       visibility: { defenders: new Set(), attackers: new Set() },
       ghosts: resetGhosts,
+      beliefs: { defenders: [], attackers: [] },
+      // Replay restarts the match → scouting + strategy lean reset (match-level memory).
+      scouting: { defenders: { a: 0, b: 0 }, attackers: { a: 0, b: 0 } },
+      strategyLean: { defenders: {}, attackers: {} },
       tracking: resetTracking,
       prevPos: resetPrevPos,
       ai: resetAi,
