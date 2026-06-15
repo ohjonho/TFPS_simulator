@@ -179,6 +179,72 @@ export const THREAT = {
   distanceFalloff: 0.08,
 } as const;
 
+// --- Attacker pre-round site appraisal (AI competence) ---------------------
+// The AI attacker's A/B-site variant pick was a blind coin flip. At round start
+// the belief store is empty (no enemies seen yet), so the only fair signal is
+// STATIC map geometry: which site is easier to take/hold, via the attacker-side
+// exposure of its plant hexes (threat.siteAttackDifficulty). The pick is a SOFT
+// weighted draw toward the easier site — not argmax — so it stays unpredictable
+// (a hard-stack defender can't simply pre-counter it). A mid-round re-read is a
+// separate concern (read_and_commit, belief-driven, Control only). Cross-round
+// scouting (remember last round's setup) is the future legibility layer.
+export const ATTACKER_APPRAISAL = {
+  // Lean strength: weight_i = max(0.05, 1 − bias·difficulty_i), difficulty 0..1.
+  // 0 = coin flip; 1 = strongly favor the easier site. 0.6 ≈ ~70/30 at full
+  // exposure asymmetry — a real lean that still picks the hard site sometimes.
+  bias: 0.6,
+} as const;
+// A/B flag (mirrors HERO_ABILITIES_ENABLED): the harness flips it to probe ON vs
+// OFF. Default false until a measured ON proves it doesn't over-favor attackers.
+export let ATTACKER_SITE_APPRAISAL_ENABLED = false;
+export function setAttackerSiteAppraisalEnabled(enabled: boolean): void {
+  ATTACKER_SITE_APPRAISAL_ENABLED = enabled;
+}
+
+// --- Cross-round scouting (AI read/adapt — Workstream B slice) --------------
+// The defender gets a deterministic per-roster site LEAN (a scoutable "tell");
+// the attacker accumulates a decayed cross-round read of the enemy's defensive
+// site and biases its variant pick toward the soft (under-defended) site. Soft
+// on both ends so a correct read TILTS (~55-65%), never predetermines. Only
+// manifests across rounds (runMatch) — so it can't touch the per-round floor/
+// matrices (those force picks). A/B-flagged; determinism-safe (seeded, fixed order).
+export const SCOUTING = {
+  // Roster-hash defender lean toward variant 0, clamped to [lo, hi].
+  defenderLeanLo: 0.32,
+  defenderLeanHi: 0.68,
+  // Per-round memory: prior scouting counts decay by this before the new round's
+  // site is added (recent rounds weigh more; ~0.6 ≈ a 2–3 round horizon).
+  decay: 0.6,
+  // How hard the attacker favors the under-defended site (0 = ignore the read,
+  // 1 = strong). Soft so the tilt stays bounded.
+  attackerExploitBias: 0.6,
+} as const;
+export let SCOUTING_ENABLED = false;
+export function setScoutingEnabled(enabled: boolean): void {
+  SCOUTING_ENABLED = enabled;
+}
+// Test seam: force the defender's variant-0 lean (all teams) for a clean A/B;
+// null = use the roster-hash lean.
+export let SCOUTING_DEFENDER_LEAN_OVERRIDE: number | null = null;
+export function setScoutingDefenderLeanOverride(p: number | null): void {
+  SCOUTING_DEFENDER_LEAN_OVERRIDE = p;
+}
+
+// --- Strategy-pick history (for the pre-round Scout / legibility) -----------
+// Each team's picks accumulate a decayed lean per strategy id (state.strategyLean,
+// recorded in match.applyStrategies). The pre-round Scout surfaces the ENEMY's
+// lean ("they've leaned Stack this match") so the player's pick becomes a read,
+// not a gamble. Read-only data — nothing in the sim acts on it (determinism-safe).
+// NOTE: an AI counter-pick consumer of this was tried and removed — the
+// defender's existing win-momentum (pickAiStrategy `1 + wins`) already self-adapts
+// to a repeated opponent, so an explicit read was redundant + inert (see memory
+// matrix-forced-vs-realistic).
+export const STRATEGY_LEAN = {
+  // Prior picks decay by this before the new round's pick (+1) is added
+  // (recent rounds weigh more; ~0.6 ≈ a 2–3 round horizon).
+  decay: 0.6,
+} as const;
+
 // --- Threat-aware in-region positioning (AI competence — Pillar B) ---------
 // When a unit settles into 'holding', instead of the legacy ≤2-hex spawn-bearing
 // cover shuffle (findCoverHoldHex) it scores nearby candidate hexes by the

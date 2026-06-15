@@ -125,6 +125,7 @@ export function startDraft(map: MapDefinition, seed: number): GameState {
     visibility: { defenders: new Set(), attackers: new Set() },
     ghosts: { defenders: {}, attackers: {} },
     beliefs: { defenders: [], attackers: [] },
+    scouting: { defenders: { a: 0, b: 0 }, attackers: { a: 0, b: 0 } },
     tracking: {},
     prevPos: {},
     ai: {},
@@ -139,6 +140,7 @@ export function startDraft(map: MapDefinition, seed: number): GameState {
     roundResult: null,
     timeoutUsed: { defenders: false, attackers: false },
     aiStrategyWins: { defenders: {}, attackers: {} },
+    strategyLean: { defenders: {}, attackers: {} },
     matchOver: false,
     matchWinner: null,
     // H3.4 — cards / playedCard fields removed; cardEffects starts empty

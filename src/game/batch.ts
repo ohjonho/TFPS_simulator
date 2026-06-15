@@ -13,8 +13,12 @@ import { assignAttributes } from './attributes.ts';
 import { assignTarget } from './movement.ts';
 import { roundFinished, stepTick } from './tick.ts';
 import { createRng } from './rng.ts';
-import { applyStrategies, eliminationWinner, defenderTeam } from './match.ts';
-import { ROUND_TICK_LIMIT } from './config.ts';
+import {
+  applyStrategies, eliminationWinner, defenderTeam,
+  endRound, recordStrategyWin, isHalftime, halftimeSwap, advanceToNextRound,
+} from './match.ts';
+import { pickAiStrategy } from './aiOpponent.ts';
+import { ROUND_TICK_LIMIT, MATCH_ROUND_COUNT, MATCH_WIN_SCORE } from './config.ts';
 import { regionCentroid } from './strategies.ts';
 
 export type SkirmishOpts = {
@@ -92,6 +96,77 @@ export function runBatch(matches: number, opts: SkirmishOpts = {}, baseSeed = 1)
     drawPct: pct(draw),
     avgTicks: Math.round((totalTicks / matches) * 10) / 10,
   };
+}
+
+// --- Full multi-round match (cross-round scouting) -------------------------
+export type MatchRoundRow = {
+  round: number;
+  defenders: Team;      // which team defended this round
+  winner: Team;
+  playerStrat: string;
+  aiStrat: string;
+  defScoutA: number;    // defender team's cumulative scouting A/B (post-this-round)
+  defScoutB: number;
+};
+export type MatchResult = {
+  winner: Team | null;  // first to MATCH_WIN_SCORE, else null (no sudden-death here)
+  scores: Record<Team, number>;
+  rounds: MatchRoundRow[];
+};
+
+export type MatchOpts = {
+  mapName?: MapDefinition['name'];
+  overrides?: Record<string, AttributeOverride>;
+  // Force both teams' strategies (clean A/B); omit → pickAiStrategy each round.
+  // NOTE: forced strategies are side-specific — a defender-only id breaks after
+  // the halftime swap. Use `maxRounds: 3` to stay within the first half.
+  playerStrategyId?: string;
+  aiStrategyId?: string;
+  // Stop after this many rounds (e.g. 3 = first half only, no side swap).
+  maxRounds?: number;
+};
+
+// Full AI-vs-AI match: both teams pick strategy (pickAiStrategy) + variant
+// (applyStrategies' weighted draw) freely, carrying cross-round state
+// (aiStrategyWins + scouting). The ONLY way to exercise cross-round scouting —
+// the single-round runStrategyRound forces both picks. Determinism: per-round
+// pickRng = seed^(round·const), mirroring the live flow.
+export function runMatch(seed: number, opts: MatchOpts = {}): MatchResult {
+  let state = buildInitialState(opts.mapName, 'standard');
+  assignAttributes(state.units, createRng(seed ^ 0x5f3759df), opts.overrides ?? {});
+  const rounds: MatchRoundRow[] = [];
+  let guard = 0;
+  while (!state.matchOver && guard++ < MATCH_ROUND_COUNT + 4) {
+    if (opts.maxRounds && rounds.length >= opts.maxRounds) break;
+    const playerTeam = state.playerTeam;
+    const aiTeam: Team = playerTeam === 'defenders' ? 'attackers' : 'defenders';
+    const pickRng = createRng((seed ^ (state.round * 0x9e3779b1)) >>> 0);
+    const playerStrat = opts.playerStrategyId ?? pickAiStrategy(state, playerTeam, state.teamSide[playerTeam], pickRng);
+    const aiStrat = opts.aiStrategyId ?? pickAiStrategy(state, aiTeam, state.teamSide[aiTeam], pickRng);
+    const defenders = defenderTeam(state); // side is stable for the round
+    let s = applyStrategies(state, playerTeam, playerStrat, aiTeam, aiStrat, pickRng, null, null);
+    const defScout = s.scouting[defenders];
+    let winner: Team | null = null;
+    for (let i = 0; i < ROUND_TICK_LIMIT; i++) {
+      s = stepTick(s);
+      if (s.roundResult && s.roundResult.winner !== 'draw') { winner = s.roundResult.winner; break; }
+      winner = eliminationWinner(s);
+      if (winner) break;
+    }
+    const w: Team = winner ?? defenderTeam(s);
+    s = endRound(s, w);
+    s = recordStrategyWin(s, w, w === playerTeam ? playerStrat : aiStrat);
+    rounds.push({ round: state.round, defenders, winner: w, playerStrat, aiStrat, defScoutA: defScout.a, defScoutB: defScout.b });
+    if (!s.matchOver) {
+      if (isHalftime(s)) s = halftimeSwap(s);
+      s = advanceToNextRound(s);
+    }
+    state = s;
+  }
+  const mw: Team | null =
+    state.scores.defenders >= MATCH_WIN_SCORE ? 'defenders'
+    : state.scores.attackers >= MATCH_WIN_SCORE ? 'attackers' : null;
+  return { winner: mw, scores: { ...state.scores }, rounds };
 }
 
 function midSpawn(state: GameState, team: Team) {

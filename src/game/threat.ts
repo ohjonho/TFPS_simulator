@@ -175,3 +175,18 @@ export function threatAt(
   const stat = exposure[side][hex.row]?.[hex.col] ?? 0;
   return THREAT.staticWeight * stat + dynamicThreatAt(hex, suspected, state.map);
 }
+
+// Static "how hard is this site to TAKE" for an attacker, 0..1 — the mean
+// attacker-side exposure (visibility to defender territory) over the site's
+// plant hexes. Higher = the plant sits under more defender sightlines, so it's
+// harder to reach + hold post-plant. Map-geometry only (no enemy state), so
+// it's a fair round-start signal for the attacker's site pick. Uses the cached
+// exposure field. Returns 0.5 (neutral) if the site has no plant hexes.
+export function siteAttackDifficulty(map: MapDefinition, site: 'A' | 'B'): number {
+  const exposure = staticExposure(map);
+  const plantHexes = site === 'A' ? map.sites.A.plantHexes : map.sites.B.plantHexes;
+  if (plantHexes.length === 0) return 0.5;
+  let sum = 0;
+  for (const h of plantHexes) sum += exposure.attacker[h.row]?.[h.col] ?? 0;
+  return sum / plantHexes.length;
+}

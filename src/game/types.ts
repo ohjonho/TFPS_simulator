@@ -468,6 +468,11 @@ export type GameState = {
   // Empty array = uninitialized (round start); updated at tick end alongside
   // ghosts/tracking, consumed by the next tick's AI (same one-tick lag).
   beliefs: Record<Team, number[]>;
+  // Cross-round scouting (match.ts): per team, the decayed A/B counts of which
+  // site it set up on when DEFENDING. An attacker reads the ENEMY team's entry
+  // to pick the soft (under-defended) site. Persists across rounds within a
+  // match (mirrors aiStrategyWins); reset only at match start.
+  scouting: Record<Team, { a: number; b: number }>;
   ghosts: Record<Team, Record<string, GhostEntry>>;
   tracking: Record<string, TrackEntry | null>;
   // Pre-tick positions, used for the sniper-stationary cone test.
@@ -494,6 +499,12 @@ export type GameState = {
   timeoutUsed: Record<Team, boolean>;
   // AI win-rate tracker per team for §16 weighted strategy pick.
   aiStrategyWins: Record<Team, Record<string, number>>;
+  // Cross-round strategy-pick lean (match.ts): per team, the decayed count of
+  // each strategy id it has picked this match. The opponent reads this in
+  // pickAiStrategy to counter-pick (they keep playing Stack → pick the
+  // stack-punisher); read strength is comms-gated. Persists across rounds
+  // within a match (mirrors aiStrategyWins); reset only at match start.
+  strategyLean: Record<Team, Record<string, number>>;
   matchOver: boolean;
   matchWinner: Team | 'draw' | null;
   // --- Pass 8: cards ---

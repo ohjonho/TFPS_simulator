@@ -9,6 +9,7 @@ import type { GameState, Side } from '../game/types.ts';
 import { strategyById } from '../game/strategies.ts';
 import { availableStrategies } from '../game/traits.ts';
 import { liveTeamStatsHtml } from './unitStatsPanel.ts';
+import { scoutReportHtml } from './scoutPanel.ts';
 
 export type CardPanelCallbacks = {
   onPickStrategy: (id: string) => void;
@@ -32,7 +33,7 @@ export function renderCardPanel(
   }
 
   const playerSide = state.teamSide[state.playerTeam];
-  host.innerHTML = strategyMenuHtml(state, playerSide);
+  host.innerHTML = scoutReportHtml(state) + strategyMenuHtml(state, playerSide);
 
   host.querySelectorAll<HTMLButtonElement>('button[data-strategy]').forEach((btn) => {
     btn.addEventListener('click', () => {

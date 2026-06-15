@@ -313,6 +313,30 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.44.0 — the round recap now tells you WHY</h3>
+    <ul>
+      <li><strong>The round-end screen opens with the matchup and how it was
+        decided</strong> — e.g. "You played Stack (defender) vs their Rush (attacker)",
+        then "Spike defused — defenders saved the round", then "Fighting centered on
+        A site". A win or loss now reads as a lesson, not a dice roll — and it trains
+        your own read for the next round (pairs with the pre-round Scout).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.43.0 — Scout report: read the enemy before you pick</h3>
+    <ul>
+      <li><strong>A Scout panel now sits above the strategy menu</strong> and reads the
+        enemy's tendencies this match — e.g. "Stack — strongly favors, 67% of recent
+        picks" — with a one-line tell and a counter hint, so your pre-round pick is a
+        read instead of a coin flip. The first round of a match shows no read yet; the
+        Scout builds one as the enemy's picks accumulate.</li>
+      <li>The read can't lie — it reflects the picks the enemy actually made, not a
+        scripted hint.</li>
+      <li>Your first match opens with a short explainer of how reading works (no read
+        yet); after you've seen a real read, it's just the enemy report from then on.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.42.0 — teams keep a running read of where you are</h3>
     <ul>
       <li><strong>Each team now maintains a live mental map of where its unseen
