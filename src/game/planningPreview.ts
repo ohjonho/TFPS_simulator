@@ -29,10 +29,16 @@ export type PlanPreview = {
   // Per player-unit A* route from current pos to target (full path including
   // start hex). Empty record if no strategy is selected.
   routes: Record<string, HexCoord[]>;
+  // Per player-unit START position after strategy-aware spawn optimization
+  // (applyStrategies relocates defenders to the spawn cell nearest their target
+  // on optimizeSpawns maps). The UI snaps units here on pick so they sit at the
+  // route origin instead of the corner. Equals the current pos on non-optimize
+  // maps (no-op there).
+  positions: Record<string, HexCoord>;
 };
 
 export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanPreview {
-  const empty: PlanPreview = { targets: {}, routes: {} };
+  const empty: PlanPreview = { targets: {}, routes: {}, positions: {} };
   if (!sel.strategyId) return empty;
 
   const aiTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
@@ -56,8 +62,12 @@ export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanP
 
   const targets: Record<string, HexCoord | null> = {};
   const routes: Record<string, HexCoord[]> = {};
+  const positions: Record<string, HexCoord> = {};
   for (const u of s.units) {
     if (u.team !== state.playerTeam) continue;
+    // `s` has the post-optimizeSpawns positions; surface them so the UI can
+    // place the unit at the route origin during planning.
+    positions[u.id] = { ...u.pos };
     // Pass 9: ask the directive evaluator what target the unit will actually
     // pursue at tick 1. If a directive provides a target (commit_site, peek,
     // safe_sniper reposition), use it; otherwise fall back to the strategy
@@ -72,7 +82,7 @@ export function previewPlayerPlan(state: GameState, sel: PlayerSelection): PlanP
       : findPath(s.map, u.pos, goal);
     if (path && path.length > 1) routes[u.id] = path;
   }
-  return { targets, routes };
+  return { targets, routes, positions };
 }
 
 // Pick a stable default AI strategy id for the preview when none has been

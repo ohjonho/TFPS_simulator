@@ -43,7 +43,7 @@ import { foundryv3 } from '../maps/foundryv3.ts';
 import { foundryv4 } from '../maps/foundryv4.ts';
 import { atoll_v2 } from '../maps/atoll_v2.ts';
 import type { MapDefinition } from './types.ts';
-import { AI, RNG_SEED_DEFAULT } from './config.ts';
+import { AI, DRAFT, RNG_SEED_DEFAULT } from './config.ts';
 import { startDraft } from './draft.ts';
 
 // Pass E m5 — `mode` chooses between Standard (today's fixed loadouts + flat
@@ -71,11 +71,15 @@ export function buildInitialState(
   };
   const map = MAPS[mapName] ?? foundry;
 
-  if (mode === 'draft') {
-    // Pass G — pre-planning draft phase: generate an 8-unit pool, return a
-    // state with no spawned units. The draft UI runs the picks and calls
-    // finalizeDraft → buildStateFromUnits to start the match.
-    return startDraft(map, seed);
+  if (mode === 'draft' || mode === 'season') {
+    // Pass G — pre-planning draft phase: generate a pool, return a state with no
+    // spawned units. The draft UI runs the picks and calls finalizeDraft →
+    // buildStateFromUnits to start the match. Season opens with a player-only
+    // draft (build your own squad, 5 of 8); main.ts captures the roster →
+    // startSeason on confirm and generates the opponents.
+    return mode === 'season'
+      ? startDraft(map, seed, { playerOnly: true, poolSize: DRAFT.seasonPoolSize, picks: DRAFT.picksPerTeam })
+      : startDraft(map, seed);
   }
 
   // Standard mode: today's fixed-loadout assignment path.

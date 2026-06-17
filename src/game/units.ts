@@ -83,6 +83,7 @@ export function createTeam(
   const positions = placeSpawns(spawns, slotCount, team === 'defenders' ? 1 : -1);
   return loadouts.map((weapon, i): Unit => ({
     id: `${idPrefix}${i + 1}`,
+    name: '', // placeholder; assignAttributes assigns the handle at match start
     team,
     weapon,
     pos: positions[i],

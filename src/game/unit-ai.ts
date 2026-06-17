@@ -233,6 +233,33 @@ export function bestHoldCellInRegion(
   return best;
 }
 
+// Near-edge target selection — the passable region cell nearest `from` that
+// isn't already occupied. Used for defensive collapse on maps WITHOUT the
+// threat-matrix cell-scorer (threatTargeting off): converging defenders head to
+// the breach edge of the contacted site nearest them — and naturally spread,
+// since each arrives from a different bearing — instead of all funnelling to the
+// one far-corner centre cell (the "everyone sprints cross-map to one hex" look).
+// No safety bias, so it meets the breach at the front rather than ceding it the
+// way the threat-matrix cell did on tight maps. Pure + deterministic (fixed
+// iteration; ties → lower row, then col).
+export function nearestCellInRegion(
+  candidates: readonly HexCoord[],
+  from: HexCoord,
+  map: MapDefinition,
+  occupied: ReadonlySet<string>,
+): HexCoord | null {
+  let best: HexCoord | null = null;
+  let bestD = Infinity;
+  for (const h of candidates) {
+    if (!passableAt(map, h)) continue;
+    if (occupied.has(`${h.col},${h.row}`)) continue;
+    const d = hexDistance(h, from);
+    if (best === null || d < bestD) { best = h; bestD = d; continue; }
+    if (d === bestD && (h.row < best.row || (h.row === best.row && h.col < best.col))) best = h;
+  }
+  return best;
+}
+
 // Sightline-aware cover scoring (Pass 7.8). Rank the candidate's 6 neighbors by
 // how close their bearing is to the threat bearing — the "front" neighbor is
 // the one in the threat's direction. A wall there fully blocks LoS (4); cover

@@ -31,7 +31,7 @@ export function renderSidePanel(
   // Pass G — the right sidebar stays empty during the draft phase; the draft
   // panel overlay covers the canvas area and surfaces its own roster preview.
   if (state.phase === 'draft') {
-    host.innerHTML = '<h2>Draft</h2><p class="hint">Pool of 8 — pick 3 to build your team.</p>';
+    host.innerHTML = '<h2>Draft</h2><p class="hint">Pick your squad from the pool.</p>';
     return;
   }
 
@@ -101,7 +101,8 @@ function rosterHtml(state: GameState, team: 'defenders' | 'attackers', label: st
     return `
       <li data-roster-unit="${u.id}">
         <div class="ru-line1">
-          <strong>${u.id}</strong>
+          <strong>${u.name || u.id}</strong>
+          <span class="ru-id">${u.id}</span>
           <span class="ru-weapon">${u.weapon}</span>
           <span class="ru-hp">HP ${u.hp}/${UNIT_DEFAULTS.maxHp}</span>
           ${off}${dead}

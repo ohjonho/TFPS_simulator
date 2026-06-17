@@ -135,6 +135,10 @@ export type VisibleAttributes = {
 
 export type Unit = {
   id: string;
+  // Player handle (esports gamertag) for roster legibility + attachment. The
+  // positional id (D1/A1) is the spatial tag; `name` is who they are. Assigned
+  // by names.assignNames after the sim rolls (no RNG-stream perturbation).
+  name: string;
   team: Team;
   weapon: Weapon;
   // Offset coordinate (col,row), matching MapDefinition.grid indexing.
@@ -209,7 +213,7 @@ export type ActiveCardEffect =
 export type Directive =
   | { kind: 'hold_angle'; priority: number; facingHex: HexCoord }
   | { kind: 'safe_sniper'; priority: number; angleHex: HexCoord; repositionAfterShots: number; repositionRadius: number }
-  | { kind: 'rotate_on_team_contact'; priority: number; rotateToHex: HexCoord; watchAllies: string[]; delayTicks: number }
+  | { kind: 'rotate_on_team_contact'; priority: number; rotateToHex: HexCoord; rotateToRegion?: string; watchAllies: string[]; delayTicks: number }
   | { kind: 'trade_for'; priority: number; allyId: string; windowTicks: number }
   | { kind: 'peek_and_retreat'; priority: number; peekHex: HexCoord; coverHex: HexCoord; cadenceTicks: number }
   | { kind: 'commit_site'; priority: number; siteHex: HexCoord; leaveOnContactInRegions: string[] }
@@ -308,7 +312,7 @@ export type Phase = 'planning' | 'resolution' | 'draft';
 //              ([40, 60] uniform) + random traits/skills/role/hero. Replaces
 //              the old 'randomize' mode — the auto-draft sub-toggle within
 //              the draft UI recovers the "just RNG it" feel.
-export type MatchMode = 'standard' | 'draft';
+export type MatchMode = 'standard' | 'draft' | 'season';
 
 // Pass G — pre-planning draft state. Present on GameState only while
 // phase === 'draft'; cleared on finalizeDraft. `pool` units carry pool-
@@ -527,4 +531,23 @@ export type GameState = {
   // Pass G — draft state, present only while phase === 'draft'. Cleared on
   // finalizeDraft. Optional so non-draft modes carry no extra payload.
   draft?: DraftState;
+  // --- v1 campaign (season) ---
+  // Progressive strategy unlock. When set (non-null), the strategy menu AND the
+  // AI's pick are restricted to these strategy ids — the campaign opens on the
+  // basics and unlocks the advanced reads over the first few matches. Absent /
+  // null = no restriction (standard / draft / fully-unlocked season). Set by
+  // season.buildSeasonMatch; carries across rounds via the startRound spread.
+  unlockedStrategyIds?: readonly string[] | null;
+  // Scripted tutorial opponent. When set, the AI plays this fixed strategy for
+  // the given side instead of the weighted pick — the campaign's first match
+  // faces a telegraphed opponent so the player learns read → counter cleanly.
+  // Absent / null = the normal weighted picker. Set by season.buildSeasonMatch.
+  scriptedAiStrategy?: Partial<Record<Side, string>> | null;
+  // Campaign opponent identity. `opponentName` is the org the player faces this
+  // match; `opponentLean` is its scoutable tendency per side — the AI leans this
+  // strategy + site, and the Scout surfaces it from round 1 so the pick is a real
+  // read. Set by season.buildSeasonMatch; consumed by aiOpponent.pickAiStrategy,
+  // match.variantWeights, and ui/scoutPanel. Absent outside a season.
+  opponentName?: string;
+  opponentLean?: Partial<Record<Side, { strategy: string; site: 'A' | 'B' | null }>>;
 };

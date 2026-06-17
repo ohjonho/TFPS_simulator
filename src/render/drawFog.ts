@@ -6,7 +6,8 @@
 import type { GameState } from '../game/types.ts';
 import { hexToPixel, hexCorners } from '../game/hex.ts';
 import { hexKey } from '../game/vision.ts';
-import { HEX, VISION_COLORS, WEAPON_GLYPH } from '../game/config.ts';
+import { shortLabels } from '../game/names.ts';
+import { HEX, VISION_COLORS } from '../game/config.ts';
 
 export function drawFog(ctx: CanvasRenderingContext2D, state: GameState): void {
   const visible = state.visibility[state.playerTeam];
@@ -36,7 +37,8 @@ export function drawFog(ctx: CanvasRenderingContext2D, state: GameState): void {
       : VISION_COLORS.ghostDefender;
   const side = HEX.size * 1.25;
   const half = side / 2;
-  const glyphPx = Math.round(HEX.size * 0.85);
+  const labelPx = Math.round(HEX.size * 0.62);
+  const labels = shortLabels(state.units);
 
   ctx.save();
   for (const enemyId of Object.keys(ghosts)) {
@@ -46,10 +48,10 @@ export function drawFog(ctx: CanvasRenderingContext2D, state: GameState): void {
     ctx.fillStyle = ghostColor;
     ctx.fillRect(x - half, y - half, side, side);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.font = `bold ${glyphPx}px ui-monospace, Consolas, monospace`;
+    ctx.font = `bold ${labelPx}px ui-monospace, Consolas, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(WEAPON_GLYPH[enemy.weapon], x, y + 1);
+    ctx.fillText(labels[enemy.id] ?? enemy.id, x, y + 1);
   }
   ctx.restore();
 }

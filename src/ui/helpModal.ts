@@ -16,8 +16,11 @@ const HELP_SEEN_KEY = 'tfps:v0:help-seen';
 type Tab = 'play' | 'glossary' | 'patch';
 let activeTab: Tab = 'play';
 
-export function showHelpModal(): void {
-  activeTab = 'play';
+// `tab` opens straight to a section (the menu's "Patch notes" / "Guidebook"
+// entries use this). Guarded so passing the function directly as a click handler
+// — where the arg is a MouseEvent — still resolves to a valid tab.
+export function showHelpModal(tab?: Tab): void {
+  activeTab = tab === 'glossary' || tab === 'patch' || tab === 'play' ? tab : 'play';
   open();
 }
 
@@ -94,13 +97,13 @@ const HOW_TO_PLAY = `
   <section>
     <h3>Planning phase</h3>
     <ol>
-      <li><strong>Pick a strategy</strong> (left panel). Baseline 6: Hold /
-        Stack / Pressure (defender), Execute / Rush / Control (attacker).
-        Your roster's traits unlock <strong>variant strategies</strong>
-        — e.g. a Sentinel on the team adds "Anchor Hold", a Lurker adds
-        "Patient Flank", a Leader adds "Coordinated Lockdown". Variants
-        have higher ceilings but demand more from your roster's
-        Discipline.</li>
+      <li><strong>Pick a strategy</strong> (left panel). Every roster sees the
+        same menu: the six basics (Hold / Stack / Pressure on defense, Execute /
+        Rush / Control on attack) plus the advanced reads (Mind Games, Coordinated
+        Lockdown, Rotate, and Mid Control on the large map). Check the
+        <strong>Scout</strong> above the menu for the enemy's read first — the pick
+        is a read, not a gamble. (In Season the advanced plays unlock over the first
+        few matches.)</li>
       <li><strong>For multi-site strategies</strong> (Stack / Execute / Rush)
         pick site <strong>A</strong> or <strong>B</strong> in the sub-row
         that appears.</li>
@@ -131,8 +134,9 @@ const HOW_TO_PLAY = `
       <li>Attackers stand on a plant hex for 2 ticks (with no defender on
         that site's plant zone) to <strong>plant the spike</strong>.</li>
       <li>Once planted, attackers win if the spike <strong>detonates</strong>
-        20 ticks later. Defenders can <strong>defuse</strong> by holding the
-        site for 4 ticks.</li>
+        30 ticks later. Defenders can <strong>defuse</strong> by holding the
+        site for 3 ticks. A planting/defusing unit is locked — it can't move or
+        shoot while the timer runs.</li>
       <li>If neither team is eliminated and there's no plant, the round
         ends on the 60-tick timer — defender side wins.</li>
     </ul>
@@ -150,15 +154,17 @@ const HOW_TO_PLAY = `
   <section>
     <h3>Modes</h3>
     <ul>
-      <li><strong>Draft</strong> (default): pool of 8 random units (≥2 of
-        each weapon); you and the AI snake-pick 3 each (P-A-A-P-P-A). The
-        leftover 2 are discarded. Drafted units carry random attributes
-        (40–60) + 3 random traits each. The seed appears in the right
-        panel; same seed reproduces the same pool + AI picks.</li>
-      <li><strong>Standard</strong> (debug toggle): fixed 2 rifles + 1
-        sniper per team, all attributes at 50. The validation baseline —
-        removes attribute / trait RNG so you can see strategy effects
-        cleanly.</li>
+      <li><strong>Season</strong> (campaign): the headline mode — a story intro,
+        a build-your-squad draft (pick 5 from a pool of 8), then a gauntlet of
+        matches toward a goal, carrying one roster the whole way. Strategies unlock
+        as you go. See "The campaign" in the Glossary.</li>
+      <li><strong>Draft</strong>: a single match — you and the AI snake-pick 5
+        players each from a 14-unit pool (≥2 of each weapon). Drafted units carry
+        random attributes (40–60) + two tactical traits and a personality. The seed
+        in the right panel reproduces the same pool + AI picks.</li>
+      <li><strong>Standard</strong> (testing): fixed four rifles + one sniper per
+        team, all attributes at 50 — removes attribute / trait RNG so you can read
+        strategy effects cleanly.</li>
     </ul>
   </section>
 `;
@@ -167,110 +173,165 @@ const HOW_TO_PLAY = `
 
 const GLOSSARY = `
   <section>
-    <h3>Roles</h3>
+    <h3>The campaign (Season)</h3>
+    <p>You manage a team across a season of matches against generated opponents,
+      carrying one drafted roster the whole way. Win enough to clear the goal and
+      you take the prize — and save the shop. A few things ramp up as you go:</p>
     <ul class="glossary">
-      <li><strong>Vanguard</strong> — high aggression (70). Takes first
-        contact, pushes the lead.</li>
-      <li><strong>Tactician</strong> — balanced aggression (50). Holds
-        angles, supports trades.</li>
-      <li><strong>Warden</strong> — low aggression (35). Anchors sites,
-        rotates last.</li>
-      <li><strong>Specialist</strong> — flex (55). The wildcard; Adapt
-        card lets them mimic another role for the round.</li>
+      <li><strong>Build-your-squad draft</strong> — pick 5 players from a pool of
+        8. No co-drafting opponent; rivals are their own teams.</li>
+      <li><strong>A teaching first match</strong> — your opening opponent is
+        telegraphed (Rushes on attack, even Hold on defense) so you can practise
+        reading and countering safely.</li>
+      <li><strong>Strategies unlock</strong> — match 1 is the six basics; match 2
+        adds Mind Games; match 3 opens everything. The opponent ramps up with you.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Reading the opponent</h3>
+    <p>The pick is meant to be a <em>read</em>, not a coin flip. The
+      <strong>Scout</strong> (above the strategy menu) reads the enemy's recent
+      picks this match into a lean — "leans Stack" — plus a one-line tell and a
+      counter hint. The read can't lie: it reflects the picks they actually made.</p>
+    <ul class="glossary">
+      <li>The first round of a match shows no read yet — the Scout builds one as
+        their picks accumulate. (Sides swap at halftime, so the read resets.)</li>
+      <li>Counters are mostly <strong>soft</strong> — a correct read tilts the
+        round in your favour, it doesn't decide it, so any pick can still win.
+        A few advanced plays carry sharper, riskier edges.</li>
+      <li>The round <strong>recap</strong> tells you the matchup, how it was
+        decided, and whether the Scout's read held — so you learn the counters
+        and sharpen your own read.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Strategies — attack</h3>
+    <ul class="glossary">
+      <li><strong>Execute</strong> — controlled split: three rifles breach one
+        site through its entry while a lane-watcher and mid sniper cover the
+        flanks. Safer than Rush against mid/flank picks.</li>
+      <li><strong>Rush</strong> — all-in flood of one site, sniper trailing for
+        cleanup. Fast and head-down, no mid presence.</li>
+      <li><strong>Control</strong> — slow read: probe both lanes, then commit all
+        four to whichever site is held by fewer defenders; mid sniper picks. Punishes
+        a lopsided defense.</li>
+      <li><strong>Mind Games</strong> <em>(advanced)</em> — fake one site, then
+        swing to the other where the real plant goes. Punishes defenders who
+        over-rotate to the fake.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Strategies — defense</h3>
+    <ul class="glossary">
+      <li><strong>Hold</strong> — even split: an anchor on each site, a flank
+        watcher, and a mid sniper. No site bias; rotate through the connectors.</li>
+      <li><strong>Stack</strong> — cluster one site (anchor + off-angle crossfire)
+        with a mid watcher and one eye on the off-site for rotates.</li>
+      <li><strong>Pressure</strong> — push mid off spawn and contest the choke;
+        sniper holds the long lane. (Not offered on the large Foundry IV.)</li>
+      <li><strong>Mid Control</strong> — hold the center, collapse on contact:
+        three garrison the rotation hub, one tripwire anchors each site, and the
+        hub floods whichever site is hit. Built for large maps. (Foundry IV.)</li>
+      <li><strong>Mind Games</strong> <em>(advanced)</em> — show one site, hold the
+        other; the ambush springs when the quiet site is hit. Punishes attacker
+        over-commits.</li>
+      <li><strong>Coordinated Lockdown</strong> <em>(advanced)</em> — all five stack
+        one site for overlapping crossfire. Wins it outright, concedes the other —
+        high variance.</li>
+      <li><strong>Rotate</strong> <em>(advanced)</em> — mobile defense: hold an
+        angle, then swap sites in pairs on a teammate's contact. Strong against slow
+        or split attacks, weak to fast direct hits.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Roles</h3>
+    <p>Role sets a unit's base aggression and shapes where it sets up and how it
+      picks fights — and it adapts to the side being played.</p>
+    <ul class="glossary">
+      <li><strong>Vanguard</strong> (aggression 70) — pushes first, takes the entry
+        duel, leads contact.</li>
+      <li><strong>Tactician</strong> (50) — mid-range setup, supports flanks, plays
+        for trades.</li>
+      <li><strong>Warden</strong> (35) — patient anchor, holds angles from cover,
+        rotates late; two Wardens on a site fan into a crossfire.</li>
+      <li><strong>Specialist</strong> (55) — flex slot, adapts to the picked
+        strategy.</li>
     </ul>
   </section>
   <section>
     <h3>Attributes (5 visible / 10 hidden)</h3>
-    <p>Each unit has 5 visible attributes shown as the primary stat card,
-      backed by 10 hidden sub-attributes that combat math actually reads.
-      Open the "Details (sub-attributes)" disclosure on the attributes
-      panel to see them.</p>
+    <p>Each unit shows 5 visible attributes on its stat card, backed by 10 hidden
+      sub-attributes that the combat math actually reads. Open "Details
+      (sub-attributes)" on the attributes panel to see them.</p>
     <ul class="glossary">
       <li><strong>Mechanics</strong> — shooting skill. Subs: Aim, Headshot,
         Reflexes, Weapon Affinity.</li>
-      <li><strong>Game Sense</strong> — what they perceive. Subs: Vision
-        (cone width + tracking), Map IQ (cover-seek quality).</li>
-      <li><strong>Discipline</strong> — adherence to assigned directives.
-        Sub: Tenacity (drives the per-tick directive compliance roll —
-        high-Tenacity units stay on plan; low-Tenacity drop into the
-        fallback behavior tree more often, especially on demanding
-        strategies and under fire).</li>
-      <li><strong>Improvisation</strong> — off-plan quality + stress.
-        Subs: Composure (last-alive HR scaling), Adaptability
-        <em>(generated; v1 fallback-tree quality hook)</em>.</li>
-      <li><strong>Leadership</strong> — buff aura magnitude. Sub: Comms
-        <em>(generated; v1 hero aura scaling hook)</em>.</li>
+      <li><strong>Game Sense</strong> — perception. Subs: Vision (cone width +
+        tracking), Map IQ (how wide it scans for a good hold).</li>
+      <li><strong>Discipline</strong> — sticking to the plan. Sub: Tenacity (drives
+        the per-tick compliance roll — high-Tenacity units stay on plan, low-Tenacity
+        break off, especially on demanding strategies and under fire).</li>
+      <li><strong>Improvisation</strong> — off-plan quality under stress. Subs:
+        Composure (last-alive HR scaling), Adaptability.</li>
+      <li><strong>Leadership</strong> — team coordination. Sub: Comms (scales the
+        trade bonus when a teammate has just fired).</li>
     </ul>
   </section>
   <section>
-    <h3>Traits — 23 total, 3 per unit</h3>
-    <p>Every unit rolls one Skill + one Behavioral + one Personality trait.
-      Each trait gives sub-attribute bonuses (visible in the panel) AND
-      may carry an <code>unlocks</code> list that adds extra strategies
-      to your team's strategy menu. Skill traits are pure stat; every
-      behavioral + personality trait unlocks one variant strategy when
-      a unit on your team carries it. Hover any trait chip for the full
-      description and unlocks. Trait tier (starter / earned / event) is
-      shown in the tooltip — v1 progression uses it to gate scout /
-      XP-earned / event-triggered acquisition.</p>
-    <h4>Skill (7)</h4>
+    <h3>Traits — 2 tactical + 1 personality per unit</h3>
+    <p>Every unit draws two distinct <strong>tactical traits</strong> from one pool
+      plus a single <strong>personality</strong>. Each gives small sub-attribute
+      bonuses; tactical traits also carry a combat or behaviour hook. Hover any chip
+      for the full description.</p>
+    <h4>Tactical (8)</h4>
     <ul class="glossary">
-      <li><strong>Sharp Aim</strong> — +10 HR on every shot. +15 Aim.</li>
-      <li><strong>Headhunter</strong> — +10 HS with rifles. +15 Headshot.</li>
-      <li><strong>Eagle Eye</strong> — +30° wider cone. +10 Vision.</li>
-      <li><strong>First Shot</strong> — +20 HR on first shot of an
-        engagement (Reflexes scales magnitude).</li>
-      <li><strong>Spray Down</strong> — +15 HR after the first 3 engagement
-        ticks (sustained fire). Opposite of First Shot.</li>
-      <li><strong>Deadeye</strong> — +15 HR at long range.</li>
-      <li><strong>Close Quarters</strong> — +15 HR at short range.</li>
+      <li><strong>Aggressor</strong> — lower bar to take a duel, never retreats,
+        hunts before defusing. Strong on attack; over-extends on defense.</li>
+      <li><strong>Anchor</strong> — holds an angle; patient, and deadlier once it
+        has settled a few ticks. Never retreats.</li>
+      <li><strong>Freelancer</strong> — high ceiling, uncoachable: frequently breaks
+        the plan to play its own game.</li>
+      <li><strong>Disciplined</strong> — executes the called strategy reliably under
+        pressure.</li>
+      <li><strong>Flanker</strong> — perimeter routes, unseen until it fires, +HR
+        hugging walls.</li>
+      <li><strong>Trader</strong> — sharper right after a teammate fires (scales
+        with Leadership).</li>
+      <li><strong>Marksman</strong> — a flat aim edge on every shot. The prized
+        find.</li>
+      <li><strong>Clutch</strong> — surges as the last one standing (scales with
+        Composure).</li>
     </ul>
-    <h4>Behavioral (8)</h4>
+    <h4>Personality (4)</h4>
+    <p>Extroversion × task/people. For now a small in-match stat nudge; the real
+      weight (locker-room chemistry, sponsors) arrives with the management layer.</p>
     <ul class="glossary">
-      <li><strong>Sentinel</strong> — +25 HR / +20 HS stationary 3+ ticks.
-        No retreat.</li>
-      <li><strong>Run-n-Gun</strong> — +0.5 speed, +15 HR moving.</li>
-      <li><strong>Lurker</strong> — +20 HR / +10 HS wall-adjacent.
-        Retreats to wall.</li>
-      <li><strong>Entry</strong> — +20/+15 first 3 engagement ticks,
-        then −10 HR. No retreat.</li>
-      <li><strong>Trader</strong> — +15 HR when ally fired last 3 ticks.</li>
-      <li><strong>Clutch</strong> — +20/+15 last alive (Composure scales).
-        No retreat.</li>
-      <li><strong>Roamer</strong> — mobile defender; rotates between
-        angles. +Reflexes +MapIQ −Tenacity.</li>
-      <li><strong>Hot Head</strong> — engages on sight; ignores hold
-        orders. +Aim −Tenacity.</li>
-    </ul>
-    <h4>Personality (8)</h4>
-    <ul class="glossary">
-      <li><strong>Big Brain</strong> — reads enemy rotations. +MapIQ
-        +Tenacity +Adaptability.</li>
-      <li><strong>Ego</strong> — high-Aim freelancer. +Aim −Tenacity
-        (won't follow plan).</li>
-      <li><strong>Composed</strong> — steady under pressure. +15 Composure.</li>
-      <li><strong>Leader</strong> — buffs allies. +20 Comms +Tenacity.</li>
-      <li><strong>Lone Wolf</strong> — solo plays. +Aim −Comms.</li>
-      <li><strong>Paranoid</strong> — over-rotates, sees ghosts.
-        +Vision +Reflexes −Tenacity.</li>
-      <li><strong>Patient</strong> — +15 HR after tick 30. Rewards long
-        rounds.</li>
-      <li><strong>Old Pro</strong> — veteran feel; +5 to Aim, Composure,
-        MapIQ, Tenacity. v1 "earned via match XP".</li>
+      <li><strong>Firebrand</strong> — extrovert, task-driven; vocal competitor who
+        plays for the highlight.</li>
+      <li><strong>Catalyst</strong> — extrovert, people-first; rallies the team and
+        keeps everyone talking.</li>
+      <li><strong>Analyst</strong> — introvert, task-driven; quiet, methodical,
+        studies the game.</li>
+      <li><strong>Stabilizer</strong> — introvert, people-first; low-ego glue that
+        steadies the room.</li>
     </ul>
   </section>
   <section>
-    <h3>Heroes / Origins — passive abilities</h3>
-    <p>One hero per unit; each grants one always-on ability. No
-      decision surface — heroes do their thing automatically.</p>
+    <h3>Heroes — passive + signature active</h3>
+    <p>One hero per unit. Each keeps a weak always-on passive and an active that
+      arms at round start and fires once, the moment its condition is met.</p>
     <ul class="glossary">
-      <li><strong>Angelic</strong> — Guardian Aura: allies within 5 hex
-        of this unit get +1 max HP for the round, always on.</li>
-      <li><strong>Techy</strong> — Tactical Scan: reveals all enemy
-        positions to your team for 3 ticks at round start.</li>
-      <li><strong>Cursed</strong> — Mark Target: the first enemy this
-        unit spots each round is auto-marked all round — allies get
-        +20 HR / +10 HS vs the mark, plus 5 ticks of vision past LoS.</li>
+      <li><strong>Angelic</strong> — Field Medic: the first time an ally in sight is
+        hurt but survives, the Angelic steps to them, heals a big chunk, and buffs
+        their aim. A pure support.</li>
+      <li><strong>Techy</strong> — Recon (slightly wider cone) + Tactical Scan: held
+        until first contact, then briefly reveals enemies around the nearer site.</li>
+      <li><strong>Cursed</strong> — Hunter (small aim edge) + Hunter's Mark: the
+        first enemy spotted takes +HR/+HS from your team until it's damaged or the
+        hunt times out.</li>
+      <li><strong>Bulwark</strong> — Anchor (a little extra max HP) + Fortify: the
+        first time it's hit, it and nearby allies harden up for a few ticks. The
+        defensive wall.</li>
     </ul>
   </section>
   <section>
@@ -278,13 +339,28 @@ const GLOSSARY = `
     <ul class="glossary">
       <li><strong>Rifle (R)</strong> — balanced; good at mid-range.
         70 / 75 / 55 % short / medium / long.</li>
-      <li><strong>Sniper (S)</strong> — same speed as other units. If it
-        moved within the last 2 ticks its HR drops sharply (moving table).
-        Stationary: 30 / 60 / 80 %; moving: 15 / 30 / 45 %. Vision cone
-        narrows when stationary (45° → 22.5°).</li>
-      <li><strong>Shotgun (G)</strong> — point-blank lethal.
-        80 / 30 / 5 %. Prefers tight corners and cover; avoids long
-        sightlines.</li>
+      <li><strong>Sniper (S)</strong> — same move speed as everyone, but if it moved
+        within the last 2 ticks its HR drops to the moving table. Stationary
+        30 / 60 / 80 %; moving 15 / 30 / 45 %. Cone narrows when set (45° → 22.5°).
+        Stand still to shoot.</li>
+      <li><strong>Shotgun (G)</strong> — point-blank lethal. 80 / 30 / 5 %. Prefers
+        tight corners and cover; avoids long sightlines.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>Match flow &amp; the spike</h3>
+    <ul class="glossary">
+      <li><strong>First to 4 round wins</strong> takes the match (6 rounds). Sides
+        swap at <strong>halftime</strong> after round 3, so each team plays both
+        attack and defense.</li>
+      <li><strong>Plant:</strong> an attacker stands on a plant hex for 2 ticks
+        (no defender on that site's plant zone). Planting/defusing locks the unit —
+        it can't move or shoot while the timer runs.</li>
+      <li><strong>Detonate / defuse:</strong> once planted, the spike detonates 30
+        ticks later (attackers win) unless defenders hold the site for 3 ticks to
+        defuse.</li>
+      <li><strong>Timer:</strong> with no elimination and no plant, the round ends
+        on the 60-tick timer — the defender side wins.</li>
     </ul>
   </section>
   <section>
@@ -312,6 +388,130 @@ const GLOSSARY = `
 // happened, not just what.
 
 const PATCH_NOTES = `
+  <section>
+    <h3>v0.54.0 — read the card on the draft, then set the tone</h3>
+    <ul>
+      <li><strong>"How to read a player card" is now built into the draft screen</strong>
+        — a collapsible legend right above the pool (weapon, role vs hero, traits,
+        attributes) instead of a pop-up that interrupts you.</li>
+      <li><strong>New: a post-draft team talk.</strong> With your squad picked, you give
+        your first message to the room and choose the club's early identity — <em>We
+        hunt</em> (push harder), <em>Trust the plan</em> (more disciplined), or <em>Stay
+        cool</em> (steadier in the clutch). It's a small, season-long lean on your whole
+        roster.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.53.0 — a proper welcome + a rifle-first draft</h3>
+    <ul>
+      <li><strong>The campaign now opens on a welcome briefing</strong> after the intro —
+        a one-page "how the game works" (read the opponent → counter → win the season), a
+        few coaching tips, and your first steps — before you draft.</li>
+      <li><strong>The draft pool is rifle-weighted.</strong> It used to roll sniper-heavy
+        and leave you short of riflers; now you can always build a proper four-rifle,
+        one-sniper squad.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.52.0 — scout the opponent before you pick</h3>
+    <ul>
+      <li><strong>Each campaign opponent is now a named team with a scoutable
+        tendency.</strong> The Scout reads it from the very first round — "Crimson
+        Vanguards lean Rush A" — with the tell and the counter, so your pick is a real
+        read, not a blind gamble. Opponents lean their favoured strategy about two
+        rounds in three, and when they run it they commit to their preferred site about
+        six times in seven — so the site read actually pays off instead of being a coin
+        flip. (The tutorial opponent's "Rush A" is now reliable, too.)</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.51.0 — your players have names</h3>
+    <ul>
+      <li><strong>Every player now has a handle</strong> (Comet, Razor, Bolt …) shown on
+        the draft card, the roster, and the unit panel — your squad reads as a team, not
+        a set of slots. On the map, units are tagged with their handle's initials.</li>
+      <li><strong>In the campaign, the enemy team is hidden during planning</strong> — you
+        read them through the Scout, not by seeing their setup. (The "Enemies" toggle and
+        the V overlay still reveal them.)</li>
+      <li><strong>Units now sit where their plan puts them.</strong> When a strategy
+        repositions your defenders (on the smart-spawn maps), they move there the moment
+        you pick it — so the preview paths start from the players instead of trailing back
+        to the spawn corner.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.50.0 — defenders move to the fight, not the corner</h3>
+    <ul>
+      <li><strong>Defenders collapsing or rotating onto a contested site now head to
+        the near edge of it — the spot closest to them — instead of all funnelling to
+        the site's far-corner centre.</strong> Before, a called rotation sent every
+        defender sprinting across the map to the same hex: it looked chaotic and
+        arrived late. Now they take the short path to their side of the site and
+        spread out naturally, so retakes read clearly and land on time. Most visible
+        on the tight maps (Canyon); the large-map defense (Foundry IV) keeps its
+        existing smart-retake positioning.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.49.0 — campaign polish</h3>
+    <ul>
+      <li><strong>The campaign now runs on Canyon.</strong> Its tight, winding layout
+        keeps unit movement legible — short rotations, forced contact — instead of the
+        long cross-map wandering that made the larger maps frustrating to watch.</li>
+      <li><strong>Units are labelled by id on the map</strong> (D1, A2 …) instead of a
+        weapon letter, so you can tell who's where at a glance. Weapon, role and the
+        rest are in the side panels and on hover.</li>
+      <li><strong>The map picker is hidden during a season</strong> (it runs on one
+        fixed map) and <strong>tutorial tips moved to the top of the screen</strong>,
+        in the natural eye-line.</li>
+      <li><strong>New draft tutorial: "How to read a player card."</strong> The first
+        campaign draft opens an explainer that walks through every element of a recruit
+        — weapon, role vs hero, traits, and attributes — with a live example card.
+        Reopen it any time from the draft header.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.48.0 — the campaign opens</h3>
+    <ul>
+      <li><strong>Season is now a campaign.</strong> It opens on a short story — your
+        local LAN café is about to close, so you pitch its owner on managing a team to
+        win the circuit prize and save the shop — then a build-your-squad draft: pick 5
+        players from a pool of 8, no co-drafting opponent.</li>
+      <li><strong>The first match teaches the read.</strong> Your opening opponent is
+        telegraphed — it Rushes one site head-on while attacking and sits in an even
+        Hold while defending — so you can practise reading and countering before the
+        real field arrives.</li>
+      <li><strong>Strategies unlock as you go.</strong> Match 1 is the six basics
+        (Execute / Rush / Control · Hold / Stack / Pressure); match 2 adds Mind Games
+        (the fake-and-swing read, both sides); match 3 opens everything. The opponent
+        ramps up in step with you.</li>
+      <li><strong>New: an in-game Guidebook.</strong> Open it from the main menu or the
+        "?" button any time — match flow, strategies, roles, traits, heroes, weapons,
+        and how reading the opponent works, organised by topic. Light tooltips point the
+        way during your first match.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.47.0 — main menu + Season mode</h3>
+    <ul>
+      <li><strong>The game now opens on a main menu</strong> — choose Season, Draft, or
+        Standard, or open Settings (map + seed) and Patch notes. A "Menu" button in the top
+        bar returns there any time.</li>
+      <li><strong>New: Season</strong> — draft a roster once, then run a gauntlet of matches
+        against generated opponents on Foundry II, carrying your squad the whole way. Win 4
+        of 6 to make it. The pre-round Scout reads each opponent; opponent personalities and
+        a between-match development choice are coming next.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.46.0 — the recap closes the read loop</h3>
+    <ul>
+      <li><strong>The round recap now tells you whether the Scout's read held</strong> —
+        "The Scout called it: they stuck with Stack", or "They mixed it up: the Scout's
+        lean was Stack, but they ran Rush." It closes the loop between your pre-round read
+        and the result, so you learn how reliable your reads are.</li>
+    </ul>
+  </section>
   <section>
     <h3>v0.45.0 — Foundry IV is the default Foundry map</h3>
     <ul>

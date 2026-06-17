@@ -245,6 +245,20 @@ export const STRATEGY_LEAN = {
   decay: 0.6,
 } as const;
 
+// --- Campaign opponent identity (scoutable lean) ----------------------------
+// Each season opponent has a fixed, pre-scoutable tendency: a strategy lean per
+// side + a preferred site. The AI picks the leaned strategy `pickChance` of the
+// time (else a normal weighted pick among the rest, so the rate is exact); when
+// it DOES run the leaned strategy, `siteWeight` biases its A/B variant toward
+// the preferred site so "they lean Rush A" reads reliably instead of leaving a
+// 50/50 site guess. Strong by design (the player should feel the read pay off);
+// the soft-counter margins keep it from being oppressive. Only set on the live
+// season match (GameState.opponentLean) → the harness/standard path is untouched.
+export const OPPONENT_LEAN = {
+  pickChance: 0.67,  // ~67% the leaned strategy (the rest weighted among others)
+  siteWeight: 6,     // leaned-site variant weight vs 1 → ~86% the preferred site
+} as const;
+
 // --- Threat-aware in-region positioning (AI competence — Pillar B) ---------
 // When a unit settles into 'holding', instead of the legacy ≤2-hex spawn-bearing
 // cover shuffle (findCoverHoldHex) it scores nearby candidate hexes by the
@@ -920,6 +934,10 @@ export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
 // before accepting whatever the pool ended up with.
 export const DRAFT = {
   poolSize: 14,
+  // Season (campaign) draft is player-only — a smaller pool the player picks
+  // their whole squad from (5 of 8), no AI co-draft. Kept deliberately small so
+  // a new manager isn't overwhelmed at the start of the campaign.
+  seasonPoolSize: 8,
   picksPerTeam: 5,
   // 'P' = player, 'A' = AI. Resolved to actual team identities by startDraft
   // using the player team. 10-pick snake (5 each): P-A-A-P-P-A-A-P-P-A.

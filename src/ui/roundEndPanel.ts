@@ -6,6 +6,7 @@ import type { GameState, Team, Unit } from '../game/types.ts';
 import type { RoundStats } from '../game/stats.ts';
 import { computeRoundStats } from '../game/stats.ts';
 import { strategyById } from '../game/strategies.ts';
+import { HALFTIME_AFTER_ROUND } from '../game/config.ts';
 
 function teamLabel(team: Team): string {
   return team === 'defenders' ? 'D' : 'A';
@@ -125,8 +126,30 @@ function whyBlock(state: GameState, roundIndex: number): string {
       : `<div class="re-zones">Fighting spread across the map (${dead.length} falls).</div>`;
   }
 
+  // Read loop: did the enemy follow the tendency the Scout flagged pre-round, or
+  // mix it up? Reconstruct this half's prior enemy picks (the same data the Scout
+  // read — it resets at halftime) and compare their modal to what they actually ran.
+  let readLine = '';
+  const halfStart = roundIndex <= HALFTIME_AFTER_ROUND ? 1 : HALFTIME_AFTER_ROUND + 1;
+  const priorEnemyPicks: string[] = [];
+  for (const e of state.events) {
+    if (e.type !== 'strategyPick' || e.roundIndex < halfStart || e.roundIndex >= roundIndex) continue;
+    const ep = e.playerTeam === pTeam ? e.aiStrategy : e.playerStrategy;
+    if (ep) priorEnemyPicks.push(ep);
+  }
+  if (priorEnemyPicks.length > 0 && eId) {
+    const tallies: Record<string, number> = {};
+    for (const p of priorEnemyPicks) tallies[p] = (tallies[p] ?? 0) + 1;
+    const leanId = Object.entries(tallies).sort((a, b) => b[1] - a[1])[0][0];
+    const leanName = strategyById(leanId, eSide, state.map)?.name ?? leanId;
+    readLine = eId === leanId
+      ? `<div class="re-read">The Scout called it — they stuck with <strong>${leanName}</strong>.</div>`
+      : `<div class="re-read">They mixed it up — the Scout's lean was <strong>${leanName}</strong>, but they ran ${eName} this round.</div>`;
+  }
+
   return `<div class="re-why">
       <div class="re-matchup">${matchup}</div>
+      ${readLine}
       <div class="re-outcome">${outcome}</div>
       ${zoneLine}
     </div>`;

@@ -515,6 +515,15 @@ const MID_CONTROL: Strategy = {
 // maps (Foundryv2 / Atoll_v2 / Canyon) share it; the retired v1 maps point here
 // too (they're out of the picker). Map-specific native sets can be dropped in
 // per map name later if a layout's balance needs it.
+// The starter set every map shares — the three baseline attacks and the three
+// baseline defenses. The campaign (season) opens on exactly these and unlocks
+// the advanced reads (Mind Games, Coordinated Lockdown, Rotate, Mid Control)
+// over its first matches; everything outside the picker / season starts fully
+// unlocked. Referenced by season.unlockedStrategiesForMatch.
+export const BASIC_STRATEGY_IDS: readonly string[] = [
+  'Execute', 'Rush', 'Control', 'Hold', 'Stack', 'Pressure',
+];
+
 const ALL_STRATEGIES = [...ATK, ...DEF];
 const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   Foundry: ALL_STRATEGIES,

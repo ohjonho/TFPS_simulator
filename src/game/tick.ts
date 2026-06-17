@@ -37,6 +37,7 @@ import {
 } from './vision.ts';
 import {
   bestHoldCellInRegion,
+  nearestCellInRegion,
   findCoverHoldHex,
   findCoverWithLosTo,
   findThreatAwareHoldHex,
@@ -421,6 +422,17 @@ export function stepTick(state: GameState): GameState {
             collapseTarget = best;
             targetSource = 'collapse-matrix';
           }
+        }
+      } else if (collapseSiteRegion) {
+        // No threat-matrix on this map (tight maps where the safety-biased cell
+        // cedes the breach): collapse to the NEAREST cell of the contacted site
+        // instead of its far-corner centre — short path to the breach edge, and
+        // converging defenders spread naturally (each picks its own nearest,
+        // occupied cells skipped) instead of funnelling to one hex.
+        const cells = state.map.regions[collapseSiteRegion];
+        if (cells && cells.length > 0) {
+          const near = nearestCellInRegion(cells, u.pos, state.map, claimed);
+          if (near) collapseTarget = near;
         }
       }
       effectiveTarget = collapseTarget;

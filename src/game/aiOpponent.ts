@@ -10,7 +10,7 @@
 import type { GameState, Side, Team } from './types.ts';
 import type { Rng } from './rng.ts';
 import { availableStrategies } from './traits.ts';
-import { AI_STRATEGY_EXPLORATION } from './config.ts';
+import { AI_STRATEGY_EXPLORATION, OPPONENT_LEAN } from './config.ts';
 
 export function pickAiStrategy(
   state: GameState,
@@ -18,10 +18,32 @@ export function pickAiStrategy(
   side: Side,
   rng: Rng,
 ): string {
+  // Campaign tutorial: the first match's opponent plays a fixed, telegraphed
+  // strategy for its side so the player learns read → counter (season.ts).
+  const scripted = state.scriptedAiStrategy?.[side];
+  if (scripted) return scripted;
+
   // H3 — AI picks from the strategies its roster can actually run
   // (baseline + trait-unlocked variants on the AI team's units).
   const aiUnits = state.units.filter((u) => u.team === team);
-  const options = availableStrategies(aiUnits, side, state.map);
+  let options = availableStrategies(aiUnits, side, state.map);
+  // Campaign progressive unlock: restrict the AI to the same set the player has
+  // (so the opponent ramps up in step, not ahead). null/absent = no restriction.
+  const unlocked = state.unlockedStrategyIds;
+  if (unlocked) {
+    const allow = new Set(unlocked);
+    const filtered = options.filter((s) => allow.has(s.id));
+    if (filtered.length > 0) options = filtered;
+  }
+  // Campaign opponent lean: this team has a scouted tendency — pick the leaned
+  // strategy `pickChance` of the time; otherwise fall through to the weighted
+  // pick over the REST (so the lean rate is exact, not inflated by the fallback).
+  const lean = state.opponentLean?.[side];
+  if (lean && options.some((s) => s.id === lean.strategy)) {
+    if (rng.next() < OPPONENT_LEAN.pickChance) return lean.strategy;
+    const rest = options.filter((s) => s.id !== lean.strategy);
+    if (rest.length > 0) options = rest;
+  }
   const wins = state.aiStrategyWins[team] ?? {};
   // Pass 7.8 — base weight `1 + wins` (win-rate bias) plus a per-pick uniform
   // exploration noise so an early single win can't dominate the rest of the

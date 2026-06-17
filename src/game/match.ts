@@ -44,6 +44,7 @@ import {
   SCOUTING_ENABLED,
   SCOUTING_DEFENDER_LEAN_OVERRIDE,
   STRATEGY_LEAN,
+  OPPONENT_LEAN,
   CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
   HERO_ABILITIES_ENABLED,
@@ -240,10 +241,17 @@ function rosterVariantLean(teamUnits: readonly Unit[]): number {
 // favored) × the cross-round scouting read of the ENEMY (under-defended site
 // favored). DEFENDER: roster-derived lean toward variant 0 (the scoutable tell).
 // Uniform when the relevant flags are off / single-variant → byte-identical pick.
-function variantWeights(strat: { variants: StrategyVariant[] }, team: Team, side: Side, state: GameState): number[] {
+function variantWeights(strat: { id: string; variants: StrategyVariant[] }, team: Team, side: Side, state: GameState): number[] {
   const n = strat.variants.length;
   const uniform = strat.variants.map(() => 1);
   if (n <= 1) return uniform;
+  // Campaign opponent site lean: when this team is running its leaned strategy,
+  // bias its A/B variant strongly toward the preferred site, so the scouted read
+  // ("they Rush A") is reliable rather than a 50/50 site guess.
+  const lean = state.opponentLean?.[side];
+  if (lean && lean.site && strat.id === lean.strategy) {
+    return strat.variants.map((v) => (variantCommitSite(v) === lean.site ? OPPONENT_LEAN.siteWeight : 1));
+  }
   if (side === 'attacker') {
     if (!ATTACKER_SITE_APPRAISAL_ENABLED && !SCOUTING_ENABLED) return uniform;
     const enemy: Team = team === 'defenders' ? 'attackers' : 'defenders';

@@ -2,7 +2,7 @@
 // phase/tick indicator + flow buttons (Begin Round / Back to Planning) +
 // optional Timeout button (match-point only) + fog POV toggle.
 
-import type { GameState, MatchMode, Team } from '../game/types.ts';
+import type { GameState, Team } from '../game/types.ts';
 import { DEFUSE_TICKS, DETONATION_TICKS, MATCH_WIN_SCORE, PLANT_TICKS } from '../game/config.ts';
 import { strategyById } from '../game/strategies.ts';
 // H3.4 — cardData.ts removed; card-targeting tooltip hint dropped along with it.
@@ -19,11 +19,13 @@ export type TopBarCallbacks = {
   onToggleRegionLabels: () => void;
   showRegionLabels: boolean;
   // H3.4 — cardTargetingPending / pickedCardDefId removed (card system deleted).
-  // Pass E m5 — Standard / Randomize Units toggle. Switching rebuilds the
-  // match (preserving seed by default, see main.ts).
-  onSetMode: (mode: MatchMode) => void;
+  // Mode selection now lives on the main menu; the top bar offers a return path.
+  onMenu: () => void;
   // Pass E3.2 — "?" button opens the help / glossary modal.
   onOpenHelp: () => void;
+  // Campaign locks the map (a season runs on one fixed map), so the picker is
+  // replaced by a static map-name label — switching mid-season is meaningless.
+  lockMap?: boolean;
 };
 
 export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCallbacks): void {
@@ -39,6 +41,13 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   helpBtn.addEventListener('click', cb.onOpenHelp);
   host.appendChild(helpBtn);
 
+  // Return to the main menu (mode selection lives there now).
+  const menuBtn = document.createElement('button');
+  menuBtn.textContent = 'Menu';
+  menuBtn.title = 'Back to the main menu';
+  menuBtn.addEventListener('click', cb.onMenu);
+  host.appendChild(menuBtn);
+
   // Map toggle. Switching starts a new match. Cleaner display labels + a
   // one-line character tooltip per map (the bar now holds five).
   const mapName = document.createElement('div');
@@ -51,31 +60,24 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
     Foundryv4: 'Large, diagonal layout — long rotations, scale-fit defenses.',
     Atoll_v2: 'Tight, asymmetric redesign (work in progress).',
   };
-  // Foundry II / Foundry / Atoll v1 retired from the picker — superseded by the
-  // Foundry IV (large) + Atoll II redesigns; still in the build, not selectable.
-  for (const m of ['Foundryv4', 'Atoll_v2', 'Canyon'] as const) {
-    const b = document.createElement('button');
-    b.textContent = MAP_LABEL[m] ?? m;
-    if (state.map.name === m) b.classList.add('selected');
-    b.title = `${MAP_TIP[m] ?? ''} (Switching starts a new match.)`;
-    b.addEventListener('click', () => cb.onSetMap(m));
-    mapName.appendChild(b);
-  }
-
-  // Pass E m5 / Pass G — Standard / Draft mode toggle. Standard = fixed 2r+1s
-  // + flat-50 attributes (today's default). Draft = generate an 8-unit pool
-  // and player/AI snake-pick 3 each before the match begins.
-  const modeGroup = document.createElement('div');
-  modeGroup.className = 'mode-toggle';
-  for (const m of ['standard', 'draft'] as const) {
-    const b = document.createElement('button');
-    b.textContent = m === 'standard' ? 'Standard' : 'Draft';
-    if (state.matchMode === m) b.classList.add('selected');
-    b.title = m === 'standard'
-      ? 'Debug — fixed 2 rifles + 1 sniper, flat-50 attributes. Use to test combat math without RNG variance.'
-      : 'Pool of 8 random units — you and the AI snake-pick 3 each (P-A-A-P-P-A). Default for normal play.';
-    b.addEventListener('click', () => cb.onSetMode(m));
-    modeGroup.appendChild(b);
+  if (cb.lockMap) {
+    // Campaign: one fixed map for the season — show it as a static label.
+    const label = document.createElement('span');
+    label.className = 'map-locked';
+    label.textContent = MAP_LABEL[state.map.name] ?? state.map.name;
+    label.title = MAP_TIP[state.map.name] ?? '';
+    mapName.appendChild(label);
+  } else {
+    // Foundry II / Foundry / Atoll v1 retired from the picker — superseded by the
+    // Foundry IV (large) + Atoll II redesigns; still in the build, not selectable.
+    for (const m of ['Foundryv4', 'Atoll_v2', 'Canyon'] as const) {
+      const b = document.createElement('button');
+      b.textContent = MAP_LABEL[m] ?? m;
+      if (state.map.name === m) b.classList.add('selected');
+      b.title = `${MAP_TIP[m] ?? ''} (Switching starts a new match.)`;
+      b.addEventListener('click', () => cb.onSetMap(m));
+      mapName.appendChild(b);
+    }
   }
 
   // F1 — score / round / half / phase grouped into a centered "match-info"
@@ -133,7 +135,7 @@ export function renderTopBar(host: HTMLElement, state: GameState, cb: TopBarCall
   leftSpacer.className = 'spacer';
   const spacer = document.createElement('div');
   spacer.className = 'spacer';
-  host.append(mapName, modeGroup, leftSpacer, matchInfo, plantLabel, spacer);
+  host.append(mapName, leftSpacer, matchInfo, plantLabel, spacer);
 
   // Fog perspective toggle.
   const fogGroup = document.createElement('div');
