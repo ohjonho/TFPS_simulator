@@ -24,7 +24,7 @@ const TIPS: Card[] = [
   { title: 'It\'s a read, not a coin flip', body: 'Every play beats something and loses to something. Match your pick to what they favor.' },
 ];
 
-export function showWelcome(onContinue: () => void): void {
+export function showWelcome(onContinue: () => void, onBack?: () => void): void {
   document.getElementById(HOST_ID)?.remove();
   const host = document.createElement('div');
   host.id = HOST_ID;
@@ -52,6 +52,7 @@ export function showWelcome(onContinue: () => void): void {
         </ol>
       </div>
       <div class="welcome-actions">
+        ${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}
         <button class="btn-primary" data-continue type="button">Draft your team &rarr;</button>
       </div>
     </div>`;
@@ -59,5 +60,9 @@ export function showWelcome(onContinue: () => void): void {
   host.querySelector<HTMLButtonElement>('[data-continue]')?.addEventListener('click', () => {
     host.remove();
     onContinue();
+  });
+  host.querySelector<HTMLButtonElement>('[data-back]')?.addEventListener('click', () => {
+    host.remove();
+    onBack?.();
   });
 }

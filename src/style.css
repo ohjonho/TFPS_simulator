@@ -759,6 +759,14 @@ body {
 .welcome-firststeps li { font-size: 13px; line-height: 1.7; color: var(--text); }
 .welcome-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
 
+/* Back button on the campaign flow overlays (welcome / dashboard / match prep). */
+.btn-back {
+  padding: 8px 16px; font-size: 13px; margin-right: 8px;
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--panel-border); border-radius: 5px; cursor: pointer;
+}
+.btn-back:hover { color: var(--text); border-color: var(--text-dim); }
+
 /* Post-draft team talk — full-page choice screen. */
 #team-talk {
   position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
@@ -780,6 +788,112 @@ body {
 .tt-choice .tt-quote { font-size: 13px; line-height: 1.5; color: var(--text-dim); font-style: italic; }
 .tt-choice .tt-effect { font-size: 12px; color: var(--accent); margin-top: auto; }
 .tt-note { text-align: center; font-size: 12px; color: var(--text-dim); margin: 22px 0 0; }
+
+/* Pre-season dashboard. */
+#dashboard {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center;
+}
+.dash-card { width: 760px; max-width: 92vw; padding: 44px 0 56px; }
+.dash-header { text-align: center; margin-bottom: 8px; }
+.dash-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.dash-header h1 { margin: 8px 0 6px; font-size: 28px; color: var(--text); }
+.dash-sub { margin: 0 auto; max-width: 560px; font-size: 13px; color: var(--text-dim); }
+.dash-section {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-dim); margin: 28px 0 12px; display: flex; justify-content: space-between; align-items: baseline;
+}
+.dash-budget, .dash-rating { font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); }
+.dash-upgrades { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dash-upg {
+  text-align: left; background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 14px 16px; cursor: pointer; color: var(--text);
+  transition: border-color 0.12s, background 0.12s;
+}
+.dash-upg:hover { border-color: var(--text-dim); }
+.dash-upg.selected { border-color: var(--accent); background: rgba(250, 204, 21, 0.08); }
+.du-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+.du-desc { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+.dash-areas { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 16px; }
+.da-row { display: grid; grid-template-columns: 110px 1fr 32px; align-items: center; gap: 10px; margin: 5px 0; }
+.da-label { font-size: 12px; color: var(--text-dim); }
+.da-bar { height: 7px; background: #1a1d24; border-radius: 4px; overflow: hidden; }
+.da-fill { display: block; height: 100%; background: var(--accent); }
+.da-val { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.dash-roster { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.dash-runit {
+  display: grid; grid-template-columns: 1fr 80px 90px 64px; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px 12px; font-size: 13px;
+}
+.dr-name { font-weight: 700; }
+.dr-weapon, .dr-role { color: var(--text-dim); font-size: 12px; }
+.dr-ovr { text-align: right; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
+
+/* Net Tactical Effect — live win outlook in the planning panel. */
+.net-effect {
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--text-dim); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
+}
+.net-effect.good { border-left-color: #3fa66a; }
+.net-effect.even { border-left-color: var(--accent-dim); }
+.net-effect.tough { border-left-color: #b4544a; }
+.ne-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.ne-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.ne-pct { font-size: 30px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.ne-pctsign { font-size: 16px; color: var(--text-dim); }
+.ne-factors { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.ne-factor { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+.ne-factor .pos { color: #5fcf8a; }
+.ne-factor .neg { color: #e07a70; }
+.ne-muted { opacity: 0.8; }
+.ne-note { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.4; }
+
+/* Match Prep — full-page pre-match screen. */
+#match-prep {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center;
+}
+.mp-card { width: 940px; max-width: 94vw; padding: 36px 0 56px; }
+.mp-header { text-align: center; margin-bottom: 18px; }
+.mp-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.mp-header h1 { margin: 6px 0 0; font-size: 26px; color: var(--text); }
+.mp-body { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
+.mp-h2h {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 16px 20px;
+}
+.mp-team { text-align: center; flex: 1; }
+.mp-team-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.mp-rating { font-size: 30px; font-weight: 700; color: var(--text); }
+.mp-vs { font-size: 12px; color: var(--text-dim); text-align: center; padding: 0 12px; }
+.mp-gap { font-size: 15px; font-weight: 700; color: var(--accent); }
+.mp-scout {
+  margin-top: 12px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 16px;
+}
+.mp-scout-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.mp-lean { font-size: 13px; line-height: 1.6; color: var(--text); }
+.mp-scout-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.mp-outlook { margin-bottom: 0; }
+.mp-decisions { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
+.mp-group-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+.mp-opts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.mp-opt {
+  text-align: left; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+  padding: 12px 14px; cursor: pointer; color: var(--text); display: flex; flex-direction: column; gap: 4px;
+}
+.mp-opt b { font-size: 14px; }
+.mp-opt span { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.mp-opt:hover { border-color: var(--text-dim); }
+.mp-opt.sel { border-color: var(--accent); background: #1a1f2b; }
+.mp-leaders { display: flex; flex-wrap: wrap; gap: 8px; }
+.mp-leader {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px 12px;
+  cursor: pointer; color: var(--text); font-size: 13px; font-weight: 600;
+}
+.mp-leader small { display: block; font-weight: 400; font-size: 11px; color: var(--text-dim); }
+.mp-leader.sel { border-color: var(--accent); background: #1a1f2b; }
+.mp-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
 /* Campaign intro story (rendered inside the shared modal body). */
 .season-intro p { margin: 0 0 12px; line-height: 1.6; }

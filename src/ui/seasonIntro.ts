@@ -6,11 +6,11 @@
 
 import { showModal } from './modal.ts';
 
-export function showSeasonIntro(onContinue: () => void): void {
-  page1(onContinue);
+export function showSeasonIntro(onContinue: () => void, onBack?: () => void): void {
+  page1(onContinue, onBack);
 }
 
-function page1(onContinue: () => void): void {
+function page1(onContinue: () => void, onBack?: () => void): void {
   const body = `
     <div class="season-intro">
       <p>Pixel Pursuit has been your second home since you were a kid — the last
@@ -22,12 +22,13 @@ function page1(onContinue: () => void): void {
         season. A prize pool that would cover the lease twice over.</p>
     </div>`;
   showModal('The last save', body, [
+    ...(onBack ? [{ label: 'Back', onClick: onBack }] : []),
     { label: 'Skip intro', onClick: onContinue },
-    { label: 'Continue', primary: true, onClick: () => page2(onContinue) },
+    { label: 'Continue', primary: true, onClick: () => page2(onContinue, onBack) },
   ]);
 }
 
-function page2(onContinue: () => void): void {
+function page2(onContinue: () => void, onBack?: () => void): void {
   const body = `
     <div class="season-intro">
       <p>You've never held a mouse in a ranked match in your life. But you've watched
@@ -39,6 +40,7 @@ function page2(onContinue: () => void): void {
       <p class="season-intro-cta">Time to draft your roster.</p>
     </div>`;
   showModal('The pitch', body, [
+    { label: 'Back', onClick: () => page1(onContinue, onBack) },
     { label: 'Draft your team', primary: true, onClick: onContinue },
   ]);
 }

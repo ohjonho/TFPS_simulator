@@ -338,6 +338,23 @@ export function setThreatTargetingOverride(v: boolean | null): void {
   THREAT_TARGETING_OVERRIDE = v;
 }
 
+// --- Threat-aware INITIAL hold positioning (Part 5 A1) ----------------------
+// A separate, finer seam from THREAT_TARGETING (which gates the *dynamic*
+// collapse/rotate near-edge convergence). HOLD targeting lifts the DEFENDER's
+// round-start hold target from the raw region centroid to the best static cell
+// of its slot region (low exposure + LoS to its watch angle + cover), scored at
+// round start (no live enemies yet → static exposure only). This is the direct
+// "units hold bad angles" fix: a coarse region label resolves to a genuinely
+// good actual position. Distinct from the collapse flag because tight maps
+// (Canyon) WANT near-edge collapse/rotate (they meet the breach) yet still
+// benefit from a better *starting* angle. Per-map via MapDefinition.holdTargeting;
+// this override mirrors THREAT_TARGETING_OVERRIDE for harness A/B (null = map).
+// Reuses the THREAT_TARGETING score weights (same bestHoldCellInRegion scorer).
+export let HOLD_TARGETING_OVERRIDE: boolean | null = null;
+export function setHoldTargetingOverride(v: boolean | null): void {
+  HOLD_TARGETING_OVERRIDE = v;
+}
+
 // --- Spawn placement -------------------------------------------------------
 // Two layers (see units.placeSpawns + match.applyStrategies):
 //

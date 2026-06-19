@@ -77,4 +77,10 @@ export const canyon: MapDefinition = {
   // Strategy-aware defender spawn optimization — measured +9pp def on Canyon's
   // dense layout (config.SPAWN_SPREAD note). Opt-in; other maps leave it off.
   optimizeSpawns: true,
+  // Part 5 A1 — threat-aware initial hold positioning. Defenders start on the
+  // best static cell of their slot region (low exposure + LoS to their watch
+  // angle + cover) instead of the centroid, so the campaign map's holds read as
+  // deliberate angles, not arbitrary centre-of-region spots. Distinct from
+  // threatTargeting (left off — Canyon's tight sites want near-edge collapse).
+  holdTargeting: true,
 };

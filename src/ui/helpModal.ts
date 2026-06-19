@@ -389,6 +389,43 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.57.0 — defenders hold smarter angles (Canyon)</h3>
+    <ul>
+      <li><strong>Defenders now set up on a real angle, not the middle of their zone.</strong>
+        On Canyon, each defender's hold spot is now chosen for cover + a clean line of sight to
+        the lane it's meant to watch, instead of the geometric centre of its region. Measured:
+        defenders holding from cover went 85% → 98%, and the share that can actually see their
+        assigned angle more than doubled (31% → 68%) — the fix for "they hold bad angles."
+        Round outcomes are unchanged (balance-neutral); they just look like they know where to
+        stand.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.56.0 — Back buttons + enemy paths stay hidden</h3>
+    <ul>
+      <li><strong>Back buttons</strong> on the campaign flow (intro, welcome, dashboard,
+        Match Prep) — step back to the previous screen instead of the Menu button dumping
+        you all the way to the main menu.</li>
+      <li><strong>Enemy movement paths no longer show during the match.</strong> The yellow
+        route trails are now your team's only — an opponent's planned path is future intent
+        that fog should hide. (The dev "Enemies" toggle still reveals them.)</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.55.0 — pre-season dashboard + a Match Prep screen</h3>
+    <ul>
+      <li><strong>New: a pre-season dashboard</strong> after the team talk — spend a tiny
+        budget on a club upgrade or two (new rigs, an assistant coach, a bootcamp, a team
+        lounge — each a small season-long boost), and review your squad before kickoff.</li>
+      <li><strong>New: a Match Prep screen before every match.</strong> A head-to-head
+        scouting report (your rating vs theirs, plus their scouted attack/defense leans) and
+        three calls: <em>how to play</em> (cautious / standard / aggressive), your <em>in-game
+        leader</em>, and a <em>pre-match team talk</em>. A <strong>Win Outlook %</strong>
+        recalculates as you toggle each one, so you can see the trade-offs before you commit.
+        It's a projection — the match is still played out round by round.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.54.0 — read the card on the draft, then set the tone</h3>
     <ul>
       <li><strong>"How to read a player card" is now built into the draft screen</strong>

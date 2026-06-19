@@ -71,10 +71,12 @@ import { renderMainMenu } from './ui/mainMenu.ts';
 import { showSeasonIntro } from './ui/seasonIntro.ts';
 import { showWelcome } from './ui/welcome.ts';
 import { showTeamTalk } from './ui/teamTalk.ts';
+import { showDashboard } from './ui/dashboard.ts';
+import { showMatchPrep } from './ui/matchPrep.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
-import type { SeasonState } from './game/season.ts';
+import type { SeasonState, ClubLean } from './game/season.ts';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
@@ -249,12 +251,16 @@ function rerenderChrome() {
       if (matchMode === 'season') {
         const roster = finalized.units.filter((u) => u.team === finalized.playerTeam);
         const s = startSeason(roster, finalized.map.name, matchSeed, 6, 4);
-        showTeamTalk((lean) => {
-          season = { ...s, clubLean: lean };
-          const m1 = buildSeasonMatch(season, finalized.map);
-          initialUnitsById = snapshotUnits(m1.units);
-          setState(m1);
-        });
+        // Team talk (club lean) → dashboard (invest) → Match Prep → match 1, with
+        // Back stepping back (prep → dashboard → team talk).
+        let chosenLean: ClubLean = 'disciplined';
+        const flowTeamTalk = (): void => showTeamTalk((lean) => { chosenLean = lean; flowDashboard(); });
+        const flowDashboard = (): void => showDashboard(
+          { ...s, clubLean: chosenLean },
+          (upgrades) => { season = { ...s, clubLean: chosenLean, upgrades }; launchMatchPrep(flowDashboard); },
+          flowTeamTalk,
+        );
+        flowTeamTalk();
         return;
       }
       initialUnitsById = snapshotUnits(finalized.units);
@@ -342,7 +348,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.54.0', {
+    renderMainMenu(menuHost, 'v0.57.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -362,8 +368,10 @@ function startMode(mode: MatchMode): void {
   // Season opens on the campaign intro story, then a player-only draft; the
   // other modes launch straight into a match on the Settings-selected map.
   if (mode === 'season') {
-    // Intro story → welcome/how-it-works briefing → the draft.
-    showSeasonIntro(() => showWelcome(launchSeasonDraft));
+    // Intro story → welcome briefing → the draft, with Back stepping back up the
+    // chain (intro Back → main menu; welcome Back → intro).
+    const flowIntro = (): void => showSeasonIntro(() => showWelcome(launchSeasonDraft, flowIntro), goToMenu);
+    flowIntro();
     return;
   }
   // Standard / Draft are dev/testing modes — keep enemies visible in planning.
@@ -377,6 +385,19 @@ function startMode(mode: MatchMode): void {
 // Season plays on Canyon — its dense, tight geometry keeps unit movement legible
 // (short rotations, forced contact) for the campaign. The draft is player-only
 // (build your own squad); startSeason runs on confirm.
+// Show the Match Prep screen for the current season match, then build + start it
+// with the chosen prep (play style / leader / team talk). Used for match 1 (after
+// the dashboard) and every subsequent match (from the match-end modal).
+function launchMatchPrep(onBack?: () => void): void {
+  const s = season;
+  if (!s) return;
+  showMatchPrep(s, (prep) => {
+    const m = buildSeasonMatch(s, state.map, prep);
+    initialUnitsById = snapshotUnits(m.units);
+    setState(m);
+  }, onBack);
+}
+
 function launchSeasonDraft(): void {
   // Campaign: enemies are hidden during planning (proper fog) — the read comes
   // from the Scout, not from seeing their setup. The "Enemies" toggle still works.
@@ -578,11 +599,8 @@ function showMatchEndModal(): void {
         label: done ? 'Season results' : 'Next match',
         primary: true,
         onClick: () => {
-          const s = season;
-          if (done || !s) { showSeasonEndModal(); return; }
-          const next = buildSeasonMatch(s, state.map);
-          initialUnitsById = snapshotUnits(next.units);
-          setState(next);
+          if (done || !season) { showSeasonEndModal(); return; }
+          launchMatchPrep(); // prep screen → build + start the next match
         },
       },
       { label: 'Main menu', onClick: goToMenu },

@@ -6,13 +6,17 @@
 // dashed style (see drawPreviewRoutes) so they read as "what will happen" not
 // "what is happening." Both styles share the same geometry.
 
-import type { GameState, HexCoord } from '../game/types.ts';
+import type { GameState, HexCoord, Team } from '../game/types.ts';
 import { hexToPixel } from '../game/hex.ts';
 import { HEX, ROUTE_STYLE } from '../game/config.ts';
 
-export function drawRoutes(ctx: CanvasRenderingContext2D, state: GameState): void {
+// `showEnemies` (the dev "Enemies" toggle) draws enemy routes too; otherwise only
+// the player team's routes show — an enemy's planned path is future intent that
+// fog should hide, so revealing it (as it did) gave the player free intel.
+export function drawRoutes(ctx: CanvasRenderingContext2D, state: GameState, playerTeam: Team, showEnemies: boolean): void {
   for (const unit of state.units) {
     if (unit.state !== 'alive') continue;
+    if (unit.team !== playerTeam && !showEnemies) continue;
     const move = state.moves[unit.id];
     if (!move || move.path.length <= 1) continue;
 

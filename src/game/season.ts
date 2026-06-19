@@ -15,6 +15,7 @@ import { createRng } from './rng.ts';
 import { UNIT_DEFAULTS, ROLE_AGGRESSION } from './config.ts';
 import { BASIC_STRATEGY_IDS } from './strategies.ts';
 import { generateTeamName } from './names.ts';
+import { teamRating } from './ratings.ts';
 
 // A scouted tendency: a strategy the opponent leans, and (for site-committing
 // strategies) the site they favor. `site` is null for whole-map / reading
@@ -40,6 +41,60 @@ function applyClubLean(units: Unit[], lean: ClubLean | null | undefined): Unit[]
   });
 }
 
+// Pre-season club upgrades (tiny budget, pick up to 2). Each is a small, bounded,
+// season-long attribute bump applied to the player roster — the "spend on the
+// club" lever, kept light (no full economy yet).
+export type UpgradeId = 'rigs' | 'coach' | 'bootcamp' | 'lounge';
+export const UPGRADE_BUDGET = 2;
+export const UPGRADES: { id: UpgradeId; name: string; desc: string }[] = [
+  { id: 'rigs', name: 'New rigs', desc: 'Top-spec PCs + monitors. Sharper shooting (+Mechanics).' },
+  { id: 'coach', name: 'Assistant coach', desc: 'A film-room veteran. Better reads & positioning (+Game Sense).' },
+  { id: 'bootcamp', name: 'Pre-season bootcamp', desc: 'Drills under pressure. Sticks to the plan (+Discipline).' },
+  { id: 'lounge', name: 'Team lounge', desc: 'A room to decompress. Steadier under stress (+Improvisation).' },
+];
+function applyUpgrades(units: Unit[], ids: readonly string[]): Unit[] {
+  if (!ids.length) return units;
+  const set = new Set(ids);
+  return units.map((u) => {
+    const a = { ...u.attributes };
+    if (set.has('rigs')) { a.aim = clamp100(a.aim + 4); a.headshot = clamp100(a.headshot + 4); }
+    if (set.has('coach')) { a.vision = clamp100(a.vision + 4); a.mapIQ = clamp100(a.mapIQ + 4); }
+    if (set.has('bootcamp')) a.tenacity = clamp100(a.tenacity + 4);
+    if (set.has('lounge')) a.composure = clamp100(a.composure + 4);
+    return { ...u, attributes: a };
+  });
+}
+
+// Per-match prep chosen on the Match Prep screen (before each match). Applies a
+// match-only adjustment to the player roster on top of the season-long lean +
+// upgrades. The win-outlook estimate on the prep screen reflects these.
+export type PlayStyle = 'cautious' | 'standard' | 'aggressive';
+export type TeamTalk = 'fire' | 'calm' | 'focus';
+export type MatchPrep = { playStyle: PlayStyle; leaderId: string | null; teamTalk: TeamTalk };
+
+function applyMatchPrep(units: Unit[], prep: MatchPrep): Unit[] {
+  return units.map((u) => {
+    const m = { ...u.modifiers };
+    const a = { ...u.attributes };
+    let aggrDelta = 0;
+    if (prep.playStyle === 'cautious') aggrDelta -= 8;
+    if (prep.playStyle === 'aggressive') aggrDelta += 8;
+    if (prep.teamTalk === 'fire') aggrDelta += 3;
+    if (aggrDelta !== 0) { m.aggression = clamp100(m.aggression + aggrDelta); m.baseAggression = clamp100(m.baseAggression + aggrDelta); }
+    if (prep.teamTalk === 'calm') a.composure = clamp100(a.composure + 3);
+    if (prep.teamTalk === 'focus') a.tenacity = clamp100(a.tenacity + 3);
+    if (prep.leaderId === u.id) a.comms = clamp100(a.comms + 6); // the in-game leader steadies the team
+    return { ...u, modifiers: m, attributes: a };
+  });
+}
+
+// Team ratings for the Match Prep head-to-head (player roster WITH lean +
+// upgrades baked in vs the scheduled opponent). Pure; for the player-facing read.
+export function seasonRatings(season: SeasonState): { player: number; opp: number } {
+  const player = applyUpgrades(applyClubLean([...season.playerRoster], season.clubLean), season.upgrades);
+  return { player: teamRating(player), opp: teamRating(season.schedule[season.idx] ?? []) };
+}
+
 // Which strategies actually commit to a site (so a site lean is meaningful).
 const SITE_COMMITTING = new Set(['Rush', 'Execute', 'Stack', 'Mind_Games', 'Coordinated_Lockdown']);
 const siteFor = (strategy: string, rng: ReturnType<typeof createRng>): 'A' | 'B' | null =>
@@ -56,6 +111,7 @@ export type SeasonState = {
   seed: number;
   mapName: MapDefinition['name'];
   clubLean: ClubLean | null; // early identity from the post-draft team talk
+  upgrades: string[];        // pre-season club upgrades chosen on the dashboard
 };
 
 // Re-place a roster of persisted identities at a team's spawns, resetting every
@@ -123,7 +179,7 @@ export function startSeason(
       });
     }
   }
-  return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null };
+  return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null, upgrades: [] };
 }
 
 // Progressive strategy unlock across the campaign's opening matches. The new
@@ -155,8 +211,9 @@ export function scriptedOpponentForMatch(idx: number): Partial<Record<Side, stri
 // current opponent, re-placed on the season's map. Deterministic per match idx.
 // Also stamps the per-match strategy unlock set + scripted opponent (the
 // campaign teaching ramp); both carry across rounds via the startRound spread.
-export function buildSeasonMatch(season: SeasonState, map: MapDefinition): GameState {
-  const player = applyClubLean(placeRoster(season.playerRoster, 'defenders', map), season.clubLean);
+export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?: MatchPrep): GameState {
+  let player = applyUpgrades(applyClubLean(placeRoster(season.playerRoster, 'defenders', map), season.clubLean), season.upgrades);
+  if (prep) player = applyMatchPrep(player, prep);
   const opp = placeRoster(season.schedule[season.idx], 'attackers', map);
   const matchSeed = (season.seed ^ ((season.idx + 1) * 0x9e3779b1)) >>> 0;
   const base = buildStateFromUnits([...player, ...opp], map, matchSeed, 'season');
