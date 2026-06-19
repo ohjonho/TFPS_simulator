@@ -14,7 +14,7 @@
 //   - The `window.__sim` dev hook (DEV builds only) — see spec §14.2.
 
 import './style.css';
-import type { GameState, HexCoord, MatchMode, PlaybackSpeed, Team, Unit } from './game/types.ts';
+import type { GameState, HexCoord, MapDefinition, MatchMode, PlaybackSpeed, Team, Unit } from './game/types.ts';
 import { previewPlayerPlan } from './game/planningPreview.ts';
 // H3.4 — cardData / cardTargeting / commitCards / pickAiCard / processCardsAtRoundEnd
 // all deleted (card system removed).
@@ -62,16 +62,31 @@ import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
 import { attachUnitDrag, isValidDropHex } from './ui/unitDrag.ts';
 import { passableAt } from './game/pathfind.ts';
-import { showModal } from './ui/modal.ts';
+import { showModal, dismissModal } from './ui/modal.ts';
 import { maybeShowFirstLoadHelp, showHelpModal } from './ui/helpModal.ts';
 import { renderRoundEndStats } from './ui/roundEndPanel.ts';
 import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
 import { computeMatchStats, computeRoundStats } from './game/stats.ts';
+import { renderMainMenu } from './ui/mainMenu.ts';
+import { showSeasonIntro } from './ui/seasonIntro.ts';
+import { showWelcome } from './ui/welcome.ts';
+import { showTeamTalk } from './ui/teamTalk.ts';
+import { showDashboard } from './ui/dashboard.ts';
+import { showMatchPrep } from './ui/matchPrep.ts';
+import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
+import { HALFTIME_AFTER_ROUND } from './game/config.ts';
+import { startSeason, buildSeasonMatch, recordSeasonResult, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
+import type { SeasonState, ClubLean } from './game/season.ts';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
 
 const shell = buildShell(root);
+// Main-menu overlay host (the front door). Shown when screen === 'menu'; the
+// match chrome renders behind it.
+const menuHost = document.createElement('div');
+menuHost.id = 'main-menu';
+root.appendChild(menuHost);
 // Open on Foundry IV — the canonical live map (Foundry II / v1 retired from the picker).
 let state: GameState = buildInitialState('Foundryv4');
 
@@ -91,6 +106,9 @@ let showEnemiesPlanning = true;
 // on every strategy selection change. Lives in UI state (not GameState) and
 // resets to null on Begin Round / round end.
 let previewRoutes: Record<string, HexCoord[]> | null = null;
+// Player units' plan start positions (post spawn-optimization) from the same
+// preview — used to snap units to their route origin on pick (see snapPlayerToPlan).
+let previewPositions: Record<string, HexCoord> | null = null;
 // Pass D — region-name overlay toggle. UI state, not GameState. Mirrors the
 // "Regions" topbar button + the R keybinding.
 let showRegionLabels = false;
@@ -101,14 +119,38 @@ let showRegionLabels = false;
 // H3.4 — card-targeting state removed (card system deleted).
 let matchMode: MatchMode = 'draft';
 let matchSeed: number = RNG_SEED_DEFAULT;
+// App-level screen + season state, layered above the per-match GameState. The
+// app boots to the menu; picking a mode builds a match and flips to 'match'.
+let screen: 'menu' | 'match' = 'menu';
+let season: SeasonState | null = null;
+let selectedMap: MapDefinition['name'] = 'Foundryv4';
 // F1 — drag state: non-null while the player is dragging a unit during
 // planning. Read by the renderer to draw a "ghost" unit at the cursor pixel.
 let dragState: { unitId: string; pixel: { x: number; y: number } } | null = null;
 
 function recomputePreview(): void {
-  previewRoutes = previewPlayerPlan(state, {
-    strategyId: state.playerStrategy,
-  }).routes ?? null;
+  const p = previewPlayerPlan(state, { strategyId: state.playerStrategy });
+  previewRoutes = p.routes ?? null;
+  previewPositions = p.positions ?? null;
+}
+
+// On a strategy/variant pick, place the player's units at their plan's start
+// positions (after strategy-aware spawn optimization) so they sit at the route
+// origins instead of the spawn-corner. No-op on maps that don't optimize spawns
+// (positions == current pos there). Begin Round re-runs the same optimization by
+// target, so the round outcome is unchanged — this is purely planning legibility.
+function snapPlayerToPlan(): void {
+  if (!previewPositions) return;
+  const pos = previewPositions;
+  let changed = false;
+  const units = state.units.map((u) => {
+    const p = pos[u.id];
+    if (p && (p.col !== u.pos.col || p.row !== u.pos.row)) { changed = true; return { ...u, pos: { ...p } }; }
+    return u;
+  });
+  if (!changed) return;
+  state = { ...state, units };
+  initialUnitsById = snapshotUnits(units);
 }
 
 // --- Render pipeline -------------------------------------------------------
@@ -174,11 +216,13 @@ function rerenderChrome() {
       // so the player has to make the site bet fresh.
       setState({ ...state, playerStrategy: id, playerVariantChoice: null });
       recomputePreview();
+      snapPlayerToPlan();
       rerenderCanvas();
     },
     onPickVariant: (idx: number) => {
       setState({ ...state, playerVariantChoice: idx });
       recomputePreview();
+      snapPlayerToPlan();
       rerenderCanvas();
     },
   });
@@ -202,6 +246,23 @@ function rerenderChrome() {
     onConfirm: () => {
       const finalized = finalizeDraft(state);
       if (finalized === state) return; // not ready (shouldn't happen — button gated)
+      // Season: capture the drafted roster + schedule, then the post-draft team
+      // talk sets the club's early lean before match 1 builds.
+      if (matchMode === 'season') {
+        const roster = finalized.units.filter((u) => u.team === finalized.playerTeam);
+        const s = startSeason(roster, finalized.map.name, matchSeed, 6, 4);
+        // Team talk (club lean) → dashboard (invest) → Match Prep → match 1, with
+        // Back stepping back (prep → dashboard → team talk).
+        let chosenLean: ClubLean = 'disciplined';
+        const flowTeamTalk = (): void => showTeamTalk((lean) => { chosenLean = lean; flowDashboard(); });
+        const flowDashboard = (): void => showDashboard(
+          { ...s, clubLean: chosenLean },
+          (upgrades) => { season = { ...s, clubLean: chosenLean, upgrades }; launchMatchPrep(flowDashboard); },
+          flowTeamTalk,
+        );
+        flowTeamTalk();
+        return;
+      }
       initialUnitsById = snapshotUnits(finalized.units);
       setState(finalized);
     },
@@ -242,27 +303,152 @@ function rerenderChrome() {
     },
     onToggleRegionLabels: () => { showRegionLabels = !showRegionLabels; rerenderAll(); },
     showRegionLabels,
-    onSetMode: (mode: MatchMode) => {
-      // Pass G — switching modes rebuilds the match (Draft mode lands in
-      // the pre-match draft phase; Standard lands directly in planning).
-      clearPlanningUiState();
-      matchMode = mode;
-      state = buildInitialState(state.map.name, matchMode, matchSeed);
-      initialUnitsById = snapshotUnits(state.units);
-      rerenderAll();
-    },
-    onOpenHelp: showHelpModal,
+    onMenu: goToMenu,
+    onOpenHelp: () => showHelpModal('play'),
+    lockMap: matchMode === 'season',
   });
 }
 
 function rerenderAll() {
   rerenderCanvas();
   rerenderChrome();
+  renderMenu();
+  maybeShowSeasonCoaching();
+}
+
+// Campaign onboarding — a few one-shot tooltips during the opening so a new
+// manager learns the loop without a heavy scripted tutorial. Each shows once
+// (coachmark.ts owns the localStorage dedupe); the guidebook carries the rest.
+function maybeShowSeasonCoaching(): void {
+  if (matchMode !== 'season') return;
+  // The draft now carries an in-screen "how to read a card" legend (draftPanel),
+  // so no pop-up here; the in-match tips below still apply.
+  if (state.phase === 'draft') return;
+  // In-match tips fire only in the tutorial match (the telegraphed opponent).
+  if (!season || season.idx !== 0) return;
+  if (state.phase === 'planning' && state.round === 1) {
+    showCoachmark(
+      'season-plan-1',
+      'Plan the round on the left — and check the <strong>Scout</strong> above the menu for the read. Your first opponent only knows one trick: <strong>Rush</strong> straight at a site. <strong>Stack</strong> or <strong>Hold</strong> meets it. Then hit <strong>Begin Round</strong>.',
+    );
+  } else if (state.phase === 'planning' && state.round === HALFTIME_AFTER_ROUND + 1) {
+    showCoachmark(
+      'season-plan-atk',
+      'Sides swapped — you\'re <strong>attacking</strong> now. They sit back in an even <strong>Hold</strong>. <strong>Execute</strong> or <strong>Control</strong> pries that open.',
+    );
+  }
 }
 
 function setState(next: GameState) {
   state = next;
   rerenderAll();
+}
+
+// --- App screens (menu <-> match) -----------------------------------------
+
+function renderMenu(): void {
+  if (screen === 'menu') {
+    renderMainMenu(menuHost, 'v0.59.0', {
+      onPlay: startMode,
+      onSettings: showSettingsModal,
+      onPatchNotes: () => showHelpModal('patch'),
+      onGuidebook: () => showHelpModal('play'),
+    });
+    menuHost.style.display = 'flex';
+  } else {
+    menuHost.style.display = 'none';
+  }
+}
+
+function startMode(mode: MatchMode): void {
+  clearPlanningUiState();
+  clearCoachmarks();
+  matchMode = mode;
+  season = null;
+  // Season opens on the campaign intro story, then a player-only draft; the
+  // other modes launch straight into a match on the Settings-selected map.
+  if (mode === 'season') {
+    // Intro story → welcome briefing → the draft, with Back stepping back up the
+    // chain (intro Back → main menu; welcome Back → intro).
+    const flowIntro = (): void => showSeasonIntro(() => showWelcome(launchSeasonDraft, flowIntro), goToMenu);
+    flowIntro();
+    return;
+  }
+  // Standard / Draft are dev/testing modes — keep enemies visible in planning.
+  showEnemiesPlanning = true;
+  state = buildInitialState(selectedMap, mode, matchSeed);
+  initialUnitsById = snapshotUnits(state.units);
+  screen = 'match';
+  rerenderAll();
+}
+
+// Season plays on Canyon — its dense, tight geometry keeps unit movement legible
+// (short rotations, forced contact) for the campaign. The draft is player-only
+// (build your own squad); startSeason runs on confirm.
+// Show the Match Prep screen for the current season match, then build + start it
+// with the chosen prep (play style / leader / team talk). Used for match 1 (after
+// the dashboard) and every subsequent match (from the match-end modal).
+function launchMatchPrep(onBack?: () => void): void {
+  const s = season;
+  if (!s) return;
+  showMatchPrep(s, (prep) => {
+    const m = buildSeasonMatch(s, state.map, prep);
+    initialUnitsById = snapshotUnits(m.units);
+    setState(m);
+  }, onBack);
+}
+
+function launchSeasonDraft(): void {
+  // Campaign: enemies are hidden during planning (proper fog) — the read comes
+  // from the Scout, not from seeing their setup. The "Enemies" toggle still works.
+  showEnemiesPlanning = false;
+  state = buildInitialState('Canyon', 'season', matchSeed);
+  initialUnitsById = snapshotUnits(state.units);
+  screen = 'match';
+  rerenderAll();
+}
+
+function goToMenu(): void {
+  dismissModal();
+  clearCoachmarks();
+  loop.pause();
+  season = null;
+  screen = 'menu';
+  rerenderAll();
+}
+
+function showSettingsModal(): void {
+  const maps: [string, string][] = [['Foundryv4', 'Foundry IV'], ['Atoll_v2', 'Atoll II'], ['Canyon', 'Canyon']];
+  const opts = maps.map(([v, l]) => `<option value="${v}"${v === selectedMap ? ' selected' : ''}>${l}</option>`).join('');
+  const body =
+    '<div style="display:flex;flex-direction:column;gap:14px;">' +
+    '<label style="font-size:13px;">Map <span style="color:#8a92a3;">(Standard / Draft)</span><br>' +
+    `<select id="set-map" style="margin-top:4px;padding:6px;background:#0e1116;color:#d6dae3;border:1px solid #232838;border-radius:4px;width:100%;">${opts}</select></label>` +
+    `<label style="font-size:13px;">Seed<br><input id="set-seed" type="number" value="${matchSeed}" style="margin-top:4px;padding:6px;background:#0e1116;color:#d6dae3;border:1px solid #232838;border-radius:4px;width:100%;"></label>` +
+    '<p style="font-size:11px;color:#8a92a3;margin:0;">Season always plays on Canyon — its tight geometry keeps the campaign readable.</p>' +
+    '</div>';
+  showModal('Settings', body, [{ label: 'Done', primary: true, onClick: () => {} }]);
+  const mapSel = document.getElementById('set-map') as HTMLSelectElement | null;
+  mapSel?.addEventListener('change', () => { selectedMap = mapSel.value as MapDefinition['name']; });
+  const seedInp = document.getElementById('set-seed') as HTMLInputElement | null;
+  seedInp?.addEventListener('change', () => { const s = parseInt(seedInp.value, 10); if (!Number.isNaN(s)) matchSeed = s >>> 0; });
+}
+
+function showSeasonEndModal(): void {
+  const s = season;
+  if (!s) return;
+  const wins = seasonWins(s);
+  const losses = s.results.length - wins;
+  const made = seasonMadeGoal(s);
+  const title = made ? 'You saved the shop' : 'The season ends';
+  const story = made
+    ? `<strong>You did it.</strong> ${wins}–${losses} on the season — enough to take the prize. Pixel Pursuit keeps its lights on, and Sam re-signs the lease the next morning, your bracket pinned to the wall behind the counter.`
+    : `<strong>So close.</strong> ${wins}–${losses} — short of the ${s.goal} wins it took to claim the prize. The shop's future is still up in the air... but a scrappy roster of locals just proved it can hang with the circuit. There's always next season.`;
+  const body = `<p class="me-headline">${story}</p><p class="me-headline">Season results: ${s.results.join('  ')}</p>${renderMatchEndScoreboard(state)}`;
+  showModal(title, body, [
+    { label: 'New season', primary: true, onClick: () => startMode('season') },
+    { label: 'Main menu', onClick: goToMenu },
+  ]);
 }
 
 function snapshotUnits(units: readonly Unit[]): Record<string, Unit> {
@@ -394,29 +580,50 @@ function showHalftimeModal(): void {
 
 function showMatchEndModal(): void {
   const w = state.matchWinner;
-  const title = w === 'draw' ? "Draw — 3–3" : `${w === state.playerTeam ? 'You win!' : 'Opponent wins'}`;
+  const playerWon = w === state.playerTeam;
   const headline =
     w === 'draw'
       ? 'Sudden-death tiebreaker is deferred to Pass 9. Match ends in a draw.'
       : `Final score: ${state.scores.defenders} (defenders) – ${state.scores.attackers} (attackers).`;
-  // Pass A5 — full scoreboard (sorted by ACS, MVP marker, per-round ACS
-  // sparkline) replaces the summary-only body.
-  const body = `<p class="me-headline">${headline}</p>${renderMatchEndScoreboard(state)}`;
+  const scoreboard = renderMatchEndScoreboard(state);
+
+  // Season: record this match, then offer the next match (or the season results).
+  if (season) {
+    season = recordSeasonResult(season, playerWon);
+    const done = seasonOver(season);
+    const wins = seasonWins(season);
+    const seasonLine = `Season: ${wins}–${season.results.length - wins} after ${season.idx} of ${season.K} — need ${season.goal} wins to save the shop.`;
+    const title = w === 'draw' ? 'Match drawn' : playerWon ? 'Match won' : 'Match lost';
+    showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p>${scoreboard}`, [
+      {
+        label: done ? 'Season results' : 'Next match',
+        primary: true,
+        onClick: () => {
+          if (done || !season) { showSeasonEndModal(); return; }
+          launchMatchPrep(); // prep screen → build + start the next match
+        },
+      },
+      { label: 'Main menu', onClick: goToMenu },
+    ]);
+    return;
+  }
+
+  const title = w === 'draw' ? 'Draw — 3–3' : `${playerWon ? 'You win!' : 'Opponent wins'}`;
   const currentMap = state.map.name;
-  showModal(title, body, [{
-    label: 'New Match',
-    primary: true,
-    onClick: () => {
-      // Pass E m5 / Pass G — preserve mode but increment seed so the next
-      // match isn't identical (in Draft mode this re-rolls the pool too).
-      // In Standard mode the seed advance is inert (flat-50 attributes).
-      clearPlanningUiState();
-      matchSeed = (matchSeed + 1) >>> 0;
-      state = buildInitialState(currentMap, matchMode, matchSeed);
-      initialUnitsById = snapshotUnits(state.units);
-      rerenderAll();
+  showModal(title, `<p class="me-headline">${headline}</p>${scoreboard}`, [
+    {
+      label: 'New match',
+      primary: true,
+      onClick: () => {
+        clearPlanningUiState();
+        matchSeed = (matchSeed + 1) >>> 0;
+        state = buildInitialState(currentMap, matchMode, matchSeed);
+        initialUnitsById = snapshotUnits(state.units);
+        rerenderAll();
+      },
     },
-  }]);
+    { label: 'Main menu', onClick: goToMenu },
+  ]);
 }
 
 // --- Loop ------------------------------------------------------------------

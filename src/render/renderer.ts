@@ -54,7 +54,7 @@ export function render(
   // anything player-actionable so they don't fight routes/units for attention.
   if (showRegionLabels) drawRegionLabels(ctx, state.map);
   if (state.phase === 'resolution') {
-    drawRoutes(ctx, state);
+    drawRoutes(ctx, state, state.playerTeam, showEnemiesPlanning);
   } else if (previewRoutes) {
     // Pass 8 — dashed advisory routes for the player's currently-selected
     // strategy + card during planning. Updates whenever selection changes.

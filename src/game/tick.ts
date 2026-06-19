@@ -16,6 +16,7 @@
 import type {
   AiState,
   Buff,
+  Facing,
   GameEvent,
   GameState,
   HexCoord,
@@ -36,7 +37,9 @@ import {
   visibleEnemiesByTeam,
 } from './vision.ts';
 import {
+  bestFacingToward,
   bestHoldCellInRegion,
+  nearestCellInRegion,
   findCoverHoldHex,
   findCoverWithLosTo,
   findThreatAwareHoldHex,
@@ -60,6 +63,8 @@ import {
   ATTRIBUTES,
   CARD_EFFECTS,
   DEFENSIVE_COLLAPSE,
+  FACING,
+  FACING_WALL_AWARE_OVERRIDE,
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
@@ -69,6 +74,7 @@ import {
   POSITIONING,
   POST_PLANT_HUNT,
   ROTATE_AFTER_HOLD_TICKS,
+  SHOT_REACTION,
   THREAT_TARGETING,
   THREAT_TARGETING_OVERRIDE,
   ROUND_TICK_LIMIT,
@@ -125,6 +131,13 @@ export function stepTick(state: GameState): GameState {
     defenders: suspectedEnemyHexes(state, 'defenders'),
     attackers: suspectedEnemyHexes(state, 'attackers'),
   };
+
+  // A4 — facing chooser for AI watch-angle facing. Wall-aware (avoids pointing
+  // the cone into an adjacent wall) when enabled; else the raw nearest snap.
+  // NOT used for the turn-on-hit snap (that faces a known shooter directly).
+  const wallAwareFacing = FACING_WALL_AWARE_OVERRIDE ?? FACING.wallAware;
+  const faceToward = (from: HexCoord, to: HexCoord): Facing =>
+    wallAwareFacing ? bestFacingToward(from, to, state.map) : nearestFacing(from, to);
 
   // Pass F — post-plant retake coordination (hoisted once per tick). Designate
   // ONE defuser (the alive defender nearest the spike) so the rest can COVER
@@ -422,9 +435,37 @@ export function stepTick(state: GameState): GameState {
             targetSource = 'collapse-matrix';
           }
         }
+      } else if (collapseSiteRegion) {
+        // No threat-matrix on this map (tight maps where the safety-biased cell
+        // cedes the breach): collapse to the NEAREST cell of the contacted site
+        // instead of its far-corner centre — short path to the breach edge, and
+        // converging defenders spread naturally (each picks its own nearest,
+        // occupied cells skipped) instead of funnelling to one hex.
+        const cells = state.map.regions[collapseSiteRegion];
+        if (cells && cells.length > 0) {
+          const near = nearestCellInRegion(cells, u.pos, state.map, claimed);
+          if (near) collapseTarget = near;
+        }
       }
       effectiveTarget = collapseTarget;
       nextTargets[u.id] = collapseTarget;
+    }
+
+    // A5 — shot reaction. A unit shot from outside its cone last tick stops and
+    // faces the shooter for SHOT_REACTION.holdTicks so vision can acquire it and
+    // the engage gate can fire — instead of walking out of LoS and forgetting it
+    // (the "got shot mid-rotation, kept walking" bug). Skips retreat/engaged
+    // (already fighting) and a committed-site push / plant scramble (a rush
+    // shouldn't stall on every ping). The post-plant retake block below re-
+    // overrides when a spike is down (objective wins). Facing is set after the
+    // hold block (search reactingToShot).
+    const reactingToShot = !retreat && mode !== 'engaged'
+      && prevAi.shooterHex != null && tick <= (prevAi.shotReactUntil ?? -1)
+      && targetSource !== 'directive:commit_site';
+    if (reactingToShot) {
+      mode = 'holding';
+      effectiveTarget = null;
+      targetSource = 'shot-react';
     }
 
     // Pass F — coordinated defender retake on plant (was Pass B's "everyone
@@ -633,17 +674,20 @@ export function stepTick(state: GameState): GameState {
         const dirUsable = directiveFacing
           && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
         if (dirUsable) {
-          u.facing = nearestFacing(u.pos, directiveFacing!);
+          u.facing = faceToward(u.pos, directiveFacing!);
         } else if (tracked) {
-          u.facing = nearestFacing(u.pos, tracked);
+          u.facing = faceToward(u.pos, tracked);
         } else if (effectiveTarget && !arrivedThisTick) {
-          u.facing = nearestFacing(u.pos, effectiveTarget);
+          u.facing = faceToward(u.pos, effectiveTarget);
         } else {
-          // Arrived (or no target) — fall back to enemy spawn / mid centroid
-          // so the cone doesn't keep staring at the last-traversed wall.
-          const fallback = approach ?? midCentroid(state);
+          // Arrived (or no target) — watch where the team believes the enemy is
+          // (A4 b: nearest suspected enemy), else the enemy-spawn / mid centroid.
+          // Using the belief beats the coarse spawn-CENTRE, which points an
+          // off-centre unit at the wrong lane (the "faces NE not NW" case).
+          const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
+          const fallback = susp ?? approach ?? midCentroid(state);
           if (fallback && !sameHex(fallback, u.pos)) {
-            u.facing = nearestFacing(u.pos, fallback);
+            u.facing = faceToward(u.pos, fallback);
           }
         }
         nextMoves[u.id] = result.move;
@@ -678,13 +722,21 @@ export function stepTick(state: GameState): GameState {
       const useDirective = directiveFacing
         && !isWallHex(state.map, directiveFacing)
         && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
+      const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
       const threat = (useDirective ? directiveFacing : undefined)
         ?? state.tracking[u.id]?.lastKnownHex
+        ?? susp
         ?? approach
         ?? midCentroid(state);
       if (threat && !sameHex(threat, u.pos)) {
-        u.facing = nearestFacing(u.pos, threat);
+        u.facing = faceToward(u.pos, threat);
       }
+    }
+
+    // A5 — while reacting to a shot, force the cone onto the shooter (overrides
+    // the hold-facing choice above) so the next vision pass can acquire it.
+    if (reactingToShot && prevAi.shooterHex && !sameHex(prevAi.shooterHex, u.pos)) {
+      u.facing = faceToward(u.pos, prevAi.shooterHex);
     }
 
     const stationaryTicks = sameHex(prevPos[u.id], u.pos) ? prevAi.stationaryTicks + 1 : 0;
@@ -707,6 +759,11 @@ export function stepTick(state: GameState): GameState {
       shotsThisEngagement: mode === 'engaged' ? prevAi.shotsThisEngagement : 0,
       lastFiredTick: prevAi.lastFiredTick,
       engageStickyTicks,
+      // A5 — carry the shot-reaction window forward (the turn-on-hit loop below
+      // refreshes it on a new shot); the `tick <= shotReactUntil` gate makes a
+      // stale value inert, so no explicit clear is needed.
+      shotReactUntil: prevAi.shotReactUntil,
+      shooterHex: prevAi.shooterHex,
     };
   }
 
@@ -851,6 +908,14 @@ export function stepTick(state: GameState): GameState {
     const shooter = workingById[damagedBy[targetId] ?? shotAtBy[targetId]];
     if (!shooter) continue;
     t.facing = nearestFacing(t.pos, shooter.pos);
+    // A5 — open/refresh the shot-reaction window so next tick a non-fighting
+    // target stops + faces the shooter (vision then acquires it) instead of
+    // walking on. Records the shooter's hex as the watch point.
+    const ai = newAi[targetId];
+    if (ai) {
+      ai.shotReactUntil = tick + SHOT_REACTION.holdTicks;
+      ai.shooterHex = { col: shooter.pos.col, row: shooter.pos.row };
+    }
   }
 
   // Pass 8 — post-damage card-effect housekeeping:
@@ -1354,6 +1419,21 @@ function freshAi(): AiState {
 
 function sameHex(a: HexCoord, b: HexCoord): boolean {
   return a.col === b.col && a.row === b.row;
+}
+
+// A4 (b) — the suspected-enemy hex nearest `from`, or null if the team suspects
+// none. The belief-driven watch fallback: a unit with no directive/tracked angle
+// faces where its team actually believes the enemy is, instead of the coarse
+// enemy-spawn CENTRE (which points an off-centre unit at the wrong lane).
+// Deterministic: first-of-equal-distance in the given order.
+function nearestHex(from: HexCoord, hexes: readonly HexCoord[]): HexCoord | null {
+  let best: HexCoord | null = null;
+  let bestD = Infinity;
+  for (const h of hexes) {
+    const d = hexDistance(from, h);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  return best;
 }
 
 // Enemy-spawn push target (middle enemy spawn hex) for the role-movement tendency.

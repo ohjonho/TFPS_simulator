@@ -52,6 +52,34 @@ export function scoutReportHtml(state: GameState): string {
     .sort((a, b) => b.w - a.w);
   const total = entries.reduce((a, e) => a + e.w, 0);
 
+  // Campaign: a pre-scouted opponent identity (state.opponentLean) — lead with
+  // its known lean + site from round 1 (the read isn't a coin flip even before
+  // any picks accumulate), and confirm with this match's actual picks if any.
+  const known = state.opponentLean?.[enemySide];
+  if (known && known.strategy) {
+    const head = state.opponentName
+      ? `Scout — ${state.opponentName} (${sideLabel})`
+      : `Scout — enemy ${sideLabel}`;
+    const lname = strategyById(known.strategy, enemySide, state.map)?.name ?? known.strategy;
+    const siteTxt = known.site ? ` <strong>${known.site}</strong>` : '';
+    const t = TELLS[known.strategy];
+    const rows: string[] = [
+      `<div class="scout-lean">Leans ${lname}${siteTxt} <span class="scout-share">— scouted tendency</span></div>`,
+    ];
+    if (t) {
+      rows.push(`<div class="scout-tell"><span class="scout-tag">tell</span> ${t.tell}</div>`);
+      rows.push(`<div class="scout-counter"><span class="scout-tag">counter</span> ${t.counter}</div>`);
+    }
+    if (total > 0) {
+      const top0 = entries[0];
+      const share0 = Math.round((top0.w / total) * 100);
+      const tn = strategyById(top0.id, enemySide, state.map)?.name ?? top0.id;
+      rows.push(`<div class="scout-alt">this match: ${tn} ${share0}%</div>`);
+    }
+    markOnboardingSeen();
+    return `<div class="scout"><div class="scout-head">${head}</div><div class="scout-body">${rows.join('')}</div></div>`;
+  }
+
   if (total === 0 || entries.length === 0) {
     if (!onboardingSeen()) {
       return `<div class="scout">

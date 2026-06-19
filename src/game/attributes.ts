@@ -24,6 +24,7 @@ import type {
   VisibleAttributes, Weapon,
 } from './types.ts';
 import type { Rng } from './rng.ts';
+import { assignNames } from './names.ts';
 import {
   ATTRIBUTES, LOADOUT_POOL, PERSONALITIES, PERSONALITY_IDS,
   ROLE_AGGRESSION, TACTICAL_TRAITS, TACTICAL_TRAIT_IDS,
@@ -235,4 +236,7 @@ export function assignAttributes(
   for (const u of units) {
     rollUnitMeta(u, rng, overrides[u.id] ?? {}, options.rangeOverride);
   }
+  // Handles last, after every sim roll, so they don't shift the attribute/trait
+  // draws — a given (map, seed) reproduces the same match; only names are new.
+  assignNames(units, rng);
 }

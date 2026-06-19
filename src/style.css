@@ -637,6 +637,400 @@ body {
   font-size: 11.5px;
   color: var(--muted);
 }
+.re-read {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.re-read strong {
+  color: var(--accent);
+}
+
+/* Main menu — full-screen front-door overlay (mainMenu.ts), shown when the app
+   is on the menu screen; the match chrome renders behind it. */
+#main-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.menu-card {
+  width: 480px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.menu-header { text-align: center; }
+.menu-header h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.menu-sub { margin: 0; font-size: 13px; color: var(--text-dim); }
+.menu-modes { display: flex; flex-direction: column; gap: 10px; }
+.menu-mode {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.12s, background 0.12s;
+}
+.menu-mode:hover { border-color: var(--accent-dim); background: #1a1f2b; }
+.menu-mode.featured { border-color: var(--accent); }
+.mm-text { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.mm-name { font-size: 15px; font-weight: 700; }
+.mm-desc { font-size: 12px; color: var(--text-dim); }
+.mm-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.mm-arrow { font-size: 22px; color: var(--text-dim); }
+.menu-secondary { display: flex; gap: 10px; }
+.menu-secondary button {
+  flex: 1;
+  padding: 10px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.menu-secondary button:hover { border-color: var(--text-dim); }
+.menu-version { text-align: center; font-size: 11px; color: var(--text-dim); }
+
+/* Campaign welcome screen — full-page briefing between intro and draft. */
+#welcome-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+}
+.welcome-card {
+  width: 920px;
+  max-width: 92vw;
+  padding: 48px 0 64px;
+}
+.welcome-header { text-align: center; margin-bottom: 8px; }
+.welcome-kicker {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent);
+}
+.welcome-header h1 { margin: 8px 0 6px; font-size: 30px; color: var(--text); }
+.welcome-sub { margin: 0; font-size: 14px; color: var(--text-dim); }
+.welcome-section {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); margin: 32px 0 12px;
+}
+.welcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.welcome-tips { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.welcome-tile, .welcome-tip, .welcome-firststeps {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.welcome-tip { border-left: 3px solid var(--accent-dim); }
+.wt-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.wt-body { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.welcome-firststeps { margin-top: 24px; }
+.welcome-firststeps ol { margin: 8px 0 0; padding-left: 20px; }
+.welcome-firststeps li { font-size: 13px; line-height: 1.7; color: var(--text); }
+.welcome-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
+
+/* Back button on the campaign flow overlays (welcome / dashboard / match prep). */
+.btn-back {
+  padding: 8px 16px; font-size: 13px; margin-right: 8px;
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--panel-border); border-radius: 5px; cursor: pointer;
+}
+.btn-back:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* Post-draft team talk — full-page choice screen. */
+#team-talk {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center; align-items: center;
+}
+.tt-card { width: 920px; max-width: 92vw; padding: 40px 0; }
+.tt-header { text-align: center; margin-bottom: 24px; }
+.tt-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.tt-header h1 { margin: 8px 0 6px; font-size: 28px; color: var(--text); }
+.tt-sub { margin: 0 auto; max-width: 640px; font-size: 14px; line-height: 1.5; color: var(--text-dim); }
+.tt-choices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.tt-choice {
+  text-align: left; background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 18px 18px 16px; cursor: pointer; color: var(--text);
+  transition: border-color 0.12s, background 0.12s; display: flex; flex-direction: column; gap: 10px;
+}
+.tt-choice:hover { border-color: var(--accent); background: #1a1f2b; }
+.tt-choice .tt-title { font-size: 16px; font-weight: 700; }
+.tt-choice .tt-quote { font-size: 13px; line-height: 1.5; color: var(--text-dim); font-style: italic; }
+.tt-choice .tt-effect { font-size: 12px; color: var(--accent); margin-top: auto; }
+.tt-note { text-align: center; font-size: 12px; color: var(--text-dim); margin: 22px 0 0; }
+
+/* Pre-season dashboard. */
+#dashboard {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center;
+}
+.dash-card { width: 760px; max-width: 92vw; padding: 44px 0 56px; }
+.dash-header { text-align: center; margin-bottom: 8px; }
+.dash-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.dash-header h1 { margin: 8px 0 6px; font-size: 28px; color: var(--text); }
+.dash-sub { margin: 0 auto; max-width: 560px; font-size: 13px; color: var(--text-dim); }
+.dash-section {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-dim); margin: 28px 0 12px; display: flex; justify-content: space-between; align-items: baseline;
+}
+.dash-budget, .dash-rating { font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); }
+.dash-upgrades { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dash-upg {
+  text-align: left; background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 14px 16px; cursor: pointer; color: var(--text);
+  transition: border-color 0.12s, background 0.12s;
+}
+.dash-upg:hover { border-color: var(--text-dim); }
+.dash-upg.selected { border-color: var(--accent); background: rgba(250, 204, 21, 0.08); }
+.du-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+.du-desc { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+.dash-areas { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 16px; }
+.da-row { display: grid; grid-template-columns: 110px 1fr 32px; align-items: center; gap: 10px; margin: 5px 0; }
+.da-label { font-size: 12px; color: var(--text-dim); }
+.da-bar { height: 7px; background: #1a1d24; border-radius: 4px; overflow: hidden; }
+.da-fill { display: block; height: 100%; background: var(--accent); }
+.da-val { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.dash-roster { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.dash-runit {
+  display: grid; grid-template-columns: 1fr 80px 90px 64px; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px 12px; font-size: 13px;
+}
+.dr-name { font-weight: 700; }
+.dr-weapon, .dr-role { color: var(--text-dim); font-size: 12px; }
+.dr-ovr { text-align: right; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
+
+/* Net Tactical Effect — live win outlook in the planning panel. */
+.net-effect {
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--text-dim); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
+}
+.net-effect.good { border-left-color: #3fa66a; }
+.net-effect.even { border-left-color: var(--accent-dim); }
+.net-effect.tough { border-left-color: #b4544a; }
+.ne-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.ne-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.ne-pct { font-size: 30px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.ne-pctsign { font-size: 16px; color: var(--text-dim); }
+.ne-factors { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.ne-factor { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+.ne-factor .pos { color: #5fcf8a; }
+.ne-factor .neg { color: #e07a70; }
+.ne-muted { opacity: 0.8; }
+.ne-note { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.4; }
+
+/* Match Prep — full-page pre-match screen. */
+#match-prep {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center;
+}
+.mp-card { width: 940px; max-width: 94vw; padding: 36px 0 56px; }
+.mp-header { text-align: center; margin-bottom: 18px; }
+.mp-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.mp-header h1 { margin: 6px 0 0; font-size: 26px; color: var(--text); }
+.mp-body { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
+.mp-h2h {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 16px 20px;
+}
+.mp-team { text-align: center; flex: 1; }
+.mp-team-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.mp-rating { font-size: 30px; font-weight: 700; color: var(--text); }
+.mp-vs { font-size: 12px; color: var(--text-dim); text-align: center; padding: 0 12px; }
+.mp-gap { font-size: 15px; font-weight: 700; color: var(--accent); }
+.mp-scout {
+  margin-top: 12px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 16px;
+}
+.mp-scout-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.mp-lean { font-size: 13px; line-height: 1.6; color: var(--text); }
+.mp-scout-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.mp-outlook { margin-bottom: 0; }
+.mp-decisions { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
+.mp-group-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+.mp-opts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.mp-opt {
+  text-align: left; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+  padding: 12px 14px; cursor: pointer; color: var(--text); display: flex; flex-direction: column; gap: 4px;
+}
+.mp-opt b { font-size: 14px; }
+.mp-opt span { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.mp-opt:hover { border-color: var(--text-dim); }
+.mp-opt.sel { border-color: var(--accent); background: #1a1f2b; }
+.mp-leaders { display: flex; flex-wrap: wrap; gap: 8px; }
+.mp-leader {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px 12px;
+  cursor: pointer; color: var(--text); font-size: 13px; font-weight: 600;
+}
+.mp-leader small { display: block; font-weight: 400; font-size: 11px; color: var(--text-dim); }
+.mp-leader.sel { border-color: var(--accent); background: #1a1f2b; }
+.mp-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
+
+/* Campaign intro story (rendered inside the shared modal body). */
+.season-intro p { margin: 0 0 12px; line-height: 1.6; }
+.season-intro p:last-child { margin-bottom: 0; }
+.season-intro-cta {
+  margin-top: 4px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* One-shot tutorial coachmark — a small bubble pinned just below the top bar
+   (top of the screen is the natural eye-line; the bottom was easy to miss). */
+.coachmark {
+  position: fixed;
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  z-index: 950;
+  max-width: 460px;
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--accent-dim);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.coachmark-tip {
+  flex: none;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.coachmark-body { flex: 1; }
+.coachmark-body strong { color: var(--text); }
+.coachmark-dismiss {
+  flex: none;
+  align-self: flex-end;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--accent);
+  color: #1a1606;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Player handle (draft card / draft-help sample / roster). */
+.pool-card-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text, #d6dae3);
+  margin-right: 4px;
+}
+.lu-id, .ru-id {
+  font-size: 10px;
+  color: var(--text-dim, #8a92a3);
+  font-variant-numeric: tabular-nums;
+}
+.attr-panel-name { font-weight: 700; font-size: 14px; color: var(--accent, #facc15); margin-right: 6px; }
+
+/* Locked map label (campaign top bar — picker replaced by static name). */
+.map-locked {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 4px 8px;
+}
+
+/* "How to read a card" explainer (draft tutorial modal). */
+.draft-help-btn {
+  margin-left: 10px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.draft-help-btn:hover { background: rgba(250, 204, 21, 0.1); }
+/* In-screen draft legend (collapsible "how to read a card" panel). */
+.draft-legend {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  margin: 0 0 14px;
+  padding: 10px 16px 14px;
+}
+.draft-legend > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent);
+  list-style: none;
+}
+.draft-legend > summary::-webkit-details-marker { display: none; }
+.draft-legend > summary::before { content: '▸ '; }
+.draft-legend[open] > summary::before { content: '▾ '; }
+.draft-legend[open] > summary { margin-bottom: 8px; }
+.draft-help .dh-intro { margin: 0 0 14px; color: var(--text-dim); }
+.dh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  margin: 0 auto 16px;
+  max-width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+}
+.dh-card-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dh-card-traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.dh-legend { margin: 0; }
+.dh-legend dt {
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 12px;
+  font-size: 13px;
+}
+.dh-legend dt:first-child { margin-top: 0; }
+.dh-legend dd { margin: 2px 0 0; line-height: 1.5; }
+.dh-vs { font-weight: 400; color: var(--text-dim); font-size: 12px; }
+.draft-help .dh-foot { margin: 16px 0 0; color: var(--text-dim); font-style: italic; }
 
 .re-team, .me-team {
   display: flex;

@@ -26,7 +26,7 @@ import type {
 } from './types.ts';
 import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
-import { findCoverHoldHex } from './unit-ai.ts';
+import { findCoverHoldHex, nearestCellInRegion } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
 import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
 import { beliefInRegions } from './belief.ts';
@@ -215,7 +215,7 @@ function safeSniper(
 
 function rotateOnTeamContact(
   d: Extract<Directive, { kind: 'rotate_on_team_contact' }>,
-  _unit: Unit,
+  unit: Unit,
   state: GameState,
 ): DirectiveDecision | null {
   // Are any watched allies actively tracking an enemy?
@@ -235,7 +235,23 @@ function rotateOnTeamContact(
   // wait until the team has had contact for delayTicks ticks (we approximate
   // via a simple "wait at least delayTicks since round start" check).
   if (state.tick < d.delayTicks) return null;
-  return { target: d.rotateToHex, source: 'rotate_on_team_contact' };
+  // Near-edge rotation: head to the cell of the destination site nearest THIS
+  // unit, not the fixed far-corner centroid — so rotating defenders take the
+  // short path to their side of the site and don't all funnel onto one hex
+  // across the map. (No occupancy set here, but per-unit nearest already spreads
+  // them since each arrives from a different bearing.) Gated to maps WITHOUT the
+  // threat-matrix cell-scorer (mirrors the collapse near-edge fix): threat-
+  // targeting maps like Foundry IV keep their centroid/scorer convergence
+  // untouched. Centroid fallback.
+  let target = d.rotateToHex;
+  if (d.rotateToRegion && !state.map.threatTargeting) {
+    const cells = state.map.regions[d.rotateToRegion];
+    if (cells && cells.length > 0) {
+      const near = nearestCellInRegion(cells, unit.pos, state.map, new Set());
+      if (near) target = near;
+    }
+  }
+  return { target, source: 'rotate_on_team_contact' };
 }
 
 // --- trade_for -------------------------------------------------------------
@@ -439,6 +455,9 @@ export function resolveDirectiveSpec(
         kind: 'rotate_on_team_contact',
         priority,
         rotateToHex: rotateTo,
+        // Keep the region name so the resolver can pick the cell nearest the
+        // rotating unit (near-edge) instead of the fixed centroid.
+        ...('region' in spec.rotateTo ? { rotateToRegion: spec.rotateTo.region } : {}),
         watchAllies,
         delayTicks: spec.delayTicks ?? 3,
       };

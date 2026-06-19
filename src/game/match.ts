@@ -33,7 +33,8 @@ import { initialAi } from './state.ts';
 import { blankMove } from './movement.ts';
 import { computeVisibility } from './vision.ts';
 import { applyAnchorOffset, applyLateralOffset, assignSlots, regionCentroid, strategyById, weaponAdjustedTarget } from './strategies.ts';
-import { resolveDirectiveSpec, type ResolutionContext } from './directives.ts';
+import { bestHoldCellInRegion } from './unit-ai.ts';
+import { resolveDirectiveSpec, resolveHexRef, type ResolutionContext } from './directives.ts';
 import type { Directive } from './types.ts';
 // H3.4 — cardEffects.ts + cards.ts removed; their behaviors migrated to
 // strategy + hero synergies in applyStrategies (H3.3).
@@ -44,17 +45,20 @@ import {
   SCOUTING_ENABLED,
   SCOUTING_DEFENDER_LEAN_OVERRIDE,
   STRATEGY_LEAN,
+  OPPONENT_LEAN,
   CROSSFIRE_SPREAD_COLS,
   HALFTIME_AFTER_ROUND,
   HERO_ABILITIES_ENABLED,
+  HOLD_TARGETING_OVERRIDE,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
   ROLE_PROFILE,
+  THREAT_TARGETING,
   UNIT_DEFAULTS,
 } from './config.ts';
-import { siteAttackDifficulty } from './threat.ts';
-import type { StrategyVariant } from './strategies.ts';
+import { siteAttackDifficulty, staticExposure } from './threat.ts';
+import type { StrategySlot, StrategyVariant } from './strategies.ts';
 import { hexDistance } from './hex.ts';
 import { placeSpawns } from './units.ts';
 import type { Rng } from './rng.ts';
@@ -89,6 +93,18 @@ function optimizeSpawns(
     if (best) { out[u.id] = best; used.add(`${best.col},${best.row}`); }
   }
   return out;
+}
+
+// Part 5 A1 — the angle a defender's initial hold should watch: the slot's first
+// hold_angle / safe_sniper facing (resolved to a hex), else the enemy spawn.
+// Feeds bestHoldCellInRegion's LoS term so the chosen cell keeps a clean
+// sightline onto where the threat will come from.
+function slotWatchAngle(slot: StrategySlot | undefined, ctx: ResolutionContext): HexCoord | null {
+  for (const spec of slot?.directives ?? []) {
+    if (spec.kind === 'hold_angle') return resolveHexRef(spec.facing, ctx);
+    if (spec.kind === 'safe_sniper') return resolveHexRef(spec.angle, ctx);
+  }
+  return resolveHexRef({ spawn: 'enemy' }, ctx);
 }
 
 // Returns the spawn list this team should occupy this round, based on its
@@ -240,10 +256,17 @@ function rosterVariantLean(teamUnits: readonly Unit[]): number {
 // favored) × the cross-round scouting read of the ENEMY (under-defended site
 // favored). DEFENDER: roster-derived lean toward variant 0 (the scoutable tell).
 // Uniform when the relevant flags are off / single-variant → byte-identical pick.
-function variantWeights(strat: { variants: StrategyVariant[] }, team: Team, side: Side, state: GameState): number[] {
+function variantWeights(strat: { id: string; variants: StrategyVariant[] }, team: Team, side: Side, state: GameState): number[] {
   const n = strat.variants.length;
   const uniform = strat.variants.map(() => 1);
   if (n <= 1) return uniform;
+  // Campaign opponent site lean: when this team is running its leaned strategy,
+  // bias its A/B variant strongly toward the preferred site, so the scouted read
+  // ("they Rush A") is reliable rather than a 50/50 site guess.
+  const lean = state.opponentLean?.[side];
+  if (lean && lean.site && strat.id === lean.strategy) {
+    return strat.variants.map((v) => (variantCommitSite(v) === lean.site ? OPPONENT_LEAN.siteWeight : 1));
+  }
   if (side === 'attacker') {
     if (!ATTACKER_SITE_APPRAISAL_ENABLED && !SCOUTING_ENABLED) return uniform;
     const enemy: Team = team === 'defenders' ? 'attackers' : 'defenders';
@@ -358,6 +381,12 @@ export function applyStrategies(
 
   const nextUnits: Unit[] = [];
   const nextTargets: Record<string, HexCoord | null> = { ...state.targets };
+  // Part 5 A1 — threat-aware initial hold positioning. Static exposure (map-
+  // cached, no live enemies at round start) is the threat field; claimedHoldCells
+  // spreads matrix-targeted defenders across distinct cells. Both only consumed
+  // when the map opts into holdTargeting (else this is dead weight, ~free).
+  const holdExposure = staticExposure(state.map);
+  const claimedHoldCells = new Set<string>();
   for (const u of state.units) {
     const isPlayer = u.team === playerTeam;
     const strat = isPlayer ? playerStrat : aiStrat;
@@ -366,36 +395,11 @@ export function applyStrategies(
     const slotIdx = unitToSlotIdx[u.id];
     const slot = slotIdx !== undefined ? variant[slotIdx] : undefined;
     const regionName = slot?.region ?? strat.fallbackRegion;
-    const goal = regionCentroid(state.map, regionName);
-    // Pass 8 — weapon-aware position adjustment. Snipers held back, shotguns
-    // pushed forward. Skipped when no centroid (degenerate map) or when a
-    // card directive (Anchor / Hold the Line / Setup Play) overrides via
-    // commitCards downstream.
     const side = state.teamSide[u.team];
-    let adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
-    // Pass 9 — apply the per-slot anchor offset on top of weapon adjustment.
-    if (adjusted && slot?.anchorOffset) {
-      adjusted = applyAnchorOffset(adjusted, slot.anchorOffset, side, state.map);
-    }
-    // v0.27.0 — role micro-position ON TOP of the slot: deep (Warden) / forward
-    // (Vanguard) via applyAnchorOffset, then the Warden crossfire lateral fan so
-    // same-site Wardens diverge instead of stacking.
-    if (adjusted) {
-      const rp = ROLE_PROFILE[u.role][side];
-      if (rp.positionOffset !== 0) {
-        adjusted = applyAnchorOffset(adjusted, rp.positionOffset, side, state.map);
-      }
-      const cf = crossfireIndex[u.id];
-      if (rp.crossfire && cf && cf.n > 1) {
-        const cols = Math.round((cf.i - (cf.n - 1) / 2) * CROSSFIRE_SPREAD_COLS);
-        adjusted = applyLateralOffset(adjusted, cols, state.map);
-      }
-    }
-    nextTargets[u.id] = adjusted;
 
     // Pass 9 — resolve this slot's DirectiveSpecs into concrete Directives.
-    // Specs that can't be resolved (e.g. ally slot not filled this round) are
-    // dropped.
+    // Built BEFORE the target so A1's threat-aware hold can read the slot's watch
+    // angle. Specs that can't resolve (e.g. an unfilled ally slot) are dropped.
     const ctx: ResolutionContext = {
       map: state.map,
       side,
@@ -406,6 +410,54 @@ export function applyStrategies(
       const resolved = resolveDirectiveSpec(spec, ctx);
       if (resolved) directives.push(resolved);
     }
+
+    // Part 5 A1 — threat-aware INITIAL hold target (defenders, opt-in per map).
+    // Instead of the region centroid + weapon/anchor/role offsets, head to the
+    // best STATIC cell of the slot's region: low exposure + LoS to the slot's
+    // watch angle + sightline-blocking cover. Bounded to the region; spread via
+    // claimedHoldCells. This is the direct "units hold bad angles" fix and it
+    // also feeds optimizeSpawns below. Falls back to the legacy centroid path
+    // when off / no cell qualifies.
+    const holdMatrixOn =
+      side === 'defender' && (HOLD_TARGETING_OVERRIDE ?? state.map.holdTargeting ?? false);
+    let adjusted: HexCoord | null = null;
+    if (holdMatrixOn) {
+      const cells = state.map.regions[regionName];
+      if (cells && cells.length > 0) {
+        const exp = holdExposure[side];
+        const threatOf = (h: HexCoord): number => exp[h.row]?.[h.col] ?? 0;
+        const best = bestHoldCellInRegion(
+          cells, state.map, claimedHoldCells, threatOf, slotWatchAngle(slot, ctx),
+          { safety: THREAT_TARGETING.wSafety, los: THREAT_TARGETING.wLos,
+            cover: THREAT_TARGETING.wCover, dist: THREAT_TARGETING.wDist },
+        );
+        if (best) {
+          adjusted = best;
+          claimedHoldCells.add(`${best.col},${best.row}`);
+        }
+      }
+    }
+    if (!adjusted) {
+      // Legacy path — region centroid → weapon adjust → per-slot anchor + role
+      // micro-position (deep Warden / forward Vanguard) + Warden crossfire fan.
+      const goal = regionCentroid(state.map, regionName);
+      adjusted = goal ? weaponAdjustedTarget(goal, u, side, state.map) : null;
+      if (adjusted && slot?.anchorOffset) {
+        adjusted = applyAnchorOffset(adjusted, slot.anchorOffset, side, state.map);
+      }
+      if (adjusted) {
+        const rp = ROLE_PROFILE[u.role][side];
+        if (rp.positionOffset !== 0) {
+          adjusted = applyAnchorOffset(adjusted, rp.positionOffset, side, state.map);
+        }
+        const cf = crossfireIndex[u.id];
+        if (rp.crossfire && cf && cf.n > 1) {
+          const cols = Math.round((cf.i - (cf.n - 1) / 2) * CROSSFIRE_SPREAD_COLS);
+          adjusted = applyLateralOffset(adjusted, cols, state.map);
+        }
+      }
+    }
+    nextTargets[u.id] = adjusted;
 
     // Pass A strategy review — `usePerimeterPath` on the slot tells the tick
     // loop to A*-route this unit along the map edges instead of the shortest

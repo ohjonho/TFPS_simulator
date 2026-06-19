@@ -1,9 +1,11 @@
-// Draws each alive unit as a team-colored square with a single weapon glyph.
-// A hovered unit gets a yellow highlight outline.
+// Draws each alive unit as a team-colored square labelled with its id (D1/A1…)
+// so the player can tell which player is where at a glance — weapon/role/etc.
+// live in the side panels + on hover. A hovered unit gets a yellow outline.
 
 import type { Unit } from '../game/types.ts';
 import { hexToPixel } from '../game/hex.ts';
-import { COLORS, HEX, SELECTION_COLOR, WEAPON_GLYPH } from '../game/config.ts';
+import { shortLabels } from '../game/names.ts';
+import { COLORS, HEX, SELECTION_COLOR } from '../game/config.ts';
 
 export type DragState = { unitId: string; pixel: { x: number; y: number } } | null;
 
@@ -19,6 +21,11 @@ export function drawUnits(
   const side = HEX.size * 1.25;
   const half = side / 2;
   const glyphPx = Math.round(HEX.size * 0.85);
+  // The label is 2–3 chars (handle initials), so it needs a smaller font than
+  // the single '×' dead-marker glyph to fit inside the square.
+  const labelPx = Math.round(HEX.size * 0.62);
+  // Handle-initial labels (team-unique), so the map reads as players not slots.
+  const labels = shortLabels(units);
 
   // F1 — find the dragged unit so we can draw it at the cursor pixel
   // instead of its hex (skipped in the main pass; drawn as a "ghost"
@@ -50,12 +57,12 @@ export function drawUnits(
       unit.team === 'defenders' ? COLORS.defenderUnit : COLORS.attackerUnit;
     ctx.fillRect(x - half, y - half, side, side);
 
-    // Weapon glyph.
+    // Handle-initial label — identity at a glance.
     ctx.fillStyle = COLORS.unitLabel;
-    ctx.font = `bold ${glyphPx}px ui-monospace, Consolas, monospace`;
+    ctx.font = `bold ${labelPx}px ui-monospace, Consolas, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(WEAPON_GLYPH[unit.weapon], x, y + 1);
+    ctx.fillText(labels[unit.id] ?? unit.id, x, y + 1);
 
     // Selection outline sits just outside the body; hover highlight on top.
     if (unit.id === selectedId) {
@@ -84,10 +91,10 @@ export function drawUnits(
     ctx.fillRect(x - half, y - half, side, side);
     ctx.globalAlpha = 1;
     ctx.fillStyle = COLORS.unitLabel;
-    ctx.font = `bold ${glyphPx}px ui-monospace, Consolas, monospace`;
+    ctx.font = `bold ${labelPx}px ui-monospace, Consolas, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(WEAPON_GLYPH[draggedUnit.weapon], x, y + 1);
+    ctx.fillText(labels[draggedUnit.id] ?? draggedUnit.id, x, y + 1);
     // Drag halo so the ghost reads clearly even over dark map cells.
     ctx.strokeStyle = COLORS.highlight;
     ctx.lineWidth = 2;

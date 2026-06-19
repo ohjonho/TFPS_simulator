@@ -59,7 +59,16 @@ function variantLabel(_strat: ReturnType<typeof strategyById>, idx: number): str
 function strategyMenuHtml(state: GameState, side: Side): string {
   // H3 — show baseline + roster-unlocked strategies only.
   const teamUnits = state.units.filter((u) => u.team === state.playerTeam);
-  const options = availableStrategies(teamUnits, side, state.map);
+  let options = availableStrategies(teamUnits, side, state.map);
+  // Campaign progressive unlock: the season opens on the basics and unlocks the
+  // advanced reads over its first matches (season.unlockedStrategiesForMatch).
+  // null/absent = no restriction (standard / draft / fully-unlocked season).
+  const unlocked = state.unlockedStrategyIds;
+  if (unlocked) {
+    const allow = new Set(unlocked);
+    const filtered = options.filter((s) => allow.has(s.id));
+    if (filtered.length > 0) options = filtered;
+  }
   const sel = state.playerStrategy;
   const variantChoice = state.playerVariantChoice;
   const items = options.map((s) => {

@@ -96,4 +96,14 @@ export type MapDefinition = {
    * to a rush (−6pp Canyon). Defaults to off when omitted.
    */
   threatTargeting?: boolean;
+  /**
+   * Opt-in threat-aware INITIAL hold positioning (match.ts round-start target,
+   * Part 5 A1). When true, a DEFENDER's round-start hold target is the best
+   * static cell of its slot region (low exposure + LoS to its watch angle +
+   * cover, via bestHoldCellInRegion) instead of the region centroid + weapon/
+   * anchor/role offsets. Distinct from threatTargeting (dynamic collapse): tight
+   * maps want near-edge collapse but still benefit from a better STARTING angle.
+   * The improved target also feeds optimizeSpawns. Defaults to off when omitted.
+   */
+  holdTargeting?: boolean;
 };

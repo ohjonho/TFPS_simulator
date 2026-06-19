@@ -245,6 +245,20 @@ export const STRATEGY_LEAN = {
   decay: 0.6,
 } as const;
 
+// --- Campaign opponent identity (scoutable lean) ----------------------------
+// Each season opponent has a fixed, pre-scoutable tendency: a strategy lean per
+// side + a preferred site. The AI picks the leaned strategy `pickChance` of the
+// time (else a normal weighted pick among the rest, so the rate is exact); when
+// it DOES run the leaned strategy, `siteWeight` biases its A/B variant toward
+// the preferred site so "they lean Rush A" reads reliably instead of leaving a
+// 50/50 site guess. Strong by design (the player should feel the read pay off);
+// the soft-counter margins keep it from being oppressive. Only set on the live
+// season match (GameState.opponentLean) → the harness/standard path is untouched.
+export const OPPONENT_LEAN = {
+  pickChance: 0.67,  // ~67% the leaned strategy (the rest weighted among others)
+  siteWeight: 6,     // leaned-site variant weight vs 1 → ~86% the preferred site
+} as const;
+
 // --- Threat-aware in-region positioning (AI competence — Pillar B) ---------
 // When a unit settles into 'holding', instead of the legacy ≤2-hex spawn-bearing
 // cover shuffle (findCoverHoldHex) it scores nearby candidate hexes by the
@@ -322,6 +336,42 @@ export const BELIEF = {
 export let THREAT_TARGETING_OVERRIDE: boolean | null = null;
 export function setThreatTargetingOverride(v: boolean | null): void {
   THREAT_TARGETING_OVERRIDE = v;
+}
+
+// --- Threat-aware INITIAL hold positioning (Part 5 A1) ----------------------
+// A separate, finer seam from THREAT_TARGETING (which gates the *dynamic*
+// collapse/rotate near-edge convergence). HOLD targeting lifts the DEFENDER's
+// round-start hold target from the raw region centroid to the best static cell
+// of its slot region (low exposure + LoS to its watch angle + cover), scored at
+// round start (no live enemies yet → static exposure only). This is the direct
+// "units hold bad angles" fix: a coarse region label resolves to a genuinely
+// good actual position. Distinct from the collapse flag because tight maps
+// (Canyon) WANT near-edge collapse/rotate (they meet the breach) yet still
+// benefit from a better *starting* angle. Per-map via MapDefinition.holdTargeting;
+// this override mirrors THREAT_TARGETING_OVERRIDE for harness A/B (null = map).
+// Reuses the THREAT_TARGETING score weights (same bestHoldCellInRegion scorer).
+export let HOLD_TARGETING_OVERRIDE: boolean | null = null;
+export function setHoldTargetingOverride(v: boolean | null): void {
+  HOLD_TARGETING_OVERRIDE = v;
+}
+
+// --- Wall-aware facing (Part 5 A4) ------------------------------------------
+// nearestFacing() snaps the cone to the 1-of-6 hex direction closest to the
+// desired watch bearing with NO terrain check, so ~20% of units point their cone
+// straight into an adjacent wall (measured) — the "staring at a wall" look. Wall-
+// aware facing instead considers the `considerNearest` directions closest to the
+// desired bearing and picks the one that sees the most open hexes ahead (sight
+// depth, capped) before a wall — staying near the intended angle but not blocked.
+// Affects the vision cone ⇒ what a unit sees ⇒ engagement, so it's measured like
+// any AI change (not purely cosmetic). Default on; override forces it for A/B.
+export const FACING = {
+  wallAware: true,
+  considerNearest: 3,
+  sightDepthCap: 5,
+} as const;
+export let FACING_WALL_AWARE_OVERRIDE: boolean | null = null;
+export function setFacingWallAwareOverride(v: boolean | null): void {
+  FACING_WALL_AWARE_OVERRIDE = v;
 }
 
 // --- Spawn placement -------------------------------------------------------
@@ -880,6 +930,14 @@ export const DEFENSIVE_COLLAPSE = {
   minWatchers: 1,
 } as const;
 
+// A5 — shot reaction. When a unit is shot at from outside its cone it stops and
+// faces the shooter for this many ticks (so vision can acquire it and the engage
+// gate can fire) instead of walking on. Skipped while retreating, already
+// engaged, or mid committed-site push (a rush shouldn't stall on every ping).
+export const SHOT_REACTION = {
+  holdTicks: 2,
+} as const;
+
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous
 // tick ("first sight"), the first shot takes this HR penalty. Models the
@@ -920,6 +978,10 @@ export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
 // before accepting whatever the pool ended up with.
 export const DRAFT = {
   poolSize: 14,
+  // Season (campaign) draft is player-only — a smaller pool the player picks
+  // their whole squad from (5 of 8), no AI co-draft. Kept deliberately small so
+  // a new manager isn't overwhelmed at the start of the campaign.
+  seasonPoolSize: 8,
   picksPerTeam: 5,
   // 'P' = player, 'A' = AI. Resolved to actual team identities by startDraft
   // using the player team. 10-pick snake (5 each): P-A-A-P-P-A-A-P-P-A.

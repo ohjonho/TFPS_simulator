@@ -25,6 +25,7 @@ export type DecisionSource =
   | 'region'
   | 'push'
   | 'track-chase'
+  | 'shot-react'
   | 'hold'
   | 'hold-safety'
   | 'stalemate-mid'

@@ -43,7 +43,8 @@ export function liveTeamStatsHtml(state: GameState, team: Team, label: string): 
     return `
       <li class="lu${dead ? ' lu-dead' : ''}" data-roster-unit="${u.id}">
         <div class="lu-top">
-          <strong>${u.id}</strong>
+          <strong>${u.name || u.id}</strong>
+          <span class="lu-id">${u.id}</span>
           <span class="lu-weapon">${u.weapon}</span>
           <span class="lu-status ${status.cls}">${status.text}</span>
         </div>

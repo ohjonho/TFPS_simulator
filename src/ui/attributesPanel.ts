@@ -148,6 +148,7 @@ export function renderAttributesPanel(
   const visible = aggregateVisible(unit.attributes);
   host.innerHTML = `
     <div class="attr-panel-header">
+      <span class="attr-panel-name">${unit.name || unit.id}</span>
       <span class="attr-panel-id">${unit.id}</span>
       <span class="attr-panel-meta">${unit.team} · ${unit.weapon} · ${unit.role}</span>
       ${pinHint}

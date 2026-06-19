@@ -16,8 +16,9 @@ import type {
   Unit,
   Weapon,
 } from './types.ts';
-import { DRAFT, RANDOMIZE_ATTRIBUTES, LOADOUT_POOL, UNIT_DEFAULTS } from './config.ts';
+import { DRAFT, RANDOMIZE_ATTRIBUTES, UNIT_DEFAULTS } from './config.ts';
 import { rollUnitMeta } from './attributes.ts';
+import { assignNames } from './names.ts';
 import { createRng, type Rng } from './rng.ts';
 import { buildStateFromUnits } from './state.ts';
 import { placeSpawns } from './units.ts';
@@ -34,6 +35,7 @@ const ATTACKER_FACING: Facing = 1;
 function buildPoolUnit(slot: number, weapon: Weapon, rng: Rng): Unit {
   const u: Unit = {
     id: `P${slot + 1}`,
+    name: '',                                // placeholder; assignNames fills it in generatePool
     team: 'defenders',                       // placeholder; reset at finalizeDraft
     weapon,
     pos: { col: -1, row: -1 },               // placeholder; reset at finalizeDraft
@@ -55,14 +57,20 @@ function buildPoolUnit(slot: number, weapon: Weapon, rng: Rng): Unit {
   return u;
 }
 
-// Pick `n` weapons from LOADOUT_POOL, resampling until the soft composition
+// Rifle-weighted draw pool — a roster fields four riflers + one sniper, so the
+// pool should offer enough rifles to build that (an unweighted pool rolled
+// sniper-heavy, leaving the player short of riflers). Rifle 3× → ~60% rifle;
+// the minPerWeapon floor still guarantees ≥2 sniper/shotgun for variety.
+const POOL_BIAS: readonly Weapon[] = ['rifle', 'rifle', 'rifle', 'sniper', 'shotgun'];
+
+// Pick `n` weapons from the biased pool, resampling until the soft composition
 // constraint (≥ minPerWeapon of each weapon) is met or maxRetries elapse.
 // Deterministic given the rng.
 function pickPoolLoadouts(rng: Rng, n: number): Weapon[] {
   const { minPerWeapon, maxComposeRetries } = DRAFT;
   for (let attempt = 0; attempt <= maxComposeRetries; attempt++) {
     const out: Weapon[] = [];
-    for (let i = 0; i < n; i++) out.push(rng.pick(LOADOUT_POOL));
+    for (let i = 0; i < n; i++) out.push(rng.pick(POOL_BIAS));
     // Check constraint: each weapon appears ≥ minPerWeapon times.
     const counts: Record<Weapon, number> = { shotgun: 0, rifle: 0, sniper: 0 };
     for (const w of out) counts[w]++;
@@ -80,9 +88,11 @@ function pickPoolLoadouts(rng: Rng, n: number): Weapon[] {
 
 // Build the pool of N units. Uses a single RNG so the pool generation is
 // reproducible given seed alone.
-export function generatePool(rng: Rng, n = DRAFT.poolSize): Unit[] {
+export function generatePool(rng: Rng, n: number = DRAFT.poolSize): Unit[] {
   const loadouts = pickPoolLoadouts(rng, n);
-  return loadouts.map((weapon, i) => buildPoolUnit(i, weapon, rng));
+  const units = loadouts.map((weapon, i) => buildPoolUnit(i, weapon, rng));
+  assignNames(units, rng); // after the rolls — flavor only, no draw-order shift
+  return units;
 }
 
 // Resolve the snake order ['P','A','A','P','P','A'] into actual teams given
@@ -93,15 +103,29 @@ function resolvePickOrder(playerTeam: Team): Team[] {
   return DRAFT.snakeOrder.map((slot) => (slot === 'P' ? playerTeam : aiTeam));
 }
 
+// Draft variants. `playerOnly` (the campaign/season draft) drops the AI from
+// the snake — the player simply picks their squad from a small pool, and the
+// season generates opponents separately. `poolSize` / `picks` size that pool.
+export type DraftOptions = {
+  playerOnly?: boolean;
+  poolSize?: number;
+  picks?: number;
+};
+
 // Build the initial draft GameState (phase: 'draft', no spawned units). Lives
 // here rather than in state.ts so the draft module owns its construction.
-export function startDraft(map: MapDefinition, seed: number): GameState {
+export function startDraft(map: MapDefinition, seed: number, opts: DraftOptions = {}): GameState {
+  const poolSize = opts.poolSize ?? DRAFT.poolSize;
   const poolRng = createRng((seed ^ 0xd7af7000) >>> 0);
-  const pool = generatePool(poolRng);
+  const pool = generatePool(poolRng, poolSize);
   // Pass G — player team defaults to 'defenders' at match start (matches the
   // standard mode default). The snake order resolves against this.
   const playerTeam: Team = 'defenders';
-  const pickOrder = resolvePickOrder(playerTeam);
+  // Season draft = the player builds their own squad (no AI co-draft); the
+  // standard/draft mode keeps the alternating snake.
+  const pickOrder = opts.playerOnly
+    ? Array.from({ length: opts.picks ?? DRAFT.picksPerTeam }, () => playerTeam)
+    : resolvePickOrder(playerTeam);
   const draft: DraftState = {
     pool,
     pickOrder,
