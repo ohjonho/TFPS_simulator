@@ -355,6 +355,25 @@ export function setHoldTargetingOverride(v: boolean | null): void {
   HOLD_TARGETING_OVERRIDE = v;
 }
 
+// --- Wall-aware facing (Part 5 A4) ------------------------------------------
+// nearestFacing() snaps the cone to the 1-of-6 hex direction closest to the
+// desired watch bearing with NO terrain check, so ~20% of units point their cone
+// straight into an adjacent wall (measured) — the "staring at a wall" look. Wall-
+// aware facing instead considers the `considerNearest` directions closest to the
+// desired bearing and picks the one that sees the most open hexes ahead (sight
+// depth, capped) before a wall — staying near the intended angle but not blocked.
+// Affects the vision cone ⇒ what a unit sees ⇒ engagement, so it's measured like
+// any AI change (not purely cosmetic). Default on; override forces it for A/B.
+export const FACING = {
+  wallAware: true,
+  considerNearest: 3,
+  sightDepthCap: 5,
+} as const;
+export let FACING_WALL_AWARE_OVERRIDE: boolean | null = null;
+export function setFacingWallAwareOverride(v: boolean | null): void {
+  FACING_WALL_AWARE_OVERRIDE = v;
+}
+
 // --- Spawn placement -------------------------------------------------------
 // Two layers (see units.placeSpawns + match.applyStrategies):
 //

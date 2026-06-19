@@ -16,6 +16,7 @@
 import type {
   AiState,
   Buff,
+  Facing,
   GameEvent,
   GameState,
   HexCoord,
@@ -36,6 +37,7 @@ import {
   visibleEnemiesByTeam,
 } from './vision.ts';
 import {
+  bestFacingToward,
   bestHoldCellInRegion,
   nearestCellInRegion,
   findCoverHoldHex,
@@ -61,6 +63,8 @@ import {
   ATTRIBUTES,
   CARD_EFFECTS,
   DEFENSIVE_COLLAPSE,
+  FACING,
+  FACING_WALL_AWARE_OVERRIDE,
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
@@ -126,6 +130,13 @@ export function stepTick(state: GameState): GameState {
     defenders: suspectedEnemyHexes(state, 'defenders'),
     attackers: suspectedEnemyHexes(state, 'attackers'),
   };
+
+  // A4 — facing chooser for AI watch-angle facing. Wall-aware (avoids pointing
+  // the cone into an adjacent wall) when enabled; else the raw nearest snap.
+  // NOT used for the turn-on-hit snap (that faces a known shooter directly).
+  const wallAwareFacing = FACING_WALL_AWARE_OVERRIDE ?? FACING.wallAware;
+  const faceToward = (from: HexCoord, to: HexCoord): Facing =>
+    wallAwareFacing ? bestFacingToward(from, to, state.map) : nearestFacing(from, to);
 
   // Pass F — post-plant retake coordination (hoisted once per tick). Designate
   // ONE defuser (the alive defender nearest the spike) so the rest can COVER
@@ -645,17 +656,20 @@ export function stepTick(state: GameState): GameState {
         const dirUsable = directiveFacing
           && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
         if (dirUsable) {
-          u.facing = nearestFacing(u.pos, directiveFacing!);
+          u.facing = faceToward(u.pos, directiveFacing!);
         } else if (tracked) {
-          u.facing = nearestFacing(u.pos, tracked);
+          u.facing = faceToward(u.pos, tracked);
         } else if (effectiveTarget && !arrivedThisTick) {
-          u.facing = nearestFacing(u.pos, effectiveTarget);
+          u.facing = faceToward(u.pos, effectiveTarget);
         } else {
-          // Arrived (or no target) — fall back to enemy spawn / mid centroid
-          // so the cone doesn't keep staring at the last-traversed wall.
-          const fallback = approach ?? midCentroid(state);
+          // Arrived (or no target) — watch where the team believes the enemy is
+          // (A4 b: nearest suspected enemy), else the enemy-spawn / mid centroid.
+          // Using the belief beats the coarse spawn-CENTRE, which points an
+          // off-centre unit at the wrong lane (the "faces NE not NW" case).
+          const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
+          const fallback = susp ?? approach ?? midCentroid(state);
           if (fallback && !sameHex(fallback, u.pos)) {
-            u.facing = nearestFacing(u.pos, fallback);
+            u.facing = faceToward(u.pos, fallback);
           }
         }
         nextMoves[u.id] = result.move;
@@ -690,12 +704,14 @@ export function stepTick(state: GameState): GameState {
       const useDirective = directiveFacing
         && !isWallHex(state.map, directiveFacing)
         && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
+      const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
       const threat = (useDirective ? directiveFacing : undefined)
         ?? state.tracking[u.id]?.lastKnownHex
+        ?? susp
         ?? approach
         ?? midCentroid(state);
       if (threat && !sameHex(threat, u.pos)) {
-        u.facing = nearestFacing(u.pos, threat);
+        u.facing = faceToward(u.pos, threat);
       }
     }
 
@@ -1366,6 +1382,21 @@ function freshAi(): AiState {
 
 function sameHex(a: HexCoord, b: HexCoord): boolean {
   return a.col === b.col && a.row === b.row;
+}
+
+// A4 (b) — the suspected-enemy hex nearest `from`, or null if the team suspects
+// none. The belief-driven watch fallback: a unit with no directive/tracked angle
+// faces where its team actually believes the enemy is, instead of the coarse
+// enemy-spawn CENTRE (which points an off-centre unit at the wrong lane).
+// Deterministic: first-of-equal-distance in the given order.
+function nearestHex(from: HexCoord, hexes: readonly HexCoord[]): HexCoord | null {
+  let best: HexCoord | null = null;
+  let bestD = Infinity;
+  for (const h of hexes) {
+    const d = hexDistance(from, h);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  return best;
 }
 
 // Enemy-spawn push target (middle enemy spawn hex) for the role-movement tendency.

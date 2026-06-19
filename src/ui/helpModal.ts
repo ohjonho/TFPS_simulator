@@ -389,6 +389,23 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.58.0 — units stop staring at walls</h3>
+    <ul>
+      <li><strong>Wall-aware facing.</strong> A unit settling on or moving to a position used to
+        snap its view cone to the nearest hex direction with no terrain check, so ~1 in 4
+        ended up pointing straight at an adjacent wall — seeing nothing. Now it picks the
+        direction nearest its intended watch angle that actually sees open ground, so cones
+        point down lanes instead of into walls (wall-facing 25% → ~0%).</li>
+      <li><strong>Look where the enemy is.</strong> A unit with no specific angle to hold no
+        longer defaults to staring at the centre of the enemy spawn; it watches the nearest
+        spot its team last knew an enemy to be, so cones point at the actual threat instead of
+        a fixed compass direction.</li>
+      <li>Side effect of cleaner sightlines: the pushing side spots defenders a touch sooner, so
+        attacks are slightly stronger across the board (~a few percent) — on the tighter maps
+        this nudges the attack/defense split toward 50/50.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.57.0 — defenders hold smarter angles (Canyon)</h3>
     <ul>
       <li><strong>Defenders now set up on a real angle, not the middle of their zone.</strong>

@@ -6,7 +6,7 @@ import type { Facing, HexCoord, MapDefinition, Unit } from './types.ts';
 import { hexDistance, offsetToPixel } from './hex.ts';
 import { neighbors, passableAt, isCoverAdjacent } from './pathfind.ts';
 import { isVisibleAlongLine } from './vision.ts';
-import { AI, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
+import { AI, FACING, POST_PLANT_SEARCH_RADIUS, POST_PLANT_PREFERRED_RANGE } from './config.ts';
 
 // (Removed: pickFiringTarget / shouldEngage / EngagementDecision — the v0
 // binary "any enemy visible → fight" + closest-target picker. Superseded by the
@@ -324,6 +324,55 @@ function wrapPi(x: number): number {
   while (v > Math.PI) v -= 2 * Math.PI;
   while (v <= -Math.PI) v += 2 * Math.PI;
   return v;
+}
+
+// A4 — wall-aware facing. Like nearestFacing, but among the `considerNearest`
+// directions closest to the desired bearing it picks the one that sees the most
+// OPEN hexes straight ahead before a wall (sight depth, capped) — so the cone
+// points roughly at the watch angle WITHOUT jamming into an adjacent wall (the
+// "staring at a wall" bug; ~20% of units). Ties → the direction closest to the
+// intended bearing. Pure + deterministic (fixed iteration, stable tiebreaks).
+export function bestFacingToward(from: HexCoord, to: HexCoord, map: MapDefinition): Facing {
+  const a = offsetToPixel(from.col, from.row);
+  const b = offsetToPixel(to.col, to.row);
+  const want = Math.atan2(b.y - a.y, b.x - a.x);
+  const nbrs = neighbors(from);
+  // Rank the 6 directions by bearing distance to the desired watch angle.
+  const ranked = nbrs
+    .map((nb, f) => {
+      const np = offsetToPixel(nb.col, nb.row);
+      return { f: f as Facing, delta: Math.abs(wrapPi(Math.atan2(np.y - a.y, np.x - a.x) - want)) };
+    })
+    .sort((x, y) => x.delta - y.delta);
+  // Among the nearest few, prefer the deepest open sightline; tiebreak on bearing.
+  let best: Facing = ranked[0].f;
+  let bestDepth = -1;
+  let bestDelta = Infinity;
+  for (let i = 0; i < Math.min(FACING.considerNearest, ranked.length); i++) {
+    const { f, delta } = ranked[i];
+    const depth = openSightDepth(from, f, map);
+    if (depth > bestDepth || (depth === bestDepth && delta < bestDelta)) {
+      best = f;
+      bestDepth = depth;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
+// Count passable (non-wall, in-bounds) hexes straight ahead in facing `f` from
+// `from`, up to FACING.sightDepthCap, stopping at the first wall/edge. The
+// "how far can this cone see before a wall" proxy used by bestFacingToward.
+// Cover counts as open here (it blocks movement, not the sightline a unit holds
+// down a covered lane). Depth 0 = the cone is jammed straight into a wall/edge.
+function openSightDepth(from: HexCoord, f: Facing, map: MapDefinition): number {
+  let h = from;
+  for (let step = 1; step <= FACING.sightDepthCap; step++) {
+    h = neighbors(h)[f];
+    if (h.row < 0 || h.row >= map.height || h.col < 0 || h.col >= map.width) return step - 1;
+    if (map.grid[h.row][h.col] === 'wall') return step - 1;
+  }
+  return FACING.sightDepthCap;
 }
 
 // Pass E m2 — post-plant attacker cover-seek. BFS around the PLANT CENTROID
