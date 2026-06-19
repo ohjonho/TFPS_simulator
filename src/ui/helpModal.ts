@@ -389,6 +389,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.59.0 — get shot, fight back</h3>
+    <ul>
+      <li><strong>Units react to taking fire.</strong> A unit shot from outside its view
+        (e.g. a defender caught by a lurker mid-rotation) used to just keep walking, because
+        it only ever fights enemies already in its cone and a bullet left no memory. Now being
+        shot makes it stop and turn to face the shooter for a beat, so it actually spots the
+        threat and trades instead of strolling to its death. Skipped for units already in a
+        fight or committed to a site rush (a push shouldn't stall on every stray round).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.58.0 — units stop staring at walls</h3>
     <ul>
       <li><strong>Wall-aware facing.</strong> A unit settling on or moving to a position used to

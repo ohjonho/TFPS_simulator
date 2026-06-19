@@ -390,6 +390,12 @@ export type AiState = {
   // LoS interruptions (enemy steps behind a wall) instead of flip-flopping
   // between engaged/moving. Resets to 0 when an enemy is visible again.
   engageStickyTicks: number;
+  // A5 — shot reaction. Set when the unit is shot at from outside its cone:
+  // `shotReactUntil` opens a short window during which a non-fighting unit stops
+  // and faces `shooterHex` (so vision can acquire the shooter and the engage gate
+  // can fire) instead of walking on. Absent until first shot at. Deterministic.
+  shotReactUntil?: number;
+  shooterHex?: HexCoord | null;
 };
 
 // Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.

@@ -930,6 +930,14 @@ export const DEFENSIVE_COLLAPSE = {
   minWatchers: 1,
 } as const;
 
+// A5 — shot reaction. When a unit is shot at from outside its cone it stops and
+// faces the shooter for this many ticks (so vision can acquire it and the engage
+// gate can fire) instead of walking on. Skipped while retreating, already
+// engaged, or mid committed-site push (a rush shouldn't stall on every ping).
+export const SHOT_REACTION = {
+  holdTicks: 2,
+} as const;
+
 // Pass B — peeker's advantage. When a shooter fires at a target whose hex
 // was in their team's per-unit visibility set this tick but NOT the previous
 // tick ("first sight"), the first shot takes this HR penalty. Models the
