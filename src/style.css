@@ -895,6 +895,65 @@ body {
 .mp-leader.sel { border-color: var(--accent); background: #1a1f2b; }
 .mp-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
 
+/* Playbook (B1) — adapt & save editor overlay. Reuses mp-card/btn-* tokens. */
+#playbook {
+  position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
+  background: var(--bg); display: flex; justify-content: center;
+}
+.pb-card { width: 940px; max-width: 94vw; padding: 36px 0 56px; }
+.pb-grid { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
+.pb-col { display: flex; flex-direction: column; }
+.pb-opts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pb-bases { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+.pb-hint, .pb-none { color: var(--text-dim); font-size: 13px; padding: 8px 0; }
+.pb-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pb-label { font-size: 12px; color: var(--text-dim); min-width: 110px; }
+.pb-chip {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+  color: var(--text); padding: 5px 12px; cursor: pointer; font-weight: 600;
+}
+.pb-chip.sel { border-color: var(--accent); background: #1a1f2b; }
+.pb-name {
+  flex: 1; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+  color: var(--text); padding: 8px 10px; font-size: 13px;
+}
+.pb-slots { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+.pb-slot { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 10px 12px; }
+.pb-slot-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.pb-slot-id { font-weight: 700; font-size: 13px; color: var(--text); min-width: 72px; }
+.pb-region {
+  flex: 1; background: var(--bg); border: 1px solid var(--panel-border); border-radius: 5px;
+  color: var(--text); padding: 5px 8px; font-size: 12px;
+}
+.pb-dirs { display: flex; flex-direction: column; gap: 3px; }
+.pb-dir { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.pb-savedlist { display: flex; flex-direction: column; gap: 8px; }
+.pb-saved {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; padding: 10px 12px;
+  font-size: 13px; color: var(--text);
+}
+.pb-saved-head { display: flex; justify-content: space-between; align-items: center; }
+.pb-saved small { color: var(--text-dim); }
+.pb-coach {
+  font-size: 12px; line-height: 1.5; color: var(--text-dim);
+  border-left: 3px solid var(--panel-border); padding: 4px 0 4px 10px;
+}
+.pb-coach.pending { font-style: italic; opacity: 0.75; }
+.pb-coach b { color: var(--text); font-weight: 600; }
+.pb-coach-tag { font-weight: 700; color: var(--accent); margin-right: 4px; }
+.pb-coach-detail { margin-top: 3px; }
+.pb-coach.v-strong { border-left-color: #46a758; }
+.pb-coach.v-viable { border-left-color: #3b82c4; }
+.pb-coach.v-shaky { border-left-color: #d6a02b; }
+.pb-coach.v-trap { border-left-color: #c4453b; }
+.pb-del {
+  background: transparent; border: 1px solid var(--panel-border); border-radius: 5px;
+  color: var(--text-dim); padding: 4px 10px; cursor: pointer; font-size: 12px;
+}
+.pb-del:hover { color: var(--text); border-color: var(--text-dim); }
+.pb-actions { justify-content: space-between; }
+
 /* Campaign intro story (rendered inside the shared modal body). */
 .season-intro p { margin: 0 0 12px; line-height: 1.6; }
 .season-intro p:last-child { margin-bottom: 0; }

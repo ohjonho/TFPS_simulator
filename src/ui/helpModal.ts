@@ -389,6 +389,32 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.62.0 — Playbook: the assistant coach reviews your plays</h3>
+    <ul>
+      <li><strong>Save a play, get a read.</strong> When you save a play in the Playbook, an
+        assistant coach quietly scrims it in the background and comes back with a verdict —
+        is it viable, or a trap? — plus its character (what it beats, what beats it) and one
+        tip to shore up its softest matchup. Saving stays instant; the read lands a few
+        seconds later.</li>
+      <li>The coach gives you a <em>feel</em>, not a spreadsheet — no win-percentage table, on
+        purpose. Strategy is still a read: you decide when to deploy your play, the coach just
+        tells you what it's good and bad against.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.61.0 — Playbook: adapt &amp; save your own plays</h3>
+    <ul>
+      <li><strong>Author a play.</strong> Between matches, hit <em>📋 Playbook</em> on the
+        match-prep screen to clone any basic strategy and make it yours: retarget each slot's
+        region and switch its directives on or off, give it a name, and save. Your plays carry
+        through the season and show up in the round-by-round strategy menu alongside the
+        built-ins.</li>
+      <li>Saved plays run through the same engine as everything else, so a custom play behaves
+        exactly as authored — no special-casing. (A measured matchup readout for your plays is
+        coming next.)</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.60.0 — watch the site you're taking</h3>
     <ul>
       <li><strong>Attackers face their objective.</strong> An attacker that had reached its

@@ -81,6 +81,12 @@ export type Strategy = {
   // it identically; the marker lets later phases (B2) decide whether AI opponents
   // may auto-pick authored plays. Unused by sim logic today.
   authored?: boolean;
+  // Part 5 B1b — measured matchup of this authored play vs the live opposing
+  // pool (defender-win% per opponent id), filled lazily in a background worker
+  // after authoring. The assistant-coach UI derives a qualitative read from it,
+  // and B2's counter-web / AI picker price the play from these numbers. Absent
+  // until measured; sim logic ignores it.
+  measured?: { matchups: Record<string, number>; seeds: number };
 };
 
 // --- Directive-spec authoring helpers (terse) ----------------------------

@@ -23,7 +23,7 @@ function prettyLean(strategy: string, site: 'A' | 'B' | null): string {
   return `${strategy.replace(/_/g, ' ')}${site ? ` ${site}` : ''}`;
 }
 
-export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => void, onBack?: () => void): void {
+export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => void, onBack?: () => void, onPlaybook?: () => void): void {
   document.getElementById('match-prep')?.remove();
   const host = document.createElement('div');
   host.id = 'match-prep';
@@ -91,7 +91,7 @@ export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => 
           <div class="mp-group"><div class="mp-group-label">In-game leader</div><div class="mp-leaders">${leaderBtns}</div></div>
           <div class="mp-group"><div class="mp-group-label">Pre-match team talk</div><div class="mp-opts">${talkBtns}</div></div>
         </div>
-        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
+        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}${onPlaybook ? '<button class="btn-back" data-playbook type="button">📋 Playbook</button>' : ''}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
       </div>`;
 
     host.querySelectorAll<HTMLButtonElement>('[data-style]').forEach((b) => b.addEventListener('click', () => { playStyle = b.getAttribute('data-style') as PlayStyle; render(); }));
@@ -104,6 +104,10 @@ export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => 
     host.querySelector<HTMLButtonElement>('[data-back]')?.addEventListener('click', () => {
       host.remove();
       onBack?.();
+    });
+    host.querySelector<HTMLButtonElement>('[data-playbook]')?.addEventListener('click', () => {
+      host.remove();
+      onPlaybook?.();
     });
   };
   render();

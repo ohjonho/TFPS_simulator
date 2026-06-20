@@ -66,7 +66,9 @@ function strategyMenuHtml(state: GameState, side: Side): string {
   const unlocked = state.unlockedStrategyIds;
   if (unlocked) {
     const allow = new Set(unlocked);
-    const filtered = options.filter((s) => allow.has(s.id));
+    // B1 — player-authored plays are always offered (the manager built them on
+    // purpose); the unlock ramp only gates the built-in advanced reads.
+    const filtered = options.filter((s) => allow.has(s.id) || s.authored);
     if (filtered.length > 0) options = filtered;
   }
   const sel = state.playerStrategy;

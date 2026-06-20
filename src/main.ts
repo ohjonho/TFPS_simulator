@@ -45,7 +45,7 @@ import {
 import { pickAiStrategy } from './game/aiOpponent.ts';
 import { defenderTeam, eliminationWinner, endRound as endRoundFn } from './game/match.ts';
 import { ROUND_TICK_LIMIT } from './game/config.ts';
-import { strategiesFor, strategyById } from './game/strategies.ts';
+import { strategiesFor, strategyById, clearCustomStrategies } from './game/strategies.ts';
 import { setupCanvas } from './render/canvas.ts';
 import { render } from './render/renderer.ts';
 import type { DebugOverlay, RenderHover, Selection } from './render/renderer.ts';
@@ -73,6 +73,8 @@ import { showWelcome } from './ui/welcome.ts';
 import { showTeamTalk } from './ui/teamTalk.ts';
 import { showDashboard } from './ui/dashboard.ts';
 import { showMatchPrep } from './ui/matchPrep.ts';
+import { showPlaybook } from './ui/playbook.ts';
+import { reviewPlay } from './ui/coachWorker.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
@@ -123,6 +125,9 @@ let matchSeed: number = RNG_SEED_DEFAULT;
 // app boots to the menu; picking a mode builds a match and flips to 'match'.
 let screen: 'menu' | 'match' = 'menu';
 let season: SeasonState | null = null;
+// B1b — seed count for the background assistant-coach matchup review. Modest:
+// the read is qualitative, so it tolerates noise; fewer seeds = faster feedback.
+const COACH_REVIEW_SEEDS = 12;
 let selectedMap: MapDefinition['name'] = 'Foundryv4';
 // F1 — drag state: non-null while the player is dragging a unit during
 // planning. Read by the renderer to draw a "ghost" unit at the cursor pixel.
@@ -348,7 +353,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.60.0', {
+    renderMainMenu(menuHost, 'v0.62.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -395,7 +400,26 @@ function launchMatchPrep(onBack?: () => void): void {
     const m = buildSeasonMatch(s, state.map, prep);
     initialUnitsById = snapshotUnits(m.units);
     setState(m);
-  }, onBack);
+  }, onBack, () => {
+    // Playbook (B1) — adapt & save plays for this season, then return to prep.
+    // Saves land on the live season.customStrategies so they persist + resolve.
+    let handle: { refresh: () => void } | null = null;
+    handle = showPlaybook(state.map, season?.customStrategies ?? [], {
+      onSave: (play) => {
+        if (!season) return;
+        season = { ...season, customStrategies: [...season.customStrategies, play] };
+        // B1b — measure the play's matchup lazily in a background worker; when it
+        // lands, enrich the shared play object (visible to both season + the open
+        // editor, same ref) and re-render the coach read in place.
+        reviewPlay(play, state.map.name, COACH_REVIEW_SEEDS, (matchups, seeds) => {
+          play.measured = { matchups, seeds };
+          handle?.refresh();
+        });
+      },
+      onDelete: (id) => { if (season) season = { ...season, customStrategies: season.customStrategies.filter((p) => p.id !== id) }; },
+      onClose: () => launchMatchPrep(onBack),
+    });
+  });
 }
 
 function launchSeasonDraft(): void {
@@ -413,6 +437,10 @@ function goToMenu(): void {
   clearCoachmarks();
   loop.pause();
   season = null;
+  // B0/B1 — drop any authored plays from the strategy registry so a fresh
+  // (non-season) match started from the menu doesn't inherit the prior season's
+  // custom plays. Season matches re-register their own set in buildSeasonMatch.
+  clearCustomStrategies();
   screen = 'menu';
   rerenderAll();
 }

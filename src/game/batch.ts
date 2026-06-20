@@ -580,22 +580,23 @@ export type CustomFingerprint = {
   matchups: Record<string, number>;
 };
 
-export function fingerprintStrategy(
+// Lean scorer: per-opponent DEFENDER-win% for a play vs the live opposing pool,
+// over N seeds. Registers the play (+ siblings) so it resolves, restores the
+// registry after. This is the cheap single-loop path the Playbook's background
+// "assistant coach" review runs in a Web Worker (no plant/death aggregates) and
+// the data B2 prices custom plays from. Deterministic (fixed seeds).
+export function measureMatchups(
   strat: Strategy,
   mapName: MapDefinition['name'] = 'Foundryv2',
-  seeds = 20,
+  seeds = 12,
   siblings: readonly Strategy[] = [],
-): CustomFingerprint {
-  const prev = customStrategies().map((s) => s); // snapshot to restore
+): Record<string, number> {
+  const prev = customStrategies().map((s) => s);
   setCustomStrategies([...siblings.filter((s) => s.id !== strat.id), strat]);
   try {
     const map = buildInitialState(mapName, 'standard').map;
     const oppSide: Side = strat.side === 'defender' ? 'attacker' : 'defender';
     const opponents = strategiesFor(oppSide, map).map((s) => s.id);
-    const fingerprint = runStrategyFingerprint(strat.side, strat.id, opponents, seeds, mapName);
-    // Per-opponent matchup row (winner-only; the rich fingerprint above carries
-    // the plant/death-zone aggregates). Re-runs the same seeds — cheap for a
-    // measurement tool, and keeps the matchup math colocated and obvious.
     const matchups: Record<string, number> = {};
     for (const opp of opponents) {
       let defWins = 0;
@@ -609,7 +610,26 @@ export function fingerprintStrategy(
       }
       matchups[opp] = Math.round((defWins / seeds) * 1000) / 10;
     }
-    return { fingerprint, matchups };
+    return matchups;
+  } finally {
+    setCustomStrategies(prev); // never leak registry state across calls
+  }
+}
+
+export function fingerprintStrategy(
+  strat: Strategy,
+  mapName: MapDefinition['name'] = 'Foundryv2',
+  seeds = 20,
+  siblings: readonly Strategy[] = [],
+): CustomFingerprint {
+  const prev = customStrategies().map((s) => s); // snapshot to restore
+  setCustomStrategies([...siblings.filter((s) => s.id !== strat.id), strat]);
+  try {
+    const map = buildInitialState(mapName, 'standard').map;
+    const oppSide: Side = strat.side === 'defender' ? 'attacker' : 'defender';
+    const opponents = strategiesFor(oppSide, map).map((s) => s.id);
+    const fingerprint = runStrategyFingerprint(strat.side, strat.id, opponents, seeds, mapName);
+    return { fingerprint, matchups: measureMatchups(strat, mapName, seeds, siblings) };
   } finally {
     setCustomStrategies(prev); // never leak registry state across calls
   }
