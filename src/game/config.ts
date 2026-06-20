@@ -364,14 +364,26 @@ export function setHoldTargetingOverride(v: boolean | null): void {
 // depth, capped) before a wall — staying near the intended angle but not blocked.
 // Affects the vision cone ⇒ what a unit sees ⇒ engagement, so it's measured like
 // any AI change (not purely cosmetic). Default on; override forces it for A/B.
+// objectiveFallback (Part 5 2a): when a unit has zero enemy info (no directive
+// angle, no tracked enemy, nothing suspected), the legacy fallback faces the
+// enemy SPAWN. For an arrived attacker that points the cone back across the map
+// instead of into the site it just took (the "faces NE not its NW objective"
+// case). On, an attacker with no read instead watches the depth of its committed
+// site (the back, where defenders anchor). Defenders keep the spawn watch (it
+// already faces the entry they defend). Pure / deterministic; own override for A/B.
 export const FACING = {
   wallAware: true,
   considerNearest: 3,
   sightDepthCap: 5,
+  objectiveFallback: true,
 } as const;
 export let FACING_WALL_AWARE_OVERRIDE: boolean | null = null;
 export function setFacingWallAwareOverride(v: boolean | null): void {
   FACING_WALL_AWARE_OVERRIDE = v;
+}
+export let FACING_OBJECTIVE_OVERRIDE: boolean | null = null;
+export function setFacingObjectiveOverride(v: boolean | null): void {
+  FACING_OBJECTIVE_OVERRIDE = v;
 }
 
 // --- Spawn placement -------------------------------------------------------

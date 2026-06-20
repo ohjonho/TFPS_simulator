@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.60.0 — watch the site you're taking</h3>
+    <ul>
+      <li><strong>Attackers face their objective.</strong> An attacker that had reached its
+        site with no enemy in sight used to point its view cone back toward the enemy spawn —
+        across the map, away from the site it had just pushed into. Now, with no read on the
+        enemy, it watches the depth of the site it's attacking (where defenders hold), so it's
+        looking at the angle it actually has to clear instead of the wrong way.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.59.0 — get shot, fight back</h3>
     <ul>
       <li><strong>Units react to taking fire.</strong> A unit shot from outside its view
