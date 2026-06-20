@@ -13,7 +13,7 @@ import { placeSpawns } from './units.ts';
 import { generatePool } from './draft.ts';
 import { createRng } from './rng.ts';
 import { UNIT_DEFAULTS, ROLE_AGGRESSION } from './config.ts';
-import { BASIC_STRATEGY_IDS } from './strategies.ts';
+import { BASIC_STRATEGY_IDS, setCustomStrategies, type Strategy } from './strategies.ts';
 import { generateTeamName } from './names.ts';
 import { teamRating } from './ratings.ts';
 
@@ -112,6 +112,12 @@ export type SeasonState = {
   mapName: MapDefinition['name'];
   clubLean: ClubLean | null; // early identity from the post-draft team talk
   upgrades: string[];        // pre-season club upgrades chosen on the dashboard
+  // Part 5 B0 — player-authored / adapted plays (the Playbook). Stored as live
+  // Strategy objects (the season is in-memory only; Strategy is plain data, so a
+  // future save system serializes them as-is). Registered into the strategy
+  // resolver via setCustomStrategies in buildSeasonMatch. Empty until B1 lets the
+  // player author one ⇒ matches stay byte-identical.
+  customStrategies: Strategy[];
 };
 
 // Re-place a roster of persisted identities at a team's spawns, resetting every
@@ -179,7 +185,7 @@ export function startSeason(
       });
     }
   }
-  return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null, upgrades: [] };
+  return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null, upgrades: [], customStrategies: [] };
 }
 
 // Progressive strategy unlock across the campaign's opening matches. The new
@@ -212,6 +218,10 @@ export function scriptedOpponentForMatch(idx: number): Partial<Record<Side, stri
 // Also stamps the per-match strategy unlock set + scripted opponent (the
 // campaign teaching ramp); both carry across rounds via the startRound spread.
 export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?: MatchPrep): GameState {
+  // B0 — make this season's authored plays resolvable (strategyById/strategiesFor)
+  // for the whole match. Deterministic: same season → same set, set before any
+  // strategy resolution. Empty list (no authored plays) is a no-op ⇒ byte-identical.
+  setCustomStrategies(season.customStrategies);
   let player = applyUpgrades(applyClubLean(placeRoster(season.playerRoster, 'defenders', map), season.clubLean), season.upgrades);
   if (prep) player = applyMatchPrep(player, prep);
   const opp = placeRoster(season.schedule[season.idx], 'attackers', map);
