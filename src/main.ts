@@ -353,7 +353,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.64.0', {
+    renderMainMenu(menuHost, 'v0.65.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -396,7 +396,7 @@ function startMode(mode: MatchMode): void {
 function launchMatchPrep(onBack?: () => void): void {
   const s = season;
   if (!s) return;
-  showMatchPrep(s, (prep) => {
+  showMatchPrep(s, state.map, (prep) => {
     const m = buildSeasonMatch(s, state.map, prep);
     initialUnitsById = snapshotUnits(m.units);
     setState(m);

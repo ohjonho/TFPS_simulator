@@ -389,6 +389,15 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.65.0 — match prep reads the rival's signature</h3>
+    <ul>
+      <li><strong>Prep scouting names their signature.</strong> When a rival is known for a
+        signature play, the match-prep scouting report now names it and tells you what to
+        counter it with — the same read the in-match Scout gives — instead of a raw label. The
+        Win Outlook stays a team-strength estimate; the matchup is yours to read round by round.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.64.0 — rival teams have signature plays</h3>
     <ul>
       <li><strong>Scout the enemy's playbook.</strong> From your third match on, some opponents

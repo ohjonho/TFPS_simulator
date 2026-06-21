@@ -6,6 +6,10 @@
 
 import type { SeasonState, MatchPrep, PlayStyle, TeamTalk } from '../game/season.ts';
 import { seasonRatings } from '../game/season.ts';
+import type { MapDefinition } from '../game/types.ts';
+import { buildSignaturePlays } from '../game/signaturePlays.ts';
+import { strategyById } from '../game/strategies.ts';
+import { scoutReadForCustom } from '../game/playbookCoach.ts';
 
 const STYLES: { id: PlayStyle; name: string; note: string; delta: number }[] = [
   { id: 'cautious', name: 'Cautious', note: 'Protect the round — safer, lower ceiling.', delta: -2 },
@@ -23,11 +27,27 @@ function prettyLean(strategy: string, site: 'A' | 'B' | null): string {
   return `${strategy.replace(/_/g, ' ')}${site ? ` ${site}` : ''}`;
 }
 
-export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => void, onBack?: () => void, onPlaybook?: () => void): void {
+export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (prep: MatchPrep) => void, onBack?: () => void, onPlaybook?: () => void): void {
   document.getElementById('match-prep')?.remove();
   const host = document.createElement('div');
   host.id = 'match-prep';
   document.body.appendChild(host);
+
+  // B2.4 — resolve the opponent's leans against the measured matrix. A signature
+  // (custom) lean shows its real name + the counter from its measured matchup
+  // (one source of truth with the in-match Scout), instead of a raw id. Builtin
+  // leans keep the simple prettyLean label. Keeps the read qualitative — the Win
+  // Outlook % stays a team-strength estimate, decided round by round.
+  const sigs = buildSignaturePlays(map);
+  const leanText = (lean: { strategy: string; site: 'A' | 'B' | null }): string => {
+    const sig = sigs.find((s) => s.id === lean.strategy);
+    const siteTxt = lean.site ? ` ${lean.site}` : '';
+    if (!sig) return `<strong>${prettyLean(lean.strategy, lean.site)}</strong>`;
+    const read = scoutReadForCustom(sig);
+    const counterSide = sig.side === 'attacker' ? 'defender' : 'attacker';
+    const cName = read ? (strategyById(read.counterId, counterSide, map)?.name ?? read.counterId) : null;
+    return `<strong>${sig.name}${siteTxt}</strong> — their signature${cName ? `; counter with <strong>${cName}</strong>` : ''}`;
+  };
 
   let playStyle: PlayStyle = 'standard';
   let teamTalk: TeamTalk = 'calm';
@@ -69,8 +89,8 @@ export function showMatchPrep(season: SeasonState, onPlay: (prep: MatchPrep) => 
             </div>
             <div class="mp-scout">
               <div class="mp-scout-head">Scouting report</div>
-              ${info ? `<div class="mp-lean">On attack they lean <strong>${prettyLean(info.atk.strategy, info.atk.site)}</strong>.</div>
-              <div class="mp-lean">On defense they lean <strong>${prettyLean(info.def.strategy, info.def.site)}</strong>.</div>
+              ${info ? `<div class="mp-lean">On attack they lean ${leanText(info.atk)}.</div>
+              <div class="mp-lean">On defense they lean ${leanText(info.def)}.</div>
               <div class="mp-scout-note">You'll pick the counter round by round once the match starts.</div>` : ''}
             </div>
           </div>
