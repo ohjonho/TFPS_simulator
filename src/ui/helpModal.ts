@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.63.0 — opponents adapt to your signature play</h3>
+    <ul>
+      <li><strong>The AI reads your Playbook.</strong> Lean on a custom play across a match and
+        the opponent starts tilting its picks toward whatever counters it — the same matchup
+        the assistant coach measured. It's a soft adjustment, not a hard counter: your play
+        still wins its good matchups, but spamming one signature gets punished, so mixing your
+        looks matters. Only kicks in once you've authored and deployed a play.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.62.0 — Playbook: the assistant coach reviews your plays</h3>
     <ul>
       <li><strong>Save a play, get a read.</strong> When you save a play in the Playbook, an

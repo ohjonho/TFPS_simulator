@@ -10,7 +10,10 @@
 import type { GameState, Side, Team } from './types.ts';
 import type { Rng } from './rng.ts';
 import { availableStrategies } from './traits.ts';
-import { AI_STRATEGY_EXPLORATION, OPPONENT_LEAN } from './config.ts';
+import { strategyById } from './strategies.ts';
+import {
+  AI_STRATEGY_EXPLORATION, OPPONENT_LEAN, STRATEGY_COUNTER, STRATEGY_COUNTER_OVERRIDE,
+} from './config.ts';
 
 export function pickAiStrategy(
   state: GameState,
@@ -51,6 +54,33 @@ export function pickAiStrategy(
   const weights = options.map(
     (s) => 1 + (wins[s.id] ?? 0) + rng.next() * AI_STRATEGY_EXPLORATION,
   );
+  // B2.1 — soft matchup counter. If the enemy (player) has a leaned AUTHORED play
+  // with a measured matchup, tilt toward the option that best counters it. Soft
+  // (a weight multiplier, not an argmax) and no new RNG draws ⇒ determinism holds;
+  // inert when there's no measured custom lean ⇒ existing behavior unchanged.
+  if (STRATEGY_COUNTER_OVERRIDE ?? STRATEGY_COUNTER.enabled) {
+    const enemy: Team = team === 'defenders' ? 'attackers' : 'defenders';
+    const enemySide: Side = side === 'attacker' ? 'defender' : 'attacker';
+    const enemyLean = state.strategyLean[enemy] ?? {};
+    // The enemy's most-leaned authored play that carries a measured matchup.
+    let sigMatchups: Record<string, number> | null = null;
+    let bestW = 0;
+    for (const [id, w] of Object.entries(enemyLean)) {
+      if (w <= bestW) continue;
+      const p = strategyById(id, enemySide, state.map);
+      if (p?.authored && p.measured) { sigMatchups = p.measured.matchups; bestW = w; }
+    }
+    if (sigMatchups) {
+      for (let i = 0; i < options.length; i++) {
+        const dv = sigMatchups[options[i].id];
+        if (dv === undefined) continue;
+        // defender-win% → THIS AI's win% vs the play, by the AI's side.
+        const aiWin = side === 'attacker' ? 100 - dv : dv;
+        const factor = Math.max(STRATEGY_COUNTER.floor, 1 + STRATEGY_COUNTER.bias * (aiWin - 50) / 50);
+        weights[i] *= factor;
+      }
+    }
+  }
   const total = weights.reduce((s, w) => s + w, 0);
   let pick = rng.next() * total;
   for (let i = 0; i < options.length; i++) {

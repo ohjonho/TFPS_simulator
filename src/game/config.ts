@@ -863,6 +863,23 @@ export const MIN_ROUND_TICKS_FOR_HOLD_END = 20;
 // uniform [0, AI_STRATEGY_EXPLORATION) is added on top of `1 + wins`.
 export const AI_STRATEGY_EXPLORATION = 2;
 
+// Part 5 B2.1 — matchup-aware counter bias. When the enemy (player) has a leaned
+// AUTHORED play with a measured matchup (play.measured), the AI softly tilts its
+// own pick toward the option that best counters it: each option's base weight is
+// multiplied by 1 + bias·(aiWinVsPlay − 50)/50 (clamped ≥ floor). SOFT by design
+// (a tilt, not an argmax) per the read-under-uncertainty meta — measure the tilt
+// and keep only if it's bounded. Inert when the player has no measured custom
+// lean ⇒ existing AI behavior + determinism unchanged. No new RNG draws.
+export const STRATEGY_COUNTER = {
+  enabled: true,
+  bias: 0.6,
+  floor: 0.05,
+} as const;
+export let STRATEGY_COUNTER_OVERRIDE: boolean | null = null;
+export function setStrategyCounterOverride(v: boolean | null): void {
+  STRATEGY_COUNTER_OVERRIDE = v;
+}
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's
