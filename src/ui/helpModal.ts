@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.67.0 — Playbook: build a play from scratch</h3>
+    <ul>
+      <li><strong>Author from a blank slate.</strong> The Playbook now has a <em>＋ Blank slate</em>
+        option alongside the basics to adapt: start with five empty positions, set each one's
+        region, and add directives (hold an angle, commit a site, trade for an ally, peek &
+        retreat, read &amp; commit…) to compose a play entirely your own. The assistant coach
+        reviews it the same way, so a from-scratch play still gets a viability read.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.66.0 — rivals get smarter as the season goes on</h3>
     <ul>
       <li><strong>Early opponents play dumber.</strong> Your first opponents don't reliably

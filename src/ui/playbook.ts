@@ -1,17 +1,17 @@
-// Playbook (Part 5 B1) — the "adapt & save" editor. A between-matches, full-
-// screen overlay (reached from Match Prep) where the manager clones a basic
-// strategy, retargets its slots' regions, toggles directives on/off, names it,
-// and saves it as a player-authored play. Saved plays land on
-// SeasonState.customStrategies (B0), become resolvable everywhere via the
-// strategy registry, and are pickable in the in-match menu. The measured matchup
-// readout (fingerprintStrategy via a worker) is the next slice (B1b); for now a
-// saved play is still measurable headlessly. Pure DOM, same pattern as matchPrep.
+// Playbook (Part 5 B1 + B2.3) — the "adapt & save / author" editor. A between-
+// matches, full-screen overlay (reached from Match Prep) where the manager either
+// CLONES a basic strategy and retargets it, or builds one FROM SCRATCH on a blank
+// slate; sets each slot's region; adds + toggles directives; names it; and saves
+// it as a player-authored play. Saved plays land on SeasonState.customStrategies
+// (B0), resolve everywhere via the strategy registry, are pickable in the in-match
+// menu, and get a background assistant-coach review (B1b). Pure DOM.
 
 import type { MapDefinition, Side } from '../game/types.ts';
 import {
   strategiesFor,
   type Strategy,
   type StrategyVariant,
+  type SlotPick,
 } from '../game/strategies.ts';
 import type { DirectiveSpec } from '../game/directives.ts';
 import { coachRead } from '../game/playbookCoach.ts';
@@ -50,13 +50,43 @@ function directiveLabel(spec: DirectiveSpec): string {
   }
 }
 
-// Next free authored id of the form `<baseId>_c<N>` (never collides with a
-// builtin id, which has no `_c` suffix).
-function uniqueAuthoredId(baseId: string, taken: ReadonlySet<string>): string {
+// Next free authored id of the form `<prefix>_c<N>` (never collides with a builtin
+// id, which has no `_c` suffix).
+function uniqueAuthoredId(prefix: string, taken: ReadonlySet<string>): string {
   let n = 1;
-  while (taken.has(`${baseId}_c${n}`)) n++;
-  return `${baseId}_c${n}`;
+  while (taken.has(`${prefix}_c${n}`)) n++;
+  return `${prefix}_c${n}`;
 }
+
+// --- author-from-scratch (B2.3) -------------------------------------------
+const BLANK = '__blank__';
+const RIFLE: SlotPick = { preferWeapon: 'rifle' };
+const SNIPER: SlotPick = { preferWeapon: 'sniper' };
+
+// A blank 5-slot skeleton (4 rifles + 1 sniper, matching LOADOUTS) on a neutral
+// region with no directives — the player sets regions + adds directives.
+function blankVariant(): StrategyVariant {
+  return [
+    { id: 'pos1', pick: RIFLE, region: 'mid', directives: [] },
+    { id: 'pos2', pick: RIFLE, region: 'mid', directives: [] },
+    { id: 'pos3', pick: RIFLE, region: 'mid', directives: [] },
+    { id: 'pos4', pick: RIFLE, region: 'mid', directives: [] },
+    { id: 'pos5', pick: SNIPER, region: 'mid', directives: [] },
+  ];
+}
+
+// Directive kinds the "add" UI can append. `ref` = the extra input the kind needs
+// (a region, an ally slot id, or nothing). `build` makes a well-formed spec
+// (priorities mirror the strategies.ts authoring helpers).
+type AddableKind = { kind: string; label: string; ref: 'region' | 'slot' | 'none'; build: (arg: string) => DirectiveSpec };
+const ADDABLE: AddableKind[] = [
+  { kind: 'hold_angle', label: 'Hold angle', ref: 'region', build: (r) => ({ kind: 'hold_angle', facing: { region: r }, priority: 50 }) },
+  { kind: 'safe_sniper', label: 'Sniper angle', ref: 'region', build: (r) => ({ kind: 'safe_sniper', angle: { region: r }, priority: 55 }) },
+  { kind: 'commit_site', label: 'Commit to site', ref: 'region', build: (r) => ({ kind: 'commit_site', site: { region: r }, priority: 70 }) },
+  { kind: 'peek_and_retreat', label: 'Peek & retreat', ref: 'region', build: (r) => ({ kind: 'peek_and_retreat', peek: { region: r }, cadenceTicks: 4, priority: 65 }) },
+  { kind: 'trade_for', label: 'Trade for ally', ref: 'slot', build: (s) => ({ kind: 'trade_for', ally: s, windowTicks: 4, priority: 40 }) },
+  { kind: 'read_and_commit', label: 'Read & commit', ref: 'none', build: () => ({ kind: 'read_and_commit', priority: 70 }) },
+];
 
 export function showPlaybook(
   map: MapDefinition,
@@ -73,10 +103,10 @@ export function showPlaybook(
 
   // --- editor state ---
   let side: Side = 'defender';
-  let baseId: string | null = null;
+  let baseId: string | null = null; // a builtin id, BLANK, or null (nothing picked)
   let sourceVariant = 0;
   let name = '';
-  // Working copy of the chosen variant's slots (region edits mutate this).
+  // Working copy of the chosen variant's slots (region/directive edits mutate this).
   let working: StrategyVariant | null = null;
   // Directives toggled OFF, keyed `${slotIdx}:${dirIdx}` against the working set.
   const disabled = new Set<string>();
@@ -84,42 +114,56 @@ export function showPlaybook(
   const bases = (): Strategy[] => strategiesFor(side, map).filter((s) => !s.authored);
   const base = (): Strategy | null => bases().find((s) => s.id === baseId) ?? null;
 
+  // Options for the add-directive ref select, by the chosen kind.
+  const refOptionsFor = (kind: string): string => {
+    const k = ADDABLE.find((a) => a.kind === kind);
+    if (!k || k.ref === 'none') return '<option value="">(no target)</option>';
+    if (k.ref === 'slot') return (working ?? []).map((s) => `<option value="${s.id}">${s.id}</option>`).join('');
+    return regionOptions.map((r) => `<option value="${r}">${r}</option>`).join('');
+  };
+
   const loadVariant = (): void => {
-    const b = base();
-    if (!b) { working = null; return; }
-    working = structuredClone(b.variants[sourceVariant] ?? b.variants[0] ?? []);
     disabled.clear();
+    if (baseId === BLANK) { working = blankVariant(); return; }
+    const b = base();
+    working = b ? structuredClone(b.variants[sourceVariant] ?? b.variants[0] ?? []) : null;
   };
 
   const selectBase = (id: string): void => {
     baseId = id;
     sourceVariant = 0;
-    const b = base();
-    name = b ? `${b.name} (custom)` : '';
+    if (id === BLANK) name = 'New play';
+    else { const b = base(); name = b ? `${b.name} (custom)` : ''; }
     loadVariant();
     render();
   };
 
   const save = (): void => {
-    const b = base();
-    if (!b || !working) return;
+    if (!working) return;
     const taken = new Set<string>([...plays.map((s) => s.id), ...strategiesFor(side, map).map((s) => s.id)]);
-    const id = uniqueAuthoredId(b.id, taken);
     const variant: StrategyVariant = working.map((slot, si) => ({
       ...slot,
       directives: slot.directives.filter((_d, di) => !disabled.has(`${si}:${di}`)),
     }));
-    const play: Strategy = {
-      ...b,
-      id,
-      name: name.trim() || `${b.name} (custom)`,
-      description: `Custom · adapted from ${b.name}`,
-      authored: true,
-      variants: [variant],
-    };
+    let play: Strategy;
+    if (baseId === BLANK) {
+      play = {
+        id: uniqueAuthoredId('custom', taken), name: name.trim() || 'New play', side,
+        description: 'Custom · authored from scratch',
+        variants: [variant], fallbackRegion: 'mid', aggressionMod: 0, retreatThresholdMod: 0, authored: true,
+      };
+    } else {
+      const b = base();
+      if (!b) return;
+      play = {
+        ...b, id: uniqueAuthoredId(b.id, taken),
+        name: name.trim() || `${b.name} (custom)`,
+        description: `Custom · adapted from ${b.name}`,
+        authored: true, variants: [variant],
+      };
+    }
     plays.push(play);
     cb.onSave(play);
-    // Reset the editor to a clean slate so the next play starts fresh.
     baseId = null; working = null; name = ''; disabled.clear();
     render();
   };
@@ -136,7 +180,8 @@ export function showPlaybook(
     const sideBtns = (['defender', 'attacker'] as Side[]).map((sd) =>
       `<button class="mp-opt ${sd === side ? 'sel' : ''}" data-side="${sd}"><b>${sd === 'defender' ? 'Defense' : 'Attack'}</b></button>`).join('');
 
-    const baseBtns = bases().map((s) =>
+    const blankBtn = `<button class="mp-opt ${baseId === BLANK ? 'sel' : ''}" data-base="${BLANK}"><b>＋ Blank slate</b><span>build a play from scratch</span></button>`;
+    const baseBtns = blankBtn + bases().map((s) =>
       `<button class="mp-opt ${s.id === baseId ? 'sel' : ''}" data-base="${s.id}"><b>${s.name}</b><span>${s.description}</span></button>`).join('');
 
     const variantPicker = b && b.variants.length > 1
@@ -144,18 +189,22 @@ export function showPlaybook(
           `<button class="pb-chip ${i === sourceVariant ? 'sel' : ''}" data-variant="${i}">${String.fromCharCode(65 + i)}</button>`).join('')}</div>`
       : '';
 
+    const kindOpts = ADDABLE.map((k) => `<option value="${k.kind}">${k.label}</option>`).join('');
     const slotEditor = working ? working.map((slot, si) => {
-      const opts = regionOptions.map((r) =>
-        `<option value="${r}" ${r === slot.region ? 'selected' : ''}>${r}</option>`).join('');
+      const opts = regionOptions.map((r) => `<option value="${r}" ${r === slot.region ? 'selected' : ''}>${r}</option>`).join('');
       const dirs = slot.directives.map((d, di) => {
         const key = `${si}:${di}`;
-        const on = !disabled.has(key);
-        return `<label class="pb-dir"><input type="checkbox" data-dir="${key}" ${on ? 'checked' : ''}/> ${directiveLabel(d)}</label>`;
+        return `<label class="pb-dir"><input type="checkbox" data-dir="${key}" ${disabled.has(key) ? '' : 'checked'}/> ${directiveLabel(d)}</label>`;
       }).join('') || `<span class="pb-none">no directives</span>`;
       return `<div class="pb-slot">
         <div class="pb-slot-head"><span class="pb-slot-id">${slot.id}</span>
           <select class="pb-region" data-region="${si}">${opts}</select></div>
         <div class="pb-dirs">${dirs}</div>
+        <div class="pb-add">
+          <select class="pb-add-kind" data-add-kind="${si}">${kindOpts}</select>
+          <select class="pb-add-ref" data-add-ref="${si}">${refOptionsFor(ADDABLE[0].kind)}</select>
+          <button class="pb-add-btn" data-add="${si}" type="button">+ add</button>
+        </div>
       </div>`;
     }).join('') : '';
 
@@ -175,30 +224,30 @@ export function showPlaybook(
     host.innerHTML = `
       <div class="mp-card pb-card">
         <div class="mp-header">
-          <div class="mp-kicker">Playbook · adapt &amp; save</div>
+          <div class="mp-kicker">Playbook · adapt &amp; author</div>
           <h1>Author a play</h1>
         </div>
         <div class="pb-grid">
           <div class="pb-col">
             <div class="mp-group-label">Side</div>
             <div class="pb-opts2">${sideBtns}</div>
-            <div class="mp-group-label" style="margin-top:14px">Adapt from</div>
+            <div class="mp-group-label" style="margin-top:14px">Start from</div>
             <div class="pb-bases">${baseBtns}</div>
           </div>
           <div class="pb-col">
-            ${b ? `
+            ${working ? `
               ${variantPicker}
               <div class="pb-row"><span class="pb-label">Name</span><input class="pb-name" type="text" value="${name.replace(/"/g, '&quot;')}" placeholder="My play"/></div>
-              <div class="mp-group-label" style="margin-top:12px">Slots — retarget region &amp; toggle directives</div>
+              <div class="mp-group-label" style="margin-top:12px">Slots — set region · add / toggle directives</div>
               <div class="pb-slots">${slotEditor}</div>
-            ` : `<div class="pb-hint">Pick a side and a base strategy to start adapting.</div>`}
+            ` : `<div class="pb-hint">Pick a side, then a base to adapt or a blank slate to build from scratch.</div>`}
           </div>
         </div>
         <div class="mp-group-label" style="margin-top:20px">Saved plays</div>
         <div class="pb-savedlist">${savedList}</div>
         <div class="mp-actions pb-actions">
           <button class="btn-back" data-close type="button">&larr; Done</button>
-          <button class="btn-primary" data-save type="button" ${b ? '' : 'disabled'}>Save play</button>
+          <button class="btn-primary" data-save type="button" ${working ? '' : 'disabled'}>Save play</button>
         </div>
       </div>`;
 
@@ -216,6 +265,21 @@ export function showPlaybook(
     host.querySelectorAll<HTMLInputElement>('[data-dir]').forEach((el) => el.addEventListener('change', () => {
       const key = el.getAttribute('data-dir')!;
       if (el.checked) disabled.delete(key); else disabled.add(key);
+    }));
+    // Add-directive: kind change repopulates the ref select; + add appends a spec.
+    host.querySelectorAll<HTMLSelectElement>('[data-add-kind]').forEach((el) => el.addEventListener('change', () => {
+      const si = el.getAttribute('data-add-kind')!;
+      const ref = host.querySelector<HTMLSelectElement>(`[data-add-ref="${si}"]`);
+      if (ref) ref.innerHTML = refOptionsFor(el.value);
+    }));
+    host.querySelectorAll<HTMLButtonElement>('[data-add]').forEach((el) => el.addEventListener('click', () => {
+      const si = parseInt(el.getAttribute('data-add')!, 10);
+      const kindSel = host.querySelector<HTMLSelectElement>(`[data-add-kind="${si}"]`);
+      const refSel = host.querySelector<HTMLSelectElement>(`[data-add-ref="${si}"]`);
+      const k = ADDABLE.find((a) => a.kind === kindSel?.value);
+      if (!k || !working || !working[si]) return;
+      working[si] = { ...working[si], directives: [...working[si].directives, k.build(refSel?.value ?? '')] };
+      render();
     }));
     host.querySelector<HTMLInputElement>('.pb-name')?.addEventListener('input', (e) => { name = (e.target as HTMLInputElement).value; });
     host.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((el) => el.addEventListener('click', () => removePlay(el.getAttribute('data-del')!)));
