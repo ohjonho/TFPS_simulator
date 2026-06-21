@@ -389,6 +389,20 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.68.0 — Playbook: author plays on the map</h3>
+    <ul>
+      <li><strong>The Playbook is now visual.</strong> Instead of picking regions from menus,
+        you author on the actual map: drag your five units onto the hexes they should hold
+        (<em>Move</em>), aim each one's view cone (<em>Watch</em>), and sketch a flank/lurk path
+        for them to take (<em>Route</em>). The old abstract editor is gone.</li>
+      <li><strong>Routes are run on discipline.</strong> A drawn route is a plan, not a rail —
+        a disciplined unit executes the flank faithfully, while a low-discipline one breaks off
+        and takes the direct line. So discipline (and who you put on a trick play) matters, and
+        units still react to contact instead of marching blindly. The coach reviews your map
+        plays just like any other.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.67.0 — Playbook: build a play from scratch</h3>
     <ul>
       <li><strong>Author from a blank slate.</strong> The Playbook now has a <em>＋ Blank slate</em>

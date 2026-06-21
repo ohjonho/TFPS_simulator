@@ -11,8 +11,8 @@ import { offsetToPixel, pixelToOffset } from '../game/hex.ts';
 import { passableAt } from '../game/pathfind.ts';
 import { HEX } from '../game/config.ts';
 
-export type EditorToken = { id: string; weapon: 'rifle' | 'sniper'; pinHex: HexCoord; watchHex?: HexCoord };
-export type EditorMode = 'move' | 'watch';
+export type EditorToken = { id: string; weapon: 'rifle' | 'sniper'; pinHex: HexCoord; watchHex?: HexCoord; route?: HexCoord[] };
+export type EditorMode = 'move' | 'watch' | 'route';
 
 export type PlaybookCanvasState = {
   tokens: () => EditorToken[];
@@ -21,6 +21,7 @@ export type PlaybookCanvasState = {
   onSelect: (id: string | null) => void;
   onMove: (id: string, hex: HexCoord) => void;
   onSetWatch: (id: string, hex: HexCoord) => void;
+  onAddWaypoint: (id: string, hex: HexCoord) => void;
 };
 
 export type PlaybookCanvasHandle = { redraw: () => void; destroy: () => void };
@@ -55,6 +56,15 @@ export function createPlaybookCanvas(
       // selected unit's cone there (a watch angle can aim anywhere, even a wall).
       if (t) s.onSelect(t.id);
       else { const sel = s.selectedId(); if (sel) s.onSetWatch(sel, hex); }
+      redraw();
+      ev.preventDefault();
+      return;
+    }
+    if (s.mode() === 'route') {
+      // Route mode: click a unit to select it, or click passable hexes in sequence
+      // to append the selected unit's flank waypoints (it pathfinds between them).
+      if (t) s.onSelect(t.id);
+      else { const sel = s.selectedId(); if (sel && passableAt(map, hex)) s.onAddWaypoint(sel, hex); }
       redraw();
       ev.preventDefault();
       return;
@@ -119,6 +129,29 @@ export function createPlaybookCanvas(
     drawHexGrid(ctx, map);
     drawRegionLabels(ctx, map);
     const sel = s.selectedId();
+    // Routes under everything: a polyline through the drawn waypoints, ending at
+    // the unit's pin (its hold). Dots mark each waypoint.
+    for (const t of s.tokens()) {
+      if (!t.route || t.route.length === 0) continue;
+      const pts = [...t.route, t.pinHex].map((h) => offsetToPixel(h.col, h.row));
+      ctx.save();
+      ctx.strokeStyle = t.id === sel ? '#2bb3c4' : 'rgba(43,179,196,0.45)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const wp of t.route) {
+        const p = offsetToPixel(wp.col, wp.row);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = t.id === sel ? '#2bb3c4' : 'rgba(43,179,196,0.5)';
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     // Watch arrows under the tokens (selected one brighter).
     for (const t of s.tokens()) {
       if (t.watchHex) drawArrow(t.pinHex, t.watchHex, t.id === sel ? '#e0b13a' : 'rgba(224,177,58,0.45)');

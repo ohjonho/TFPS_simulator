@@ -916,6 +916,7 @@ body {
 }
 .pb-tool:hover { border-color: var(--text-dim); }
 .pb-tool.sel { border-color: var(--accent); background: #1a1f2b; color: var(--accent); }
+.pb-tool-clear { margin-left: auto; color: var(--text-dim); }
 .pb-col { display: flex; flex-direction: column; }
 .pb-opts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pb-bases { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }

@@ -104,6 +104,7 @@ export function showPlaybook(
       directives: [],
       pinHex: t.pinHex,
       watchHex: t.watchHex,
+      route: t.route && t.route.length ? [...t.route, t.pinHex] : undefined,
     }));
     const b = base();
     const play: Strategy = baseId === BLANK || !b
@@ -163,12 +164,14 @@ export function showPlaybook(
             <div class="mp-group-label" style="margin-top:14px">Start from</div>
             <div class="pb-starts">${startBtns}</div>
             ${tokens.length ? `<div class="pb-row" style="margin-top:14px"><span class="pb-label">Name</span><input class="pb-name" type="text" value="${name.replace(/"/g, '&quot;')}" placeholder="My play"/></div>
-            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set where it holds. <b>Watch:</b> select a unit, then click a hex to aim its cone.</div>` : ''}
+            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set its hold. <b>Watch:</b> select a unit, click a hex to aim its cone. <b>Route:</b> select a unit, click hexes to draw its flank — discipline decides how faithfully it's run.</div>` : ''}
           </div>
           <div class="pb-col pb-canvas-col">
             ${tokens.length ? `<div class="pb-tools">
               <button class="pb-tool ${mode === 'move' ? 'sel' : ''}" data-mode="move" type="button">↔ Move</button>
               <button class="pb-tool ${mode === 'watch' ? 'sel' : ''}" data-mode="watch" type="button">⌖ Watch</button>
+              <button class="pb-tool ${mode === 'route' ? 'sel' : ''}" data-mode="route" type="button">↳ Route</button>
+              <button class="pb-tool pb-tool-clear" data-clearroute type="button">Clear route</button>
             </div>
             <div id="pb-canvas-host"></div>` : `<div class="pb-hint">Pick a side, then a starting point (Blank or a basic) to author on the map.</div>`}
           </div>
@@ -196,6 +199,10 @@ export function showPlaybook(
       host.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('sel', b.getAttribute('data-mode') === mode));
       canvasHandle?.redraw();
     }));
+    host.querySelector<HTMLButtonElement>('[data-clearroute]')?.addEventListener('click', () => {
+      const t = tokens.find((x) => x.id === selectedId);
+      if (t) { t.route = []; canvasHandle?.redraw(); }
+    });
 
     // Mount the map canvas (persists across canvas interactions — onMove/onSelect
     // mutate token state + redraw without rebuilding the shell).
@@ -208,6 +215,7 @@ export function showPlaybook(
         onSelect: (id) => { selectedId = id; canvasHandle?.redraw(); },
         onMove: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.pinHex = hex; canvasHandle?.redraw(); },
         onSetWatch: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.watchHex = hex; canvasHandle?.redraw(); },
+        onAddWaypoint: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.route = [...(t.route ?? []), hex]; canvasHandle?.redraw(); },
       });
     }
   };
