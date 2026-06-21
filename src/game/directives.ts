@@ -164,7 +164,26 @@ function evaluateOne(
 
     case 'read_and_commit':
       return readAndCommit(d, unit, state);
+
+    case 'follow_route':
+      return followRoute(d, prevAi);
   }
+}
+
+// --- follow_route ----------------------------------------------------------
+// Visual-play system (Stage 1). Target the next unreached waypoint so the unit
+// pathfinds toward it (tick.ts advances AiState.routeIdx once it arrives). When
+// the route is exhausted, return null so the unit holds at its pin (legacy target)
+// and hold_angle takes over the facing. The compliance gate in evaluateDirectives
+// means a low-discipline unit frequently skips this and goes straight to its pin —
+// that's the "discipline decides whether the flank actually happens" lever.
+function followRoute(
+  d: Extract<Directive, { kind: 'follow_route' }>,
+  prevAi: AiState,
+): DirectiveDecision | null {
+  const idx = prevAi.routeIdx ?? 0;
+  if (idx >= d.route.length) return null;
+  return { target: d.route[idx], source: 'follow_route' };
 }
 
 // --- hold_angle ------------------------------------------------------------

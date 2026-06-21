@@ -898,6 +898,16 @@ export function setAiCompetenceOverride(v: number | null): void {
   AI_COMPETENCE_OVERRIDE = v;
 }
 
+// Visual-play system (Stage 1) — the follow_route directive (authored flank/lurk
+// routes). `priority` sits above commit_site (70) so a route drives movement while
+// the unit complies; `reachRadius` is how close (hexes) the unit must get to the
+// current waypoint before advancing to the next. The route is gated by the normal
+// compliance roll, so discipline decides adherence; engage/retreat override it.
+export const FOLLOW_ROUTE = {
+  priority: 80,
+  reachRadius: 2,
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's

@@ -66,6 +66,7 @@ import {
   FACING,
   FACING_WALL_AWARE_OVERRIDE,
   FACING_OBJECTIVE_OVERRIDE,
+  FOLLOW_ROUTE,
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
@@ -760,6 +761,16 @@ export function stepTick(state: GameState): GameState {
       mode === 'engaged'
         ? (engage.engage ? 0 : prevAi.engageStickyTicks + 1)
         : 0;
+    // Visual-play (Stage 1) — advance the route waypoint once the unit reaches the
+    // current one (position-based ⇒ deterministic; independent of whether the
+    // directive fired this tick, so a compliance-skipped tick doesn't stall it).
+    let routeIdx = prevAi.routeIdx ?? 0;
+    for (const d of u.directives ?? []) {
+      if (d.kind !== 'follow_route') continue;
+      if (routeIdx < d.route.length && hexDistance(u.pos, d.route[routeIdx]) <= FOLLOW_ROUTE.reachRadius) routeIdx++;
+      break;
+    }
+
     newAi[u.id] = {
       mode,
       firingTarget,
@@ -776,6 +787,7 @@ export function stepTick(state: GameState): GameState {
       // stale value inert, so no explicit clear is needed.
       shotReactUntil: prevAi.shotReactUntil,
       shooterHex: prevAi.shooterHex,
+      routeIdx,
     };
   }
 

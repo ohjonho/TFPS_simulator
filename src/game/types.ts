@@ -226,7 +226,13 @@ export type Directive =
   // bite through: showing strength at one site routes the reader into the
   // other. Used only by the "reading" attacks (Control, attacker Mind Games);
   // direct attacks (Rush/Execute) ignore it.
-  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number };
+  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number }
+  // Visual-play system (Stage 1) — move through an authored sequence of waypoints
+  // (the flank/lurk/trick-play route). The unit pathfinds BETWEEN waypoints and is
+  // gated by the compliance roll (so discipline decides how faithfully the route
+  // is run); engage/retreat still override it, so units keep reacting — it's a
+  // suggestion, not puppeteering. Progress (which waypoint) is AiState.routeIdx.
+  | { kind: 'follow_route'; priority: number; route: HexCoord[] };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each
@@ -396,6 +402,11 @@ export type AiState = {
   // can fire) instead of walking on. Absent until first shot at. Deterministic.
   shotReactUntil?: number;
   shooterHex?: HexCoord | null;
+  // Visual-play system (Stage 1) — index of the next unreached waypoint on the
+  // unit's follow_route directive. Advances when the unit gets within
+  // FOLLOW_ROUTE.reachRadius of the current waypoint; ≥ route length ⇒ route done
+  // (the unit holds at its pin). Absent ⇒ 0 (start of the route).
+  routeIdx?: number;
 };
 
 // Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.

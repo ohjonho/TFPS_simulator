@@ -47,6 +47,15 @@ export type StrategySlot = {
   anchorOffset?: number;
   usePerimeterPath?: boolean;
   directives: DirectiveSpec[];
+  // Visual-play system (Stage 1) — exact-hex authoring from the map-canvas editor.
+  // `pinHex`: the precise hold target (overrides region centroid / holdTargeting).
+  // `watchHex`: the precise watch direction (synthesizes a hold_angle directive).
+  // `route`: waypoints to move through to reach the pin (synthesizes follow_route;
+  // last waypoint should be the pin). All optional; region-based slots are
+  // unaffected. Resolved in match.applyStrategies.
+  pinHex?: HexCoord;
+  watchHex?: HexCoord;
+  route?: HexCoord[];
 };
 
 // A variant is a complete slot list (one slot per actual unit on the team,
