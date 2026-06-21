@@ -11,7 +11,7 @@ import {
   type Strategy, type StrategySlot, type StrategyVariant,
 } from '../game/strategies.ts';
 import { coachRead } from '../game/playbookCoach.ts';
-import { createPlaybookCanvas, type EditorToken, type PlaybookCanvasHandle } from './playbookCanvas.ts';
+import { createPlaybookCanvas, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -60,6 +60,7 @@ export function showPlaybook(
   let name = '';
   let tokens: EditorToken[] = [];   // the 5 placed units (visual working model)
   let selectedId: string | null = null;
+  let mode: EditorMode = 'move';
   let canvasHandle: PlaybookCanvasHandle | null = null;
 
   const bases = (): Strategy[] => strategiesFor(side, map).filter((s) => !s.authored);
@@ -102,6 +103,7 @@ export function showPlaybook(
       region: regionContaining(map, t.pinHex),
       directives: [],
       pinHex: t.pinHex,
+      watchHex: t.watchHex,
     }));
     const b = base();
     const play: Strategy = baseId === BLANK || !b
@@ -161,10 +163,14 @@ export function showPlaybook(
             <div class="mp-group-label" style="margin-top:14px">Start from</div>
             <div class="pb-starts">${startBtns}</div>
             ${tokens.length ? `<div class="pb-row" style="margin-top:14px"><span class="pb-label">Name</span><input class="pb-name" type="text" value="${name.replace(/"/g, '&quot;')}" placeholder="My play"/></div>
-            <div class="pb-canvas-hint">Drag your units onto the map to set where they hold.</div>` : ''}
+            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set where it holds. <b>Watch:</b> select a unit, then click a hex to aim its cone.</div>` : ''}
           </div>
           <div class="pb-col pb-canvas-col">
-            ${tokens.length ? `<div id="pb-canvas-host"></div>` : `<div class="pb-hint">Pick a side, then a starting point (Blank or a basic) to author on the map.</div>`}
+            ${tokens.length ? `<div class="pb-tools">
+              <button class="pb-tool ${mode === 'move' ? 'sel' : ''}" data-mode="move" type="button">↔ Move</button>
+              <button class="pb-tool ${mode === 'watch' ? 'sel' : ''}" data-mode="watch" type="button">⌖ Watch</button>
+            </div>
+            <div id="pb-canvas-host"></div>` : `<div class="pb-hint">Pick a side, then a starting point (Blank or a basic) to author on the map.</div>`}
           </div>
         </div>
         <div class="mp-group-label" style="margin-top:18px">Saved plays</div>
@@ -183,6 +189,13 @@ export function showPlaybook(
     host.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((el) => el.addEventListener('click', () => removePlay(el.getAttribute('data-del')!)));
     host.querySelector<HTMLButtonElement>('[data-save]')?.addEventListener('click', save);
     host.querySelector<HTMLButtonElement>('[data-close]')?.addEventListener('click', closeEditor);
+    // Mode toggle — update the toolbar + canvas in place (no shell rebuild, so the
+    // canvas isn't remounted mid-edit).
+    host.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((el) => el.addEventListener('click', () => {
+      mode = el.getAttribute('data-mode') as EditorMode;
+      host.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('sel', b.getAttribute('data-mode') === mode));
+      canvasHandle?.redraw();
+    }));
 
     // Mount the map canvas (persists across canvas interactions — onMove/onSelect
     // mutate token state + redraw without rebuilding the shell).
@@ -191,8 +204,10 @@ export function showPlaybook(
       canvasHandle = createPlaybookCanvas(canvasHost, map, {
         tokens: () => tokens,
         selectedId: () => selectedId,
+        mode: () => mode,
         onSelect: (id) => { selectedId = id; canvasHandle?.redraw(); },
         onMove: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.pinHex = hex; canvasHandle?.redraw(); },
+        onSetWatch: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.watchHex = hex; canvasHandle?.redraw(); },
       });
     }
   };

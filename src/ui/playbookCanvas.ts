@@ -11,13 +11,16 @@ import { offsetToPixel, pixelToOffset } from '../game/hex.ts';
 import { passableAt } from '../game/pathfind.ts';
 import { HEX } from '../game/config.ts';
 
-export type EditorToken = { id: string; weapon: 'rifle' | 'sniper'; pinHex: HexCoord };
+export type EditorToken = { id: string; weapon: 'rifle' | 'sniper'; pinHex: HexCoord; watchHex?: HexCoord };
+export type EditorMode = 'move' | 'watch';
 
 export type PlaybookCanvasState = {
   tokens: () => EditorToken[];
   selectedId: () => string | null;
+  mode: () => EditorMode;
   onSelect: (id: string | null) => void;
   onMove: (id: string, hex: HexCoord) => void;
+  onSetWatch: (id: string, hex: HexCoord) => void;
 };
 
 export type PlaybookCanvasHandle = { redraw: () => void; destroy: () => void };
@@ -45,7 +48,18 @@ export function createPlaybookCanvas(
 
   canvas.addEventListener('mousedown', (ev) => {
     if (ev.button !== 0) return;
-    const t = tokenAt(evHex(ev));
+    const hex = evHex(ev);
+    const t = tokenAt(hex);
+    if (s.mode() === 'watch') {
+      // Watch mode: click a unit to select it, or click any hex to point the
+      // selected unit's cone there (a watch angle can aim anywhere, even a wall).
+      if (t) s.onSelect(t.id);
+      else { const sel = s.selectedId(); if (sel) s.onSetWatch(sel, hex); }
+      redraw();
+      ev.preventDefault();
+      return;
+    }
+    // Move mode (default): select + drag a token to reposition its hold.
     if (t) { s.onSelect(t.id); drag = { id: t.id, px: evPx(ev) }; }
     else s.onSelect(null);
     redraw();
@@ -77,12 +91,38 @@ export function createPlaybookCanvas(
     ctx.fillText(t.weapon === 'sniper' ? 'S' : 'R', p.x, p.y);
   }
 
+  function drawArrow(from: HexCoord, to: HexCoord, color: string): void {
+    const a = offsetToPixel(from.col, from.row);
+    const b = offsetToPixel(to.col, to.row);
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    const head = HEX.size * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - head * Math.cos(ang - 0.4), b.y - head * Math.sin(ang - 0.4));
+    ctx.lineTo(b.x - head * Math.cos(ang + 0.4), b.y - head * Math.sin(ang + 0.4));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   function redraw(): void {
     ctx.fillStyle = '#0b0e14';
     ctx.fillRect(0, 0, cssWidth, cssHeight);
     drawHexGrid(ctx, map);
     drawRegionLabels(ctx, map);
     const sel = s.selectedId();
+    // Watch arrows under the tokens (selected one brighter).
+    for (const t of s.tokens()) {
+      if (t.watchHex) drawArrow(t.pinHex, t.watchHex, t.id === sel ? '#e0b13a' : 'rgba(224,177,58,0.45)');
+    }
     for (const t of s.tokens()) {
       if (drag && drag.id === t.id) continue; // drawn as a ghost below
       const { x, y } = offsetToPixel(t.pinHex.col, t.pinHex.row);
