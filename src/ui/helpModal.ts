@@ -389,6 +389,15 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.64.0 — rival teams have signature plays</h3>
+    <ul>
+      <li><strong>Scout the enemy's playbook.</strong> From your third match on, some opponents
+        are known for a signature play of their own — a custom look they lean on. The Scout
+        names it, tells you what it does, and points out its softest matchup so you can counter
+        it, just like reading any other tendency.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.63.0 — opponents adapt to your signature play</h3>
     <ul>
       <li><strong>The AI reads your Playbook.</strong> Lean on a custom play across a match and

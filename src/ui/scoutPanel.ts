@@ -7,6 +7,7 @@
 
 import type { GameState, Team } from '../game/types.ts';
 import { strategiesFor, strategyById } from '../game/strategies.ts';
+import { scoutReadForCustom } from '../game/playbookCoach.ts';
 
 // One-line "tell" + a read-based (not odds-based) counter hint per strategy.
 const TELLS: Record<string, { tell: string; counter: string }> = {
@@ -69,6 +70,18 @@ export function scoutReportHtml(state: GameState): string {
     if (t) {
       rows.push(`<div class="scout-tell"><span class="scout-tag">tell</span> ${t.tell}</div>`);
       rows.push(`<div class="scout-counter"><span class="scout-tag">counter</span> ${t.counter}</div>`);
+    } else {
+      // B2.2 — a custom/signature play has no fixed TELL; derive one from its
+      // measured matchup (the option that is the play's softest matchup = the
+      // player's best counter, named on the player's own side).
+      const play = strategyById(known.strategy, enemySide, state.map);
+      const read = play ? scoutReadForCustom(play) : null;
+      if (read) {
+        const playerSide = state.teamSide[state.playerTeam];
+        const cName = strategyById(read.counterId, playerSide, state.map)?.name ?? read.counterId;
+        rows.push(`<div class="scout-tell"><span class="scout-tag">tell</span> ${read.tell}</div>`);
+        rows.push(`<div class="scout-counter"><span class="scout-tag">counter</span> ${cName} is its softest matchup</div>`);
+      }
     }
     if (total > 0) {
       const top0 = entries[0];

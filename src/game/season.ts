@@ -14,6 +14,7 @@ import { generatePool } from './draft.ts';
 import { createRng } from './rng.ts';
 import { UNIT_DEFAULTS, ROLE_AGGRESSION } from './config.ts';
 import { BASIC_STRATEGY_IDS, setCustomStrategies, type Strategy } from './strategies.ts';
+import { buildSignaturePlays, signatureMeta } from './signaturePlays.ts';
 import { generateTeamName } from './names.ts';
 import { teamRating } from './ratings.ts';
 
@@ -21,7 +22,10 @@ import { teamRating } from './ratings.ts';
 // strategies) the site they favor. `site` is null for whole-map / reading
 // strategies (Control / Hold / Pressure) where there's no A/B to read.
 export type Lean = { strategy: string; site: 'A' | 'B' | null };
-export type OpponentInfo = { name: string; atk: Lean; def: Lean };
+// `signatureIds` (B2.2) — custom signature plays this opponent is "known for".
+// Registered for the match in buildSeasonMatch; the matching-side lean points at
+// one so the opponent actually deploys it and the Scout can read + counter it.
+export type OpponentInfo = { name: string; atk: Lean; def: Lean; signatureIds?: string[] };
 
 // The club's early identity, chosen in the post-draft team talk. A small,
 // bounded, season-long nudge to the player roster — flavor with a light edge.
@@ -178,11 +182,22 @@ export function startSeason(
     } else {
       const atkS = leanRng.pick(ATK_LEANS);
       const defS = leanRng.pick(DEF_LEANS);
-      opponents.push({
+      const opp: OpponentInfo = {
         name,
         atk: { strategy: atkS, site: siteFor(atkS, leanRng) },
         def: { strategy: defS, site: siteFor(defS, leanRng) },
-      });
+      };
+      // B2.2 — from match 3 on (idx ≥ 2, where the unlock ramp is lifted), the
+      // opponent is "known for" a signature play: point the matching-side lean at
+      // it so they actually deploy it and the Scout can read + counter it.
+      if (m >= 2) {
+        const sigs = signatureMeta();
+        const sig = sigs[(m - 2) % sigs.length];
+        opp.signatureIds = [sig.id];
+        const lean: Lean = { strategy: sig.id, site: sig.siteCommitting ? (leanRng.next() < 0.5 ? 'A' : 'B') : null };
+        if (sig.side === 'attacker') opp.atk = lean; else opp.def = lean;
+      }
+      opponents.push(opp);
     }
   }
   return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null, upgrades: [], customStrategies: [] };
@@ -218,10 +233,12 @@ export function scriptedOpponentForMatch(idx: number): Partial<Record<Side, stri
 // Also stamps the per-match strategy unlock set + scripted opponent (the
 // campaign teaching ramp); both carry across rounds via the startRound spread.
 export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?: MatchPrep): GameState {
-  // B0 — make this season's authored plays resolvable (strategyById/strategiesFor)
-  // for the whole match. Deterministic: same season → same set, set before any
-  // strategy resolution. Empty list (no authored plays) is a no-op ⇒ byte-identical.
-  setCustomStrategies(season.customStrategies);
+  // B0/B2.2 — make this season's authored plays + the current opponent's signature
+  // book resolvable (strategyById/strategiesFor) for the whole match. Deterministic:
+  // same season+idx → same set, set before any strategy resolution. Empty (no
+  // authored plays, no signature opponent) is a no-op ⇒ byte-identical.
+  const oppBook = buildSignaturePlays(map).filter((s) => season.opponents[season.idx]?.signatureIds?.includes(s.id));
+  setCustomStrategies([...season.customStrategies, ...oppBook]);
   let player = applyUpgrades(applyClubLean(placeRoster(season.playerRoster, 'defenders', map), season.clubLean), season.upgrades);
   if (prep) player = applyMatchPrep(player, prep);
   const opp = placeRoster(season.schedule[season.idx], 'attackers', map);

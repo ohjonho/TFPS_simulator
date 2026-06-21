@@ -101,3 +101,22 @@ export function coachRead(play: Strategy, matchups: Record<string, number>): Coa
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+// B2.2 — the Scout reading an ENEMY's custom/signature play. From its measured
+// matchup, find the opponent strategy the PLAYER should pick to beat it (the
+// play's softest matchup, from the player's side), plus a one-line tell. Returns
+// null when the play hasn't been measured. The caller resolves counterId → a
+// display name on the player's side.
+export function scoutReadForCustom(play: Strategy): { tell: string; counterId: string } | null {
+  if (!play.measured) return null;
+  const m = play.measured.matchups;
+  const ids = Object.keys(m);
+  if (ids.length === 0) return null;
+  // Player win% vs the enemy play, by the ENEMY play's side: if the enemy plays
+  // this on defense, the player attacks (win = 100 − defWin); if on attack, the
+  // player defends (win = defWin). The counter is the option maximizing that.
+  const playerWin = (id: string): number => (play.side === 'defender' ? 100 - m[id] : m[id]);
+  let counterId = ids[0];
+  for (const id of ids) if (playerWin(id) > playerWin(counterId)) counterId = id;
+  return { tell: play.description ?? `a custom ${play.side} play`, counterId };
+}
