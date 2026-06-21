@@ -900,8 +900,15 @@ body {
   position: fixed; inset: 0; z-index: 1100; overflow-y: auto;
   background: var(--bg); display: flex; justify-content: center;
 }
-.pb-card { width: 940px; max-width: 94vw; padding: 36px 0 56px; }
-.pb-grid { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
+.pb-card { width: 1040px; max-width: 98vw; padding: 36px 0 56px; }
+.pb-grid { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+.pb-starts { display: flex; flex-wrap: wrap; gap: 6px; }
+.pb-canvas-col { min-width: 0; }
+#pb-canvas-host {
+  border: 1px solid var(--panel-border); border-radius: 8px; overflow: auto;
+  max-height: 78vh; background: #0b0e14; width: fit-content; max-width: 100%;
+}
+.pb-canvas-hint { font-size: 12px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
 .pb-col { display: flex; flex-direction: column; }
 .pb-opts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pb-bases { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
