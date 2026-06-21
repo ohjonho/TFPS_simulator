@@ -880,6 +880,24 @@ export function setStrategyCounterOverride(v: boolean | null): void {
   STRATEGY_COUNTER_OVERRIDE = v;
 }
 
+// AI competence ramp (0–1) — how well a campaign opponent uses its smart tools
+// (the B2 counter to the player's signature + how reliably it commits its own
+// read/signature). Early-season opponents are "dumber" so a new manager can
+// learn; it scales to full over the opening matches. `competence(idx)` =
+// clamp(start + perMatch·idx + difficultyBase, min, 1). `difficultyBase` is the
+// hook for a future campaign-difficulty picker (Easy < 0, Hard > 0); 0 today.
+// Absent on a GameState ⇒ full strength, so standard/non-season play is untouched.
+export const AI_COMPETENCE = {
+  start: 0.2,        // match 1 (idx 0), before difficulty
+  perMatch: 0.16,    // +per match index → ~full by match 6
+  difficultyBase: 0, // future campaign-difficulty offset
+  min: 0,
+} as const;
+export let AI_COMPETENCE_OVERRIDE: number | null = null;
+export function setAiCompetenceOverride(v: number | null): void {
+  AI_COMPETENCE_OVERRIDE = v;
+}
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's

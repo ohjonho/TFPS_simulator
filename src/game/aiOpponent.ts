@@ -13,6 +13,7 @@ import { availableStrategies } from './traits.ts';
 import { strategyById } from './strategies.ts';
 import {
   AI_STRATEGY_EXPLORATION, OPPONENT_LEAN, STRATEGY_COUNTER, STRATEGY_COUNTER_OVERRIDE,
+  AI_COMPETENCE_OVERRIDE,
 } from './config.ts';
 
 export function pickAiStrategy(
@@ -25,6 +26,10 @@ export function pickAiStrategy(
   // strategy for its side so the player learns read → counter (season.ts).
   const scripted = state.scriptedAiStrategy?.[side];
   if (scripted) return scripted;
+
+  // AI competence (0–1) — scales the "smart" tools below so early-season opponents
+  // play dumber and ramp up. Absent (standard / non-season) ⇒ full strength.
+  const competence = AI_COMPETENCE_OVERRIDE ?? state.aiCompetence ?? 1;
 
   // H3 — AI picks from the strategies its roster can actually run
   // (baseline + trait-unlocked variants on the AI team's units).
@@ -43,7 +48,12 @@ export function pickAiStrategy(
   // pick over the REST (so the lean rate is exact, not inflated by the fallback).
   const lean = state.opponentLean?.[side];
   if (lean && options.some((s) => s.id === lean.strategy)) {
-    if (rng.next() < OPPONENT_LEAN.pickChance) return lean.strategy;
+    // Competence scales how reliably the AI commits its read: at full it plays the
+    // lean ~pickChance; at 0 it falls back to ~uniform (a dumb opponent doesn't
+    // reliably run its own tendency). One RNG draw either way ⇒ determinism holds.
+    const uniform = 1 / options.length;
+    const effPickChance = uniform + competence * (OPPONENT_LEAN.pickChance - uniform);
+    if (rng.next() < effPickChance) return lean.strategy;
     const rest = options.filter((s) => s.id !== lean.strategy);
     if (rest.length > 0) options = rest;
   }
@@ -74,9 +84,10 @@ export function pickAiStrategy(
       for (let i = 0; i < options.length; i++) {
         const dv = sigMatchups[options[i].id];
         if (dv === undefined) continue;
-        // defender-win% → THIS AI's win% vs the play, by the AI's side.
+        // defender-win% → THIS AI's win% vs the play, by the AI's side. Competence
+        // scales the tilt: a dumb early opponent barely counters; it ramps to full.
         const aiWin = side === 'attacker' ? 100 - dv : dv;
-        const factor = Math.max(STRATEGY_COUNTER.floor, 1 + STRATEGY_COUNTER.bias * (aiWin - 50) / 50);
+        const factor = Math.max(STRATEGY_COUNTER.floor, 1 + STRATEGY_COUNTER.bias * competence * (aiWin - 50) / 50);
         weights[i] *= factor;
       }
     }

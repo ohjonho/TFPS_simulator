@@ -12,7 +12,7 @@ import { buildStateFromUnits } from './state.ts';
 import { placeSpawns } from './units.ts';
 import { generatePool } from './draft.ts';
 import { createRng } from './rng.ts';
-import { UNIT_DEFAULTS, ROLE_AGGRESSION } from './config.ts';
+import { UNIT_DEFAULTS, ROLE_AGGRESSION, AI_COMPETENCE } from './config.ts';
 import { BASIC_STRATEGY_IDS, setCustomStrategies, type Strategy } from './strategies.ts';
 import { buildSignaturePlays, signatureMeta } from './signaturePlays.ts';
 import { generateTeamName } from './names.ts';
@@ -218,6 +218,16 @@ export function unlockedStrategiesForMatch(idx: number): readonly string[] | nul
   return null;
 }
 
+// AI competence for a match (0–1) — how well the opponent uses its smart tools
+// (the B2 counter to the player's signature + how reliably it commits its own
+// read/signature). Early opponents are dumber so a new manager can learn; it
+// scales to full over the opening. The difficultyBase term (config) is the hook
+// for a future campaign-difficulty picker. Consumed by aiOpponent.pickAiStrategy.
+export function aiCompetenceForMatch(idx: number): number {
+  const c = AI_COMPETENCE.start + AI_COMPETENCE.perMatch * idx + AI_COMPETENCE.difficultyBase;
+  return Math.max(AI_COMPETENCE.min, Math.min(1, c));
+}
+
 // The campaign's first match faces a telegraphed opponent so the read → counter
 // loop is learnable: it Rushes one site head-on while attacking (meet it with
 // Stack / Hold) and sits in an even Hold while defending (out-read it). Returns
@@ -253,6 +263,7 @@ export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?:
     scriptedAiStrategy: scriptedOpponentForMatch(season.idx),
     opponentName: info?.name,
     opponentLean: info ? { attacker: info.atk, defender: info.def } : undefined,
+    aiCompetence: aiCompetenceForMatch(season.idx),
   };
 }
 

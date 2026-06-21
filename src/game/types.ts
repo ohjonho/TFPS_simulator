@@ -556,4 +556,11 @@ export type GameState = {
   // match.variantWeights, and ui/scoutPanel. Absent outside a season.
   opponentName?: string;
   opponentLean?: Partial<Record<Side, { strategy: string; site: 'A' | 'B' | null }>>;
+  // AI "competence" 0–1 — how well the opponent uses its smart tools (the B2
+  // counter to your signature + how reliably it commits its own read/signature).
+  // Stamped by season.buildSeasonMatch from a match-index ramp (early opponents
+  // dumber, scaling to full) + a future campaign-difficulty term. Absent ⇒ full
+  // strength (1.0), so standard/non-season matches are unaffected. Consumed by
+  // aiOpponent.pickAiStrategy. Carries across rounds via the startRound spread.
+  aiCompetence?: number;
 };

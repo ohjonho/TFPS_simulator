@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.66.0 — rivals get smarter as the season goes on</h3>
+    <ul>
+      <li><strong>Early opponents play dumber.</strong> Your first opponents don't reliably
+        commit to their reads and barely counter your signature plays — room to learn the
+        ropes. Their tactical sharpness ramps up match by match, so by the back end of the
+        season they're committing their reads and punishing a one-note Playbook. (Raw skill
+        still comes from their roster; this is purely how well they use their brains.)</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.65.0 — match prep reads the rival's signature</h3>
     <ul>
       <li><strong>Prep scouting names their signature.</strong> When a rival is known for a
