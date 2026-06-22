@@ -389,6 +389,22 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.72.0 — Season weeks: training days, events &amp; autosave</h3>
+    <ul>
+      <li><strong>The season runs in weeks.</strong> Each week now flows training day →
+        pre-match event → match → post-match event, across an 8-week season with a
+        mid-season break at the halfway point. (Training and events are placeholders for
+        now — the structure is in; the content lands next.)</li>
+      <li><strong>Events alternate with intent.</strong> Most weeks build to a scripted
+        beat with a result-reactive aftermath; the rest roll a random locker-room moment —
+        but never two random weeks in a row, and never three scripted ones, so the rhythm
+        stays varied.</li>
+      <li><strong>Autosave + Continue.</strong> A season now spans many sittings, so progress
+        saves automatically after each step. Pick up where you left off from <em>Continue</em>
+        on the main menu.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.71.0 — Playbook: smarter routes (waypoints that wait + watch)</h3>
     <ul>
       <li><strong>Sequential waypoints.</strong> In Route mode each click drops the next

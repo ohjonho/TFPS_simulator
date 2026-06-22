@@ -27,6 +27,14 @@ export type Lean = { strategy: string; site: 'A' | 'B' | null };
 // one so the opponent actually deploys it and the Scout can read + counter it.
 export type OpponentInfo = { name: string; atk: Lean; def: Lean; signatureIds?: string[] };
 
+// Part 6 (season meta-loop) — the sub-week cursor. A week runs
+// training → preEvent → match → postEvent, with a one-off `break` between the
+// two halves. Drives which screen main.ts shows; persisted so an autosave can
+// resume mid-week. `idx` still counts matches (advanced by recordSeasonResult
+// after the match), so during postEvent/break idx already points past the
+// just-played match — see currentWeek().
+export type SeasonPhase = 'training' | 'preEvent' | 'match' | 'postEvent' | 'break';
+
 // The club's early identity, chosen in the post-draft team talk. A small,
 // bounded, season-long nudge to the player roster — flavor with a light edge.
 export type ClubLean = 'aggressive' | 'disciplined' | 'composed';
@@ -116,6 +124,12 @@ export type SeasonState = {
   mapName: MapDefinition['name'];
   clubLean: ClubLean | null; // early identity from the post-draft team talk
   upgrades: string[];        // pre-season club upgrades chosen on the dashboard
+  // Part 6 — the season meta-loop. `phase` is the sub-week cursor (see
+  // SeasonPhase); `weekEventMode` is the per-week event-pacing roll, precomputed
+  // once at startSeason so the season replays identically. Both are plain data
+  // (JSON-serializable) so the single-slot autosave snapshots them as-is.
+  phase: SeasonPhase;
+  weekEventMode: ('S' | 'R')[];
   // Part 5 B0 — player-authored / adapted plays (the Playbook). Stored as live
   // Strategy objects (the season is in-memory only; Strategy is plain data, so a
   // future save system serializes them as-is). Registered into the strategy
@@ -155,12 +169,36 @@ function placeRoster(identities: readonly Unit[], team: Team, map: MapDefinition
 }
 
 // Start a season: keep the drafted player roster + generate K opponent rosters.
+// Part 6 — precompute the per-week event-pacing sequence. Each week is either
+// Structured (pre-event + a result-reactive post-event) or Random (both ambient).
+// Base roll is 60% Structured, bounded two ways so streaks stay tight:
+//   forward pity   — after a Random week, the next is forced Structured (never
+//                    two Random in a row);
+//   anti-streak    — after two Structured in a row, the next is forced Random
+//                    (never three Structured).
+// Together they settle near the nominal 60/40 with max streaks R≤1, S≤2. Seeded
+// off the season seed (own stream — does NOT touch match RNG) so it replays.
+export function buildWeekEventModes(seed: number, weeks: number): ('S' | 'R')[] {
+  const rng = createRng((seed ^ 0x5bd1e995) >>> 0);
+  const out: ('S' | 'R')[] = [];
+  for (let w = 0; w < weeks; w++) {
+    const last = out[w - 1];
+    const prev = out[w - 2];
+    let mode: 'S' | 'R';
+    if (last === 'R') mode = 'S';                       // forward pity
+    else if (last === 'S' && prev === 'S') mode = 'R';  // anti-streak
+    else mode = rng.next() < 0.6 ? 'S' : 'R';
+    out.push(mode);
+  }
+  return out;
+}
+
 export function startSeason(
   playerRoster: readonly Unit[],
   mapName: MapDefinition['name'],
   seed: number,
-  K = 6,
-  goal = 4,
+  K = 8,
+  goal = 5,
 ): SeasonState {
   const schedule: Unit[][] = [];
   const opponents: OpponentInfo[] = [];
@@ -200,7 +238,35 @@ export function startSeason(
       opponents.push(opp);
     }
   }
-  return { playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName, clubLean: null, upgrades: [], customStrategies: [] };
+  return {
+    playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName,
+    clubLean: null, upgrades: [], customStrategies: [],
+    phase: 'training', weekEventMode: buildWeekEventModes(seed, K),
+  };
+}
+
+// Part 6 — the week the player is currently in (1-based). `idx` counts matches
+// and is advanced by recordSeasonResult AFTER the match, so during postEvent/
+// break it already points past the just-played match; in those phases the
+// current week is `idx`, otherwise `idx + 1`.
+export function currentWeek(season: SeasonState): number {
+  return season.phase === 'postEvent' || season.phase === 'break' ? season.idx : season.idx + 1;
+}
+
+// Part 6 — advance the sub-week cursor. Pure: only moves `phase` (idx is owned
+// by recordSeasonResult). The mid-season break fires once, after the last match
+// of the first half (idx === K/2) when the season isn't already over.
+export function advanceSeasonPhase(season: SeasonState): SeasonState {
+  const half = Math.floor(season.K / 2);
+  let phase: SeasonPhase = season.phase;
+  switch (season.phase) {
+    case 'training':  phase = 'preEvent'; break;
+    case 'preEvent':  phase = 'match'; break;
+    case 'match':     phase = 'postEvent'; break;
+    case 'postEvent': phase = season.idx === half && season.idx < season.K ? 'break' : 'training'; break;
+    case 'break':     phase = 'training'; break;
+  }
+  return { ...season, phase };
 }
 
 // Progressive strategy unlock across the campaign's opening matches. The new

@@ -76,8 +76,12 @@ import { showMatchPrep } from './ui/matchPrep.ts';
 import { showPlaybook } from './ui/playbook.ts';
 import { reviewPlay } from './ui/coachWorker.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
+import { showTrainingDay } from './ui/trainingDay.ts';
+import { showWeekEvent } from './ui/weekEvent.ts';
+import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
+import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
-import { startSeason, buildSeasonMatch, recordSeasonResult, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
+import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
 import type { SeasonState, ClubLean } from './game/season.ts';
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -255,14 +259,15 @@ function rerenderChrome() {
       // talk sets the club's early lean before match 1 builds.
       if (matchMode === 'season') {
         const roster = finalized.units.filter((u) => u.team === finalized.playerTeam);
-        const s = startSeason(roster, finalized.map.name, matchSeed, 6, 4);
-        // Team talk (club lean) → dashboard (invest) → Match Prep → match 1, with
-        // Back stepping back (prep → dashboard → team talk).
+        const s = startSeason(roster, finalized.map.name, matchSeed, 8, 5);
+        // Team talk (club lean) → dashboard (invest) → the week loop (training →
+        // event → match → event), with Back stepping back (week-1 training →
+        // dashboard → team talk).
         let chosenLean: ClubLean = 'disciplined';
         const flowTeamTalk = (): void => showTeamTalk((lean) => { chosenLean = lean; flowDashboard(); });
         const flowDashboard = (): void => showDashboard(
           { ...s, clubLean: chosenLean },
-          (upgrades) => { season = { ...s, clubLean: chosenLean, upgrades }; launchMatchPrep(flowDashboard); },
+          (upgrades) => { season = { ...s, clubLean: chosenLean, upgrades }; saveSeason(season); runSeasonWeek(flowDashboard); },
           flowTeamTalk,
         );
         flowTeamTalk();
@@ -353,11 +358,13 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.71.0', {
+    renderMainMenu(menuHost, 'v0.72.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
       onGuidebook: () => showHelpModal('play'),
+      // Part 6 — Continue resumes the single-slot autosave; shown only when one exists.
+      onContinue: hasSavedSeason() ? continueSeason : undefined,
     });
     menuHost.style.display = 'flex';
   } else {
@@ -425,6 +432,71 @@ function launchMatchPrep(onBack?: () => void): void {
   });
 }
 
+// Part 6 — the season week loop. Drives the meta-loop one phase at a time off
+// season.phase: training → preEvent → match → postEvent, with a one-off
+// mid-season break between the halves. Re-entrant (each screen's Continue calls
+// back in) and resumable from the autosave. The match phase delegates to the
+// existing match flow; showMatchEndModal records the result, advances to
+// postEvent, and re-enters here. `onFirstBack` wires the week-1 training Back
+// button to the pre-season dashboard; later weeks are forward-only.
+function runSeasonWeek(onFirstBack?: () => void): void {
+  const s = season;
+  if (!s) return;
+  const advance = (): void => {
+    season = advanceSeasonPhase(season!);
+    saveSeason(season);
+    runSeasonWeek();
+  };
+  switch (s.phase) {
+    case 'training':
+      showTrainingDay(currentWeek(s), advance, s.idx === 0 ? onFirstBack : undefined);
+      break;
+    case 'preEvent':
+      showWeekEvent(currentWeek(s), 'pre', s.weekEventMode[s.idx] ?? 'S', advance);
+      break;
+    case 'match':
+      // The match runs through the GameState loop; showMatchEndModal records the
+      // result, steps the phase to postEvent, and re-enters runSeasonWeek.
+      launchMatchPrep();
+      break;
+    case 'postEvent':
+      // idx was advanced by recordSeasonResult, so the just-played week is idx
+      // and its pacing roll is weekEventMode[idx - 1].
+      showWeekEvent(currentWeek(s), 'post', s.weekEventMode[s.idx - 1] ?? 'S', () => {
+        if (seasonOver(season!)) { showSeasonEndModal(); return; }
+        advance();
+      });
+      break;
+    case 'break':
+      showMidSeasonBreak(currentWeek(s) + 1, advance);
+      break;
+  }
+}
+
+// Part 6 — resume the autosaved season from the main menu. Rebuilds a live
+// GameState on the season's map (standard build = no draft) as the backdrop for
+// the week-loop overlays, drops in the current week's matchup, then hands off to
+// the week loop at the saved phase.
+function continueSeason(): void {
+  const loaded = loadSeason();
+  if (!loaded) return;
+  clearPlanningUiState();
+  clearCoachmarks();
+  matchMode = 'season';
+  season = loaded;
+  showEnemiesPlanning = false;
+  state = buildInitialState(loaded.mapName, 'standard', loaded.seed);
+  // Drop in the current week's matchup as the backdrop — but only while there
+  // IS one. A save parked at the final post-event has idx === K (no schedule
+  // entry left); buildSeasonMatch would index past the schedule, so skip it and
+  // let runSeasonWeek fall straight through postEvent → season results.
+  if (!seasonOver(loaded)) state = buildSeasonMatch(loaded, state.map);
+  initialUnitsById = snapshotUnits(state.units);
+  screen = 'match';
+  rerenderAll();
+  runSeasonWeek();
+}
+
 function launchSeasonDraft(): void {
   // Campaign: enemies are hidden during planning (proper fog) — the read comes
   // from the Scout, not from seeing their setup. The "Enemies" toggle still works.
@@ -468,6 +540,9 @@ function showSettingsModal(): void {
 function showSeasonEndModal(): void {
   const s = season;
   if (!s) return;
+  // Part 6 — the season is complete; drop the autosave so "Continue" doesn't
+  // resurface a finished campaign.
+  clearSavedSeason();
   const wins = seasonWins(s);
   const losses = s.results.length - wins;
   const made = seasonMadeGoal(s);
@@ -618,22 +693,18 @@ function showMatchEndModal(): void {
       : `Final score: ${state.scores.defenders} (defenders) – ${state.scores.attackers} (attackers).`;
   const scoreboard = renderMatchEndScoreboard(state);
 
-  // Season: record this match, then offer the next match (or the season results).
+  // Season: record this match, advance to the week's post-match event, then
+  // re-enter the week loop (it surfaces the post-event, then the next week — or
+  // the season results once the schedule is done).
   if (season) {
-    season = recordSeasonResult(season, playerWon);
-    const done = seasonOver(season);
+    season = recordSeasonResult(season, playerWon); // advances idx
+    season = advanceSeasonPhase(season);            // match → postEvent
+    saveSeason(season);
     const wins = seasonWins(season);
     const seasonLine = `Season: ${wins}–${season.results.length - wins} after ${season.idx} of ${season.K} — need ${season.goal} wins to save the shop.`;
     const title = w === 'draw' ? 'Match drawn' : playerWon ? 'Match won' : 'Match lost';
     showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p>${scoreboard}`, [
-      {
-        label: done ? 'Season results' : 'Next match',
-        primary: true,
-        onClick: () => {
-          if (done || !season) { showSeasonEndModal(); return; }
-          launchMatchPrep(); // prep screen → build + start the next match
-        },
-      },
+      { label: 'Continue', primary: true, onClick: () => runSeasonWeek() },
       { label: 'Main menu', onClick: goToMenu },
     ]);
     return;
