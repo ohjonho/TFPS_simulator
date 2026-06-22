@@ -389,6 +389,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.70.0 — Playbook: see paths, coverage, and dead ends</h3>
+    <ul>
+      <li><strong>Paths from spawn.</strong> Each unit's route from its spawn to its hold (through
+        any waypoints you drew) is now drawn on the map, so you can see how the play actually
+        unfolds — and a hold you can't reach gets a red ring.</li>
+      <li><strong>Vision overlay.</strong> Toggle <em>👁 Vision</em> to shade everything your
+        placed units can collectively see, given where they hold and what they watch. Dark gaps
+        are blind spots — an instant read on whether your angles cover the map.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.69.0 — Playbook: your real squad + editable plays</h3>
     <ul>
       <li><strong>Your actual loadout.</strong> The units you place are now your real squad —

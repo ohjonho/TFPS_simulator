@@ -63,6 +63,7 @@ export function showPlaybook(
   let selectedId: string | null = null;
   let mode: EditorMode = 'move';
   let editingId: string | null = null; // when set, Save updates this play in place
+  let showVision = false;
   let canvasHandle: PlaybookCanvasHandle | null = null;
 
   const bases = (): Strategy[] => strategiesFor(side, map).filter((s) => !s.authored);
@@ -70,6 +71,10 @@ export function showPlaybook(
 
   // Where to drop the 5 tokens when a starting point is chosen.
   const spawnCells = (): HexCoord[] => map.spawns[side === 'defender' ? 'defenders' : 'attackers'];
+  const enemyApproach = (): HexCoord | null => {
+    const cells = map.spawns[side === 'defender' ? 'attackers' : 'defenders'];
+    return cells.length ? cells[Math.floor(cells.length / 2)] : null;
+  };
   const fallbackHex = (): HexCoord => regionCentroid(map, 'mid') ?? { col: Math.floor(map.width / 2), row: Math.floor(map.height / 2) };
 
   const seedTokens = (): void => {
@@ -208,13 +213,14 @@ export function showPlaybook(
             <div class="mp-group-label" style="margin-top:14px">Start from</div>
             <div class="pb-starts">${startBtns}</div>
             ${tokens.length ? `<div class="pb-row" style="margin-top:14px"><span class="pb-label">Name</span><input class="pb-name" type="text" value="${name.replace(/"/g, '&quot;')}" placeholder="My play"/></div>
-            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set its hold. <b>Watch:</b> select a unit, click a hex to aim its cone. <b>Route:</b> select a unit, click hexes to draw its flank — discipline decides how faithfully it's run.</div>` : ''}
+            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set its hold. <b>Watch:</b> select a unit, click a hex to aim its cone. <b>Route:</b> select a unit, click hexes to draw its flank — discipline decides how faithfully it's run. Paths from spawn are shown; <b>👁 Vision</b> shades what your setup sees (gaps = blind spots); a red ring = an unreachable hold.</div>` : ''}
           </div>
           <div class="pb-col pb-canvas-col">
             ${tokens.length ? `<div class="pb-tools">
               <button class="pb-tool ${mode === 'move' ? 'sel' : ''}" data-mode="move" type="button">↔ Move</button>
               <button class="pb-tool ${mode === 'watch' ? 'sel' : ''}" data-mode="watch" type="button">⌖ Watch</button>
               <button class="pb-tool ${mode === 'route' ? 'sel' : ''}" data-mode="route" type="button">↳ Route</button>
+              <button class="pb-tool ${showVision ? 'sel' : ''}" data-vision type="button">👁 Vision</button>
               <button class="pb-tool pb-tool-clear" data-clearroute type="button">Clear route</button>
             </div>
             <div id="pb-canvas-host"></div>` : `<div class="pb-hint">Pick a side, then a starting point (Blank or a basic) to author on the map.</div>`}
@@ -248,6 +254,11 @@ export function showPlaybook(
       const t = tokens.find((x) => x.id === selectedId);
       if (t) { t.route = []; canvasHandle?.redraw(); }
     });
+    host.querySelector<HTMLButtonElement>('[data-vision]')?.addEventListener('click', () => {
+      showVision = !showVision;
+      host.querySelector<HTMLButtonElement>('[data-vision]')?.classList.toggle('sel', showVision);
+      canvasHandle?.redraw();
+    });
 
     // Mount the map canvas (persists across canvas interactions — onMove/onSelect
     // mutate token state + redraw without rebuilding the shell).
@@ -257,6 +268,9 @@ export function showPlaybook(
         tokens: () => tokens,
         selectedId: () => selectedId,
         mode: () => mode,
+        showVision: () => showVision,
+        spawnCells: () => spawnCells(),
+        approachHex: () => enemyApproach(),
         onSelect: (id) => { selectedId = id; canvasHandle?.redraw(); },
         onMove: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.pinHex = hex; canvasHandle?.redraw(); },
         onSetWatch: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.watchHex = hex; canvasHandle?.redraw(); },
