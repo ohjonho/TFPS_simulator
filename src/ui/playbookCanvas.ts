@@ -3,7 +3,7 @@
 // slot-grid. 2a = placement (pinHex); watch arrows (2b) + routes (2c) layer on
 // via the mode toolbar. Pure DOM/canvas; reuses the in-match renderer primitives.
 
-import type { HexCoord, MapDefinition } from '../game/types.ts';
+import type { HexCoord, MapDefinition, Weapon } from '../game/types.ts';
 import { setupCanvas } from '../render/canvas.ts';
 import { drawHexGrid } from '../render/drawHexGrid.ts';
 import { drawRegionLabels } from '../render/drawRegionLabels.ts';
@@ -11,7 +11,10 @@ import { offsetToPixel, pixelToOffset } from '../game/hex.ts';
 import { passableAt } from '../game/pathfind.ts';
 import { HEX } from '../game/config.ts';
 
-export type EditorToken = { id: string; weapon: 'rifle' | 'sniper'; pinHex: HexCoord; watchHex?: HexCoord; route?: HexCoord[] };
+export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: HexCoord[] };
+
+const WEAPON_COLOR: Record<Weapon, string> = { rifle: '#46a758', sniper: '#3b82c4', shotgun: '#d4843a' };
+const WEAPON_LETTER: Record<Weapon, string> = { rifle: 'R', sniper: 'S', shotgun: 'G' };
 export type EditorMode = 'move' | 'watch' | 'route';
 
 export type PlaybookCanvasState = {
@@ -89,7 +92,7 @@ export function createPlaybookCanvas(
   function drawToken(t: EditorToken, p: { x: number; y: number }, selected: boolean): void {
     ctx.beginPath();
     ctx.arc(p.x, p.y, HEX.size * 0.72, 0, Math.PI * 2);
-    ctx.fillStyle = t.weapon === 'sniper' ? '#3b82c4' : '#46a758';
+    ctx.fillStyle = WEAPON_COLOR[t.weapon] ?? '#46a758';
     ctx.fill();
     ctx.lineWidth = selected ? 3 : 1.5;
     ctx.strokeStyle = selected ? '#e0b13a' : '#0b0e14';
@@ -98,7 +101,7 @@ export function createPlaybookCanvas(
     ctx.font = `bold ${HEX.size}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(t.weapon === 'sniper' ? 'S' : 'R', p.x, p.y);
+    ctx.fillText(WEAPON_LETTER[t.weapon] ?? 'R', p.x, p.y);
   }
 
   function drawArrow(from: HexCoord, to: HexCoord, color: string): void {

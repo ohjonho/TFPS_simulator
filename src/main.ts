@@ -353,7 +353,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.68.0', {
+    renderMainMenu(menuHost, 'v0.69.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -404,10 +404,13 @@ function launchMatchPrep(onBack?: () => void): void {
     // Playbook (B1) — adapt & save plays for this season, then return to prep.
     // Saves land on the live season.customStrategies so they persist + resolve.
     let handle: { refresh: () => void } | null = null;
-    handle = showPlaybook(state.map, season?.customStrategies ?? [], {
+    handle = showPlaybook(state.map, season?.customStrategies ?? [], season?.playerRoster ?? [], {
       onSave: (play) => {
         if (!season) return;
-        season = { ...season, customStrategies: [...season.customStrategies, play] };
+        // Upsert by id so editing a saved play (same id) updates it in place
+        // rather than duplicating; a fresh save just appends.
+        const others = season.customStrategies.filter((p) => p.id !== play.id);
+        season = { ...season, customStrategies: [...others, play] };
         // B1b — measure the play's matchup lazily in a background worker; when it
         // lands, enrich the shared play object (visible to both season + the open
         // editor, same ref) and re-render the coach read in place.

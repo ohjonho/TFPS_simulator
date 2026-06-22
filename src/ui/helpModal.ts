@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.69.0 — Playbook: your real squad + editable plays</h3>
+    <ul>
+      <li><strong>Your actual loadout.</strong> The units you place are now your real squad —
+        including shotguns — instead of an assumed 4 rifles + 1 sniper, so a play is built for
+        the team that runs it (rifle R, sniper S, shotgun G).</li>
+      <li><strong>Edit saved plays.</strong> Hit <em>Edit</em> on any saved play to load it back
+        onto the map, rearrange it, and update it in place — no more delete-and-redo.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.68.0 — Playbook: author plays on the map</h3>
     <ul>
       <li><strong>The Playbook is now visual.</strong> Instead of picking regions from menus,

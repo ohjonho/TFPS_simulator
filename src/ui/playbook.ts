@@ -5,9 +5,9 @@
 // Saved plays use the Stage-1 spatial fields, so the sim + B0 fingerprint + coach
 // consume them unchanged. Pure DOM.
 
-import type { HexCoord, MapDefinition, Side } from '../game/types.ts';
+import type { HexCoord, MapDefinition, Side, Unit, Weapon } from '../game/types.ts';
 import {
-  strategiesFor, regionCentroid,
+  strategiesFor, regionCentroid, assignSlots,
   type Strategy, type StrategySlot, type StrategyVariant,
 } from '../game/strategies.ts';
 import { coachRead } from '../game/playbookCoach.ts';
@@ -45,6 +45,7 @@ export type PlaybookCallbacks = {
 export function showPlaybook(
   map: MapDefinition,
   existing: readonly Strategy[],
+  roster: readonly Unit[],
   cb: PlaybookCallbacks,
 ): { refresh: () => void } {
   document.getElementById('playbook')?.remove();
@@ -61,6 +62,7 @@ export function showPlaybook(
   let tokens: EditorToken[] = [];   // the 5 placed units (visual working model)
   let selectedId: string | null = null;
   let mode: EditorMode = 'move';
+  let editingId: string | null = null; // when set, Save updates this play in place
   let canvasHandle: PlaybookCanvasHandle | null = null;
 
   const bases = (): Strategy[] => strategiesFor(side, map).filter((s) => !s.authored);
@@ -72,31 +74,63 @@ export function showPlaybook(
 
   const seedTokens = (): void => {
     selectedId = null;
+    // Tokens carry the player's ACTUAL roster weapons (incl. shotgun), so a saved
+    // play prefers the units it was built for. Blank → place at spawn; adapt →
+    // pair the roster onto the base's slot positions (assignSlots = weapon-aware).
+    const rosterWeapons: Weapon[] = roster.length
+      ? roster.map((u) => u.weapon)
+      : ['rifle', 'rifle', 'rifle', 'rifle', 'sniper'];
     if (baseId === BLANK) {
       const spawns = spawnCells();
-      const weapons: EditorToken['weapon'][] = ['rifle', 'rifle', 'rifle', 'rifle', 'sniper'];
-      tokens = weapons.map((weapon, i) => ({ id: `pos${i + 1}`, weapon, pinHex: spawns[i] ?? fallbackHex() }));
+      tokens = rosterWeapons.map((weapon, i) => ({ id: `pos${i + 1}`, weapon, pinHex: spawns[i] ?? fallbackHex() }));
       return;
     }
     const b = base();
     if (!b) { tokens = []; return; }
-    tokens = b.variants[0].map((slot) => ({
-      id: slot.id,
-      weapon: slot.pick.preferWeapon === 'sniper' ? 'sniper' : 'rifle',
-      pinHex: regionCentroid(map, slot.region) ?? fallbackHex(),
-    }));
+    const slots = b.variants[0];
+    const pairing = roster.length ? assignSlots(slots, roster) : {};
+    tokens = slots.map((slot) => {
+      const unit = roster.find((u) => u.id === pairing[slot.id]);
+      return {
+        id: slot.id,
+        weapon: unit?.weapon ?? slot.pick.preferWeapon ?? 'rifle',
+        pinHex: regionCentroid(map, slot.region) ?? fallbackHex(),
+      };
+    });
   };
 
   const selectBase = (id: string): void => {
     baseId = id;
+    editingId = null;
     name = id === BLANK ? 'New play' : `${base()?.name ?? ''} (custom)`;
     seedTokens();
     render();
   };
 
+  // Load a saved play back onto the canvas for editing (reverse the emit). Save
+  // then updates it in place (same id) rather than creating a duplicate.
+  const editPlay = (id: string): void => {
+    const p = plays.find((s) => s.id === id);
+    if (!p) return;
+    side = p.side;
+    name = p.name;
+    baseId = null;
+    editingId = id;
+    selectedId = null;
+    mode = 'move';
+    tokens = (p.variants[0] ?? []).map((slot) => ({
+      id: slot.id,
+      weapon: slot.pick.preferWeapon ?? 'rifle',
+      pinHex: slot.pinHex ?? regionCentroid(map, slot.region) ?? fallbackHex(),
+      watchHex: slot.watchHex,
+      // Emitted route is [...waypoints, pin]; strip the trailing pin back to waypoints.
+      route: slot.route && slot.route.length > 1 ? slot.route.slice(0, -1) : undefined,
+    }));
+    render();
+  };
+
   const save = (): void => {
     if (tokens.length === 0) return;
-    const taken = new Set<string>([...plays.map((s) => s.id), ...strategiesFor(side, map).map((s) => s.id)]);
     const variant: StrategyVariant = tokens.map((t): StrategySlot => ({
       id: t.id,
       pick: { preferWeapon: t.weapon },
@@ -106,20 +140,30 @@ export function showPlaybook(
       watchHex: t.watchHex,
       route: t.route && t.route.length ? [...t.route, t.pinHex] : undefined,
     }));
-    const b = base();
-    const play: Strategy = baseId === BLANK || !b
-      ? {
-          id: uniqueAuthoredId('custom', taken), name: name.trim() || 'New play', side,
-          description: 'Custom · authored on the map', variants: [variant],
-          fallbackRegion: 'mid', aggressionMod: 0, retreatThresholdMod: 0, authored: true,
-        }
-      : {
-          ...b, id: uniqueAuthoredId(b.id, taken), name: name.trim() || `${b.name} (custom)`,
-          description: `Custom · adapted from ${b.name}`, authored: true, variants: [variant],
-        };
-    plays.push(play);
+    let play: Strategy;
+    if (editingId) {
+      // Edit in place: keep the original's id + mods, swap in the new layout + name,
+      // and clear measured so the coach re-reviews.
+      const orig = plays.find((s) => s.id === editingId)!;
+      play = { ...orig, name: name.trim() || orig.name, variants: [variant], measured: undefined };
+    } else {
+      const taken = new Set<string>([...plays.map((s) => s.id), ...strategiesFor(side, map).map((s) => s.id)]);
+      const b = base();
+      play = baseId === BLANK || !b
+        ? {
+            id: uniqueAuthoredId('custom', taken), name: name.trim() || 'New play', side,
+            description: 'Custom · authored on the map', variants: [variant],
+            fallbackRegion: 'mid', aggressionMod: 0, retreatThresholdMod: 0, authored: true,
+          }
+        : {
+            ...b, id: uniqueAuthoredId(b.id, taken), name: name.trim() || `${b.name} (custom)`,
+            description: `Custom · adapted from ${b.name}`, authored: true, variants: [variant],
+          };
+    }
+    const i = plays.findIndex((s) => s.id === play.id);
+    if (i >= 0) plays[i] = play; else plays.push(play);
     cb.onSave(play);
-    baseId = null; tokens = []; name = ''; selectedId = null;
+    baseId = null; tokens = []; name = ''; selectedId = null; editingId = null;
     render();
   };
 
@@ -147,7 +191,7 @@ export function showPlaybook(
           const coach = read
             ? `<div class="pb-coach v-${read.verdict}"><span class="pb-coach-tag">🧑‍🏫 Coach</span> <b>${esc(read.headline)}</b><div class="pb-coach-detail">${esc(read.character)} ${esc(read.advice)}</div></div>`
             : `<div class="pb-coach pending"><span class="pb-coach-tag">🧑‍🏫 Coach</span> reviewing this play…</div>`;
-          return `<div class="pb-saved"><div class="pb-saved-head"><span>${esc(s.name)} <small>(${s.side === 'defender' ? 'def' : 'atk'})</small></span><button class="pb-del" data-del="${s.id}">Delete</button></div>${coach}</div>`;
+          return `<div class="pb-saved"><div class="pb-saved-head"><span>${esc(s.name)} <small>(${s.side === 'defender' ? 'def' : 'atk'})</small>${editingId === s.id ? ' <em class="pb-editing">editing…</em>' : ''}</span><span class="pb-saved-actions"><button class="pb-edit" data-edit="${s.id}">Edit</button><button class="pb-del" data-del="${s.id}">Delete</button></span></div>${coach}</div>`;
         }).join('')
       : `<div class="pb-none">No saved plays yet.</div>`;
 
@@ -180,14 +224,15 @@ export function showPlaybook(
         <div class="pb-savedlist">${savedList}</div>
         <div class="mp-actions pb-actions">
           <button class="btn-back" data-close type="button">&larr; Done</button>
-          <button class="btn-primary" data-save type="button" ${tokens.length ? '' : 'disabled'}>Save play</button>
+          <button class="btn-primary" data-save type="button" ${tokens.length ? '' : 'disabled'}>${editingId ? 'Update play' : 'Save play'}</button>
         </div>
       </div>`;
 
     host.querySelectorAll<HTMLButtonElement>('[data-side]').forEach((el) => el.addEventListener('click', () => {
-      side = el.getAttribute('data-side') as Side; baseId = null; tokens = []; selectedId = null; render();
+      side = el.getAttribute('data-side') as Side; baseId = null; tokens = []; selectedId = null; editingId = null; render();
     }));
     host.querySelectorAll<HTMLButtonElement>('[data-base]').forEach((el) => el.addEventListener('click', () => selectBase(el.getAttribute('data-base')!)));
+    host.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((el) => el.addEventListener('click', () => editPlay(el.getAttribute('data-edit')!)));
     host.querySelector<HTMLInputElement>('.pb-name')?.addEventListener('input', (e) => { name = (e.target as HTMLInputElement).value; });
     host.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((el) => el.addEventListener('click', () => removePlay(el.getAttribute('data-del')!)));
     host.querySelector<HTMLButtonElement>('[data-save]')?.addEventListener('click', save);

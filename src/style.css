@@ -977,6 +977,13 @@ body {
   color: var(--text-dim); padding: 4px 10px; cursor: pointer; font-size: 12px;
 }
 .pb-del:hover { color: var(--text); border-color: var(--text-dim); }
+.pb-saved-actions { display: flex; gap: 6px; }
+.pb-edit {
+  background: transparent; border: 1px solid var(--panel-border); border-radius: 5px;
+  color: var(--text-dim); padding: 4px 10px; cursor: pointer; font-size: 12px;
+}
+.pb-edit:hover { color: var(--accent); border-color: var(--accent); }
+.pb-editing { color: var(--accent); font-style: italic; font-size: 11px; }
 .pb-actions { justify-content: space-between; }
 
 /* Campaign intro story (rendered inside the shared modal body). */
