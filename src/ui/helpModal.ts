@@ -389,6 +389,22 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.74.0 — Playbook legibility: who's who, and why</h3>
+    <ul>
+      <li><strong>Units read as players, not loadouts.</strong> In the Playbook editor
+        each unit now shows its handle initials (same as in-match) instead of R/S/G, with
+        a colour legend for the weapon. A new “Your units” strip lists each player's role,
+        weapon, Game Sense, and exactly what route they're cleared to run.</li>
+      <li><strong>Game Sense gates the playbook</strong> (it used to read Discipline). How
+        complex a play you can draw — and how many you can keep — now scales with your
+        squad's tactical smarts; how faithfully they then run it under fire is still
+        Discipline. Train Game Sense to widen what you can author.</li>
+      <li><strong>Clearer attributes.</strong> The sub-attribute details now group under
+        their parent (Mechanics / Game Sense / Discipline / Improvisation / Leadership) and
+        show each one's weight, so it's obvious what rolls into what.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.73.0 — Playbook gating: earn your authoring</h3>
     <ul>
       <li><strong>Authoring unlocks in week 2.</strong> From day one you can adapt the

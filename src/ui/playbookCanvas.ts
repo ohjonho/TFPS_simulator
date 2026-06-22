@@ -18,12 +18,15 @@ import { HEX, VISION } from '../game/config.ts';
 // ignores it; only the shell reads it.
 export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: RouteStep[]; unitId?: string };
 
-const WEAPON_COLOR: Record<Weapon, string> = { rifle: '#46a758', sniper: '#3b82c4', shotgun: '#d4843a' };
+export const WEAPON_COLOR: Record<Weapon, string> = { rifle: '#46a758', sniper: '#3b82c4', shotgun: '#d4843a' };
 const WEAPON_LETTER: Record<Weapon, string> = { rifle: 'R', sniper: 'S', shotgun: 'G' };
 export type EditorMode = 'move' | 'watch' | 'route';
 
 export type PlaybookCanvasState = {
   tokens: () => EditorToken[];
+  // Glyph drawn on a token — the unit's handle initials (matches the match sim),
+  // falling back to the weapon letter. Color still encodes the loadout.
+  labelFor?: (t: EditorToken) => string;
   selectedId: () => string | null;
   mode: () => EditorMode;
   showVision: () => boolean;        // overlay the team's combined view cones
@@ -115,10 +118,12 @@ export function createPlaybookCanvas(
     ctx.strokeStyle = unreachable ? '#c4453b' : selected ? '#e0b13a' : '#0b0e14';
     ctx.stroke();
     ctx.fillStyle = '#0b0e14';
-    ctx.font = `bold ${HEX.size}px sans-serif`;
+    const label = s.labelFor?.(t) ?? WEAPON_LETTER[t.weapon] ?? 'R';
+    // Multi-char handle initials need a smaller font than a single letter.
+    ctx.font = `bold ${Math.round(HEX.size * (label.length > 1 ? 0.66 : 1))}px ui-monospace, Consolas, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(WEAPON_LETTER[t.weapon] ?? 'R', p.x, p.y);
+    ctx.fillText(label, p.x, p.y);
   }
 
   function drawArrow(from: HexCoord, to: HexCoord, color: string): void {
