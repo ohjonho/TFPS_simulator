@@ -227,12 +227,18 @@ export type Directive =
   // other. Used only by the "reading" attacks (Control, attacker Mind Games);
   // direct attacks (Rush/Execute) ignore it.
   | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number }
-  // Visual-play system (Stage 1) — move through an authored sequence of waypoints
-  // (the flank/lurk/trick-play route). The unit pathfinds BETWEEN waypoints and is
+  // Visual-play system — move through an authored sequence of waypoints (the
+  // flank/lurk/trick-play route). The unit pathfinds BETWEEN waypoints and is
   // gated by the compliance roll (so discipline decides how faithfully the route
   // is run); engage/retreat still override it, so units keep reacting — it's a
-  // suggestion, not puppeteering. Progress (which waypoint) is AiState.routeIdx.
-  | { kind: 'follow_route'; priority: number; route: HexCoord[] };
+  // suggestion, not puppeteering. Each step can carry its own watch angle (faced
+  // on arrival/while waiting) and a wait timer (ticks to hold before advancing) —
+  // the lurk/bait lever. Progress is AiState.routeIdx + routeWaitTicks.
+  | { kind: 'follow_route'; priority: number; route: RouteStep[] };
+
+// One authored waypoint: a hex to reach, an optional watch angle to face on
+// arrival, and an optional hold (ticks to wait there before advancing).
+export type RouteStep = { hex: HexCoord; watchHex?: HexCoord; waitTicks?: number };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each
@@ -407,6 +413,9 @@ export type AiState = {
   // FOLLOW_ROUTE.reachRadius of the current waypoint; ≥ route length ⇒ route done
   // (the unit holds at its pin). Absent ⇒ 0 (start of the route).
   routeIdx?: number;
+  // Ticks waited at the current route waypoint (per-waypoint holds); resets on
+  // advance or when the unit isn't at the waypoint. Absent ⇒ 0.
+  routeWaitTicks?: number;
 };
 
 // Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.

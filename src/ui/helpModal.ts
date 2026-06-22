@@ -389,6 +389,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.71.0 — Playbook: smarter routes (waypoints that wait + watch)</h3>
+    <ul>
+      <li><strong>Sequential waypoints.</strong> In Route mode each click drops the next
+        waypoint in order, so a unit's flank reads left-to-right the way you draw it.</li>
+      <li><strong>Hold &amp; watch at a waypoint.</strong> Each waypoint can carry a <em>wait</em>
+        (ticks to hold there) and its own <em>watch</em> angle — so you can author real lurks and
+        baits: creep to a spot, watch a lane, hold a beat, then swing. As ever, discipline decides
+        how faithfully a unit runs it, and contact still pulls it into the fight.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.70.0 — Playbook: see paths, coverage, and dead ends</h3>
     <ul>
       <li><strong>Paths from spawn.</strong> Each unit's route from its spawn to its hold (through

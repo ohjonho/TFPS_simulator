@@ -21,7 +21,7 @@
 // A/B) declare `variants[]`. The player picks the variant explicitly via the A/B
 // sub-button; the AI picks via the seeded RNG.
 
-import type { HexCoord, MapDefinition, Side, Unit, Weapon } from './types.ts';
+import type { HexCoord, MapDefinition, RouteStep, Side, Unit, Weapon } from './types.ts';
 import { neighbors, passableAt } from './pathfind.ts';
 import { STRATEGY_MODS } from './config.ts';
 import type { DirectiveSpec } from './directives.ts';
@@ -55,7 +55,7 @@ export type StrategySlot = {
   // unaffected. Resolved in match.applyStrategies.
   pinHex?: HexCoord;
   watchHex?: HexCoord;
-  route?: HexCoord[];
+  route?: RouteStep[];
 };
 
 // A variant is a complete slot list (one slot per actual unit on the team,

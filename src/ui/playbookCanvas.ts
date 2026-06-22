@@ -3,7 +3,7 @@
 // slot-grid. 2a = placement (pinHex); watch arrows (2b) + routes (2c) layer on
 // via the mode toolbar. Pure DOM/canvas; reuses the in-match renderer primitives.
 
-import type { HexCoord, MapDefinition, Unit, Weapon } from '../game/types.ts';
+import type { HexCoord, MapDefinition, RouteStep, Unit, Weapon } from '../game/types.ts';
 import { setupCanvas } from '../render/canvas.ts';
 import { drawHexGrid } from '../render/drawHexGrid.ts';
 import { drawRegionLabels } from '../render/drawRegionLabels.ts';
@@ -13,7 +13,7 @@ import { hexesInCone, isVisibleAlongLine, facingBearingRad } from '../game/visio
 import { nearestFacing } from '../game/unit-ai.ts';
 import { HEX, VISION } from '../game/config.ts';
 
-export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: HexCoord[] };
+export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: RouteStep[] };
 
 const WEAPON_COLOR: Record<Weapon, string> = { rifle: '#46a758', sniper: '#3b82c4', shotgun: '#d4843a' };
 const WEAPON_LETTER: Record<Weapon, string> = { rifle: 'R', sniper: 'S', shotgun: 'G' };
@@ -26,10 +26,13 @@ export type PlaybookCanvasState = {
   showVision: () => boolean;        // overlay the team's combined view cones
   spawnCells: () => HexCoord[];     // own-side spawn cells (path/start origin)
   approachHex: () => HexCoord | null; // enemy direction (default watch when none set)
+  selectedWaypoint: () => number | null; // index of the route step being edited
+  armWatch: () => boolean;          // next route-mode click sets the selected step's watch
   onSelect: (id: string | null) => void;
   onMove: (id: string, hex: HexCoord) => void;
   onSetWatch: (id: string, hex: HexCoord) => void;
   onAddWaypoint: (id: string, hex: HexCoord) => void;
+  onSetWaypointWatch: (id: string, idx: number, hex: HexCoord) => void;
 };
 
 export type PlaybookCanvasHandle = { redraw: () => void; destroy: () => void };
@@ -69,10 +72,16 @@ export function createPlaybookCanvas(
       return;
     }
     if (s.mode() === 'route') {
-      // Route mode: click a unit to select it, or click passable hexes in sequence
-      // to append the selected unit's flank waypoints (it pathfinds between them).
+      // Route mode: click a unit to select it; otherwise, if "set watch" is armed
+      // aim the selected waypoint's cone, else append the next sequential waypoint.
+      // (Waypoint selection + wait/watch editing live in the side panel.)
       if (t) s.onSelect(t.id);
-      else { const sel = s.selectedId(); if (sel && passableAt(map, hex)) s.onAddWaypoint(sel, hex); }
+      else {
+        const sel = s.selectedId();
+        const wp = s.selectedWaypoint();
+        if (sel && s.armWatch() && wp != null) s.onSetWaypointWatch(sel, wp, hex);
+        else if (sel && passableAt(map, hex)) s.onAddWaypoint(sel, hex);
+      }
       redraw();
       ev.preventDefault();
       return;
@@ -146,7 +155,7 @@ export function createPlaybookCanvas(
     if (!start) return null;
     const full: HexCoord[] = [start];
     let from = start;
-    for (const stop of [...(t.route ?? []), t.pinHex]) {
+    for (const stop of [...(t.route ?? []).map((st) => st.hex), t.pinHex]) {
       const leg = findPath(map, from, stop);
       if (!leg) return null;
       for (let i = 1; i < leg.length; i++) full.push(leg[i]);
@@ -218,9 +227,10 @@ export function createPlaybookCanvas(
     // the unit's pin (its hold). Dots mark each waypoint.
     for (const t of s.tokens()) {
       if (!t.route || t.route.length === 0) continue;
-      const pts = [...t.route, t.pinHex].map((h) => offsetToPixel(h.col, h.row));
+      const bright = t.id === sel;
+      const pts = [...t.route.map((st) => st.hex), t.pinHex].map((h) => offsetToPixel(h.col, h.row));
       ctx.save();
-      ctx.strokeStyle = t.id === sel ? '#2bb3c4' : 'rgba(43,179,196,0.45)';
+      ctx.strokeStyle = bright ? '#2bb3c4' : 'rgba(43,179,196,0.45)';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -228,13 +238,23 @@ export function createPlaybookCanvas(
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.stroke();
       ctx.setLineDash([]);
-      for (const wp of t.route) {
-        const p = offsetToPixel(wp.col, wp.row);
+      t.route.forEach((st, i) => {
+        const p = offsetToPixel(st.hex.col, st.hex.row);
+        const wpSel = bright && i === s.selectedWaypoint();
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = t.id === sel ? '#2bb3c4' : 'rgba(43,179,196,0.5)';
+        ctx.arc(p.x, p.y, wpSel ? 5 : 3, 0, Math.PI * 2);
+        ctx.fillStyle = bright ? '#2bb3c4' : 'rgba(43,179,196,0.5)';
         ctx.fill();
-      }
+        if (wpSel) { ctx.lineWidth = 2; ctx.strokeStyle = '#e0b13a'; ctx.stroke(); }
+        if (st.watchHex) drawArrow(st.hex, st.watchHex, bright ? 'rgba(43,179,196,0.85)' : 'rgba(43,179,196,0.4)');
+        if (st.waitTicks) {
+          ctx.fillStyle = '#cfe8ee';
+          ctx.font = `bold ${HEX.size * 0.85}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${st.waitTicks}`, p.x + HEX.size * 0.7, p.y - HEX.size * 0.7);
+        }
+      });
       ctx.restore();
     }
     // Watch arrows under the tokens (selected one brighter).

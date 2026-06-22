@@ -761,13 +761,23 @@ export function stepTick(state: GameState): GameState {
       mode === 'engaged'
         ? (engage.engage ? 0 : prevAi.engageStickyTicks + 1)
         : 0;
-    // Visual-play (Stage 1) — advance the route waypoint once the unit reaches the
-    // current one (position-based ⇒ deterministic; independent of whether the
-    // directive fired this tick, so a compliance-skipped tick doesn't stall it).
+    // Visual-play — advance the route waypoint once the unit reaches the current
+    // one AND has held it for the step's wait (position-based ⇒ deterministic;
+    // independent of whether the directive fired this tick, so a compliance-skipped
+    // tick doesn't stall it).
     let routeIdx = prevAi.routeIdx ?? 0;
+    let routeWaitTicks = prevAi.routeWaitTicks ?? 0;
     for (const d of u.directives ?? []) {
       if (d.kind !== 'follow_route') continue;
-      if (routeIdx < d.route.length && hexDistance(u.pos, d.route[routeIdx]) <= FOLLOW_ROUTE.reachRadius) routeIdx++;
+      if (routeIdx < d.route.length) {
+        const step = d.route[routeIdx];
+        if (hexDistance(u.pos, step.hex) <= FOLLOW_ROUTE.reachRadius) {
+          routeWaitTicks += 1;
+          if (routeWaitTicks > (step.waitTicks ?? 0)) { routeIdx += 1; routeWaitTicks = 0; }
+        } else {
+          routeWaitTicks = 0;
+        }
+      }
       break;
     }
 
@@ -788,6 +798,7 @@ export function stepTick(state: GameState): GameState {
       shotReactUntil: prevAi.shotReactUntil,
       shooterHex: prevAi.shooterHex,
       routeIdx,
+      routeWaitTicks,
     };
   }
 

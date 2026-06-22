@@ -64,6 +64,8 @@ export function showPlaybook(
   let mode: EditorMode = 'move';
   let editingId: string | null = null; // when set, Save updates this play in place
   let showVision = false;
+  let selectedWaypoint: number | null = null; // route step being edited (selected unit)
+  let armWatch = false;                        // next route click sets that step's watch
   let canvasHandle: PlaybookCanvasHandle | null = null;
 
   const bases = (): Strategy[] => strategiesFor(side, map).filter((s) => !s.authored);
@@ -128,8 +130,7 @@ export function showPlaybook(
       weapon: slot.pick.preferWeapon ?? 'rifle',
       pinHex: slot.pinHex ?? regionCentroid(map, slot.region) ?? fallbackHex(),
       watchHex: slot.watchHex,
-      // Emitted route is [...waypoints, pin]; strip the trailing pin back to waypoints.
-      route: slot.route && slot.route.length > 1 ? slot.route.slice(0, -1) : undefined,
+      route: slot.route && slot.route.length ? slot.route.map((st) => ({ ...st })) : undefined,
     }));
     render();
   };
@@ -143,7 +144,7 @@ export function showPlaybook(
       directives: [],
       pinHex: t.pinHex,
       watchHex: t.watchHex,
-      route: t.route && t.route.length ? [...t.route, t.pinHex] : undefined,
+      route: t.route && t.route.length ? t.route : undefined,
     }));
     let play: Strategy;
     if (editingId) {
@@ -181,6 +182,35 @@ export function showPlaybook(
 
   const closeEditor = (): void => { canvasHandle?.destroy(); canvasHandle = null; host.remove(); cb.onClose(); };
 
+  // The per-waypoint editor (Route mode): the selected unit's waypoints with a
+  // wait timer + a "watch" arm per step. Repopulated in place (no shell rebuild,
+  // so the canvas stays mounted). Empty when not routing / no waypoints.
+  const renderWaypointPanel = (): void => {
+    const el = host.querySelector('#pb-wp-panel');
+    if (!el) return;
+    const t = tokens.find((x) => x.id === selectedId);
+    if (mode !== 'route' || !t || !t.route || t.route.length === 0) { el.innerHTML = ''; return; }
+    const rows = t.route.map((st, i) => `
+      <div class="pb-wp-row ${i === selectedWaypoint ? 'sel' : ''}" data-wp="${i}">
+        <span class="pb-wp-n">${i + 1}</span>
+        <label class="pb-wp-wait">wait <input type="number" min="0" max="9" value="${st.waitTicks ?? 0}" data-wpwait="${i}"/></label>
+        <button class="pb-wp-watch ${armWatch && selectedWaypoint === i ? 'sel' : ''}" data-wpwatch="${i}" type="button">${st.watchHex ? 'watch ✓' : 'watch'}</button>
+      </div>`).join('');
+    el.innerHTML = `<div class="mp-group-label" style="margin-top:14px">Waypoints — ${esc(t.id)}</div>${rows}${armWatch ? '<div class="pb-wp-hint">Now click a hex to aim this waypoint.</div>' : ''}`;
+    el.querySelectorAll<HTMLElement>('[data-wp]').forEach((r) => r.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('input,button')) return;
+      selectedWaypoint = parseInt(r.getAttribute('data-wp')!, 10); armWatch = false; renderWaypointPanel(); canvasHandle?.redraw();
+    }));
+    el.querySelectorAll<HTMLInputElement>('[data-wpwait]').forEach((inp) => inp.addEventListener('input', () => {
+      const i = parseInt(inp.getAttribute('data-wpwait')!, 10);
+      const v = Math.max(0, Math.min(9, Math.floor(Number(inp.value) || 0)));
+      if (t.route && t.route[i]) { t.route[i] = { ...t.route[i], waitTicks: v }; canvasHandle?.redraw(); }
+    }));
+    el.querySelectorAll<HTMLButtonElement>('[data-wpwatch]').forEach((b) => b.addEventListener('click', () => {
+      selectedWaypoint = parseInt(b.getAttribute('data-wpwatch')!, 10); armWatch = true; renderWaypointPanel();
+    }));
+  };
+
   const render = (): void => {
     canvasHandle?.destroy();
     canvasHandle = null;
@@ -213,7 +243,8 @@ export function showPlaybook(
             <div class="mp-group-label" style="margin-top:14px">Start from</div>
             <div class="pb-starts">${startBtns}</div>
             ${tokens.length ? `<div class="pb-row" style="margin-top:14px"><span class="pb-label">Name</span><input class="pb-name" type="text" value="${name.replace(/"/g, '&quot;')}" placeholder="My play"/></div>
-            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set its hold. <b>Watch:</b> select a unit, click a hex to aim its cone. <b>Route:</b> select a unit, click hexes to draw its flank — discipline decides how faithfully it's run. Paths from spawn are shown; <b>👁 Vision</b> shades what your setup sees (gaps = blind spots); a red ring = an unreachable hold.</div>` : ''}
+            <div class="pb-canvas-hint"><b>Move:</b> drag a unit to set its hold. <b>Watch:</b> select a unit, click a hex to aim its cone. <b>Route:</b> select a unit, click hexes to drop sequential waypoints (set each one's wait + watch below) — discipline decides how faithfully it's run. Paths from spawn are shown; <b>👁 Vision</b> shades what your setup sees (gaps = blind spots); a red ring = an unreachable hold.</div>
+            <div id="pb-wp-panel"></div>` : ''}
           </div>
           <div class="pb-col pb-canvas-col">
             ${tokens.length ? `<div class="pb-tools">
@@ -248,6 +279,7 @@ export function showPlaybook(
     host.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((el) => el.addEventListener('click', () => {
       mode = el.getAttribute('data-mode') as EditorMode;
       host.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => b.classList.toggle('sel', b.getAttribute('data-mode') === mode));
+      renderWaypointPanel();
       canvasHandle?.redraw();
     }));
     host.querySelector<HTMLButtonElement>('[data-clearroute]')?.addEventListener('click', () => {
@@ -271,11 +303,23 @@ export function showPlaybook(
         showVision: () => showVision,
         spawnCells: () => spawnCells(),
         approachHex: () => enemyApproach(),
-        onSelect: (id) => { selectedId = id; canvasHandle?.redraw(); },
+        selectedWaypoint: () => selectedWaypoint,
+        armWatch: () => armWatch,
+        onSelect: (id) => { selectedId = id; selectedWaypoint = null; armWatch = false; renderWaypointPanel(); canvasHandle?.redraw(); },
         onMove: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.pinHex = hex; canvasHandle?.redraw(); },
         onSetWatch: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.watchHex = hex; canvasHandle?.redraw(); },
-        onAddWaypoint: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.route = [...(t.route ?? []), hex]; canvasHandle?.redraw(); },
+        onAddWaypoint: (id, hex) => {
+          const t = tokens.find((x) => x.id === id);
+          if (t) { t.route = [...(t.route ?? []), { hex }]; selectedWaypoint = t.route.length - 1; armWatch = false; }
+          renderWaypointPanel(); canvasHandle?.redraw();
+        },
+        onSetWaypointWatch: (id, idx, hex) => {
+          const t = tokens.find((x) => x.id === id);
+          if (t?.route?.[idx]) t.route[idx] = { ...t.route[idx], watchHex: hex };
+          armWatch = false; renderWaypointPanel(); canvasHandle?.redraw();
+        },
       });
+      renderWaypointPanel();
     }
   };
 

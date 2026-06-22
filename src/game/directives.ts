@@ -28,7 +28,7 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex, nearestCellInRegion } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
-import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA } from './config.ts';
+import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA, FOLLOW_ROUTE } from './config.ts';
 import { beliefInRegions } from './belief.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
@@ -166,7 +166,7 @@ function evaluateOne(
       return readAndCommit(d, unit, state);
 
     case 'follow_route':
-      return followRoute(d, prevAi);
+      return followRoute(d, unit, prevAi);
   }
 }
 
@@ -179,11 +179,20 @@ function evaluateOne(
 // that's the "discipline decides whether the flank actually happens" lever.
 function followRoute(
   d: Extract<Directive, { kind: 'follow_route' }>,
+  unit: Unit,
   prevAi: AiState,
 ): DirectiveDecision | null {
   const idx = prevAi.routeIdx ?? 0;
   if (idx >= d.route.length) return null;
-  return { target: d.route[idx], source: 'follow_route' };
+  const step = d.route[idx];
+  // Within reach of the waypoint → HOLD in place (target = pos ⇒ holding mode) and
+  // face the step's watch angle while the per-waypoint wait counts down (tick.ts
+  // advances routeIdx after waitTicks). Otherwise keep moving toward it (the cone
+  // leads the path, so facing is left to the movement logic).
+  if (hexDistance(unit.pos, step.hex) <= FOLLOW_ROUTE.reachRadius) {
+    return { target: unit.pos, facing: step.watchHex, source: 'follow_route' };
+  }
+  return { target: step.hex, source: 'follow_route' };
 }
 
 // --- hold_angle ------------------------------------------------------------
