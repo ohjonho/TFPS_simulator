@@ -130,6 +130,11 @@ export type SeasonState = {
   // (JSON-serializable) so the single-slot autosave snapshots them as-is.
   phase: SeasonPhase;
   weekEventMode: ('S' | 'R')[];
+  // Part 6 (playbook gating) — authoring a play from scratch (the blank canvas)
+  // is locked until the week-2 guided tutorial flips this. Adapting a built-in is
+  // available from day 1 regardless. Capacity + route complexity gate separately
+  // off roster Tenacity (see game/playbookGating.ts).
+  authoringUnlocked: boolean;
   // Part 5 B0 — player-authored / adapted plays (the Playbook). Stored as live
   // Strategy objects (the season is in-memory only; Strategy is plain data, so a
   // future save system serializes them as-is). Registered into the strategy
@@ -242,6 +247,7 @@ export function startSeason(
     playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName,
     clubLean: null, upgrades: [], customStrategies: [],
     phase: 'training', weekEventMode: buildWeekEventModes(seed, K),
+    authoringUnlocked: false,
   };
 }
 

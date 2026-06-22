@@ -10,7 +10,9 @@
 import type { SeasonState } from '../game/season.ts';
 
 const SAVE_KEY = 'tfps-season-save';
-const SAVE_VERSION = 1;
+// v2 adds SeasonState.authoringUnlocked (Part 6 playbook gating); a v1 save would
+// default it falsy and wrongly re-lock a season already past week 2, so discard.
+const SAVE_VERSION = 2;
 
 // Best-effort write; called on every phase advance. Storage failures (quota,
 // privacy mode) are swallowed — a missing autosave shouldn't break play.

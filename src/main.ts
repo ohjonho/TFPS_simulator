@@ -79,7 +79,9 @@ import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
 import { showWeekEvent } from './ui/weekEvent.ts';
 import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
+import { showAuthoringTutorial } from './ui/authoringTutorial.ts';
 import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
+import { playbookCapacity } from './game/playbookGating.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
 import type { SeasonState, ClubLean } from './game/season.ts';
@@ -358,7 +360,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.72.0', {
+    renderMainMenu(menuHost, 'v0.73.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -407,28 +409,36 @@ function launchMatchPrep(onBack?: () => void): void {
     const m = buildSeasonMatch(s, state.map, prep);
     initialUnitsById = snapshotUnits(m.units);
     setState(m);
-  }, onBack, () => {
-    // Playbook (B1) — adapt & save plays for this season, then return to prep.
-    // Saves land on the live season.customStrategies so they persist + resolve.
-    let handle: { refresh: () => void } | null = null;
-    handle = showPlaybook(state.map, season?.customStrategies ?? [], season?.playerRoster ?? [], {
-      onSave: (play) => {
-        if (!season) return;
-        // Upsert by id so editing a saved play (same id) updates it in place
-        // rather than duplicating; a fresh save just appends.
-        const others = season.customStrategies.filter((p) => p.id !== play.id);
-        season = { ...season, customStrategies: [...others, play] };
-        // B1b — measure the play's matchup lazily in a background worker; when it
-        // lands, enrich the shared play object (visible to both season + the open
-        // editor, same ref) and re-render the coach read in place.
-        reviewPlay(play, state.map.name, COACH_REVIEW_SEEDS, (matchups, seeds) => {
-          play.measured = { matchups, seeds };
-          handle?.refresh();
-        });
-      },
-      onDelete: (id) => { if (season) season = { ...season, customStrategies: season.customStrategies.filter((p) => p.id !== id) }; },
-      onClose: () => launchMatchPrep(onBack),
-    });
+  }, onBack, () => openSeasonPlaybook(() => launchMatchPrep(onBack)));
+}
+
+// Open the season Playbook editor (B1 + Part 6 gating). Passes the authoring
+// unlock (week-2 gate) and roster-derived capacity through to the editor; saves
+// and deletes land on the live season.customStrategies AND the autosave so they
+// persist + resolve. `onClose` decides where we return.
+function openSeasonPlaybook(onClose: () => void): void {
+  let handle: { refresh: () => void } | null = null;
+  handle = showPlaybook(state.map, season?.customStrategies ?? [], season?.playerRoster ?? [], {
+    onSave: (play) => {
+      if (!season) return;
+      // Upsert by id so editing a saved play (same id) updates it in place rather
+      // than duplicating; a fresh save just appends.
+      const others = season.customStrategies.filter((p) => p.id !== play.id);
+      season = { ...season, customStrategies: [...others, play] };
+      saveSeason(season);
+      // B1b — measure the play's matchup lazily in a background worker; when it
+      // lands, enrich the shared play object (visible to both season + the open
+      // editor, same ref) and re-render the coach read in place.
+      reviewPlay(play, state.map.name, COACH_REVIEW_SEEDS, (matchups, seeds) => {
+        play.measured = { matchups, seeds };
+        handle?.refresh();
+      });
+    },
+    onDelete: (id) => { if (season) { season = { ...season, customStrategies: season.customStrategies.filter((p) => p.id !== id) }; saveSeason(season); } },
+    onClose,
+  }, {
+    authoringUnlocked: season?.authoringUnlocked ?? false,
+    capacity: playbookCapacity(season?.playerRoster ?? []),
   });
 }
 
@@ -451,9 +461,23 @@ function runSeasonWeek(onFirstBack?: () => void): void {
     case 'training':
       showTrainingDay(currentWeek(s), advance, s.idx === 0 ? onFirstBack : undefined);
       break;
-    case 'preEvent':
-      showWeekEvent(currentWeek(s), 'pre', s.weekEventMode[s.idx] ?? 'S', advance);
+    case 'preEvent': {
+      const info = s.opponents[s.idx];
+      // Week 2 (idx 1): the one-time guided authoring tutorial replaces the pre-
+      // event placeholder, framed around the scouted opponent. Flips the unlock.
+      if (s.idx === 1 && !s.authoringUnlocked && info) {
+        const pretty = (l: { strategy: string; site: 'A' | 'B' | null }): string =>
+          `${l.strategy.replace(/_/g, ' ')}${l.site ? ` ${l.site}` : ''}`;
+        const leanLine = `They lean <strong>${pretty(info.atk)}</strong> on attack and <strong>${pretty(info.def)}</strong> on defense.`;
+        const unlock = (then: () => void): void => { season = { ...season!, authoringUnlocked: true }; saveSeason(season); then(); };
+        showAuthoringTutorial(info.name, leanLine,
+          () => unlock(() => openSeasonPlaybook(advance)),
+          () => unlock(advance));
+      } else {
+        showWeekEvent(currentWeek(s), 'pre', s.weekEventMode[s.idx] ?? 'S', advance);
+      }
       break;
+    }
     case 'match':
       // The match runs through the GameState loop; showMatchEndModal records the
       // result, steps the phase to postEvent, and re-enters runSeasonWeek.

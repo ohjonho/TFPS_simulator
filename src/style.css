@@ -946,6 +946,15 @@ body {
   color: var(--text); padding: 5px 12px; cursor: pointer; font-weight: 600;
 }
 .pb-chip.sel { border-color: var(--accent); background: #1a1f2b; }
+/* Part 6 gating — locked "Blank" chip, capacity count, route-allowance + notes. */
+.pb-chip-locked { opacity: 0.5; cursor: not-allowed; }
+.pb-cap { color: var(--text-dim); font-weight: 600; font-size: 11px; margin-left: 4px; }
+.pb-wp-allow { font-size: 11px; color: var(--text-dim); margin: 4px 0 6px; line-height: 1.4; }
+.pb-wp-locked { font-size: 11px; color: var(--text-dim); font-style: italic; }
+.pb-note-msg:not(:empty) {
+  margin: 10px 0 0; padding: 7px 10px; border-radius: 6px; font-size: 12px;
+  color: #d6a02b; background: rgba(214,160,43,0.1); border: 1px solid rgba(214,160,43,0.35);
+}
 .pb-name {
   flex: 1; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
   color: var(--text); padding: 8px 10px; font-size: 13px;

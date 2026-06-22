@@ -908,6 +908,27 @@ export const FOLLOW_ROUTE = {
   reachRadius: 2,
 } as const;
 
+// Part 6 (season meta-loop) — playbook gating. Roster discipline (Tenacity)
+// limits how much authored-play complexity a squad can FIELD and EXECUTE: the
+// team average gates how many plays they can keep; each unit's own Tenacity
+// gates how elaborate a route it can be assigned. Thresholds are on the 0-100
+// attribute scale (draft baseline ~50, so a fresh squad starts capped at one
+// play + holds-only). Execution itself is still the in-match compliance roll —
+// these only gate what the editor lets you author.
+export const PLAYBOOK_GATING = {
+  // team-average Tenacity ≥ minAvg → may keep `plays` saved plays (first match).
+  capacity: [
+    { minAvg: 75, plays: 4 },
+    { minAvg: 65, plays: 3 },
+    { minAvg: 55, plays: 2 },
+    { minAvg: 0,  plays: 1 },
+  ],
+  // per-unit Tenacity → route allowance. Below `oneWaypoint` the unit holds only
+  // (no route); [oneWaypoint, multi) → 1 stop; [multi, full) → up to `multiMax`;
+  // ≥ full → unlimited stops + per-waypoint wait/watch (lurks & baits).
+  route: { oneWaypoint: 55, multi: 65, multiMax: 3, full: 75 },
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's

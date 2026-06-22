@@ -389,6 +389,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.73.0 — Playbook gating: earn your authoring</h3>
+    <ul>
+      <li><strong>Authoring unlocks in week 2.</strong> From day one you can adapt the
+        basics, but drawing a play from scratch (the blank canvas) stays locked until a
+        guided tutorial in week 2 — framed around countering your scouted opponent.</li>
+      <li><strong>Squad discipline limits your playbook.</strong> How many set plays you
+        can keep scales with your roster's Discipline — a rookie squad maintains one and
+        masters it; a disciplined one keeps several.</li>
+      <li><strong>Routes are gated per unit.</strong> An undisciplined unit holds its
+        position only; more disciplined units can run one stop, then several, and the
+        steadiest can run full routes with lurks (wait + watch at each stop). Train
+        Discipline to widen what your squad can pull off.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.72.0 — Season weeks: training days, events &amp; autosave</h3>
     <ul>
       <li><strong>The season runs in weeks.</strong> Each week now flows training day →

@@ -13,7 +13,10 @@ import { hexesInCone, isVisibleAlongLine, facingBearingRad } from '../game/visio
 import { nearestFacing } from '../game/unit-ai.ts';
 import { HEX, VISION } from '../game/config.ts';
 
-export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: RouteStep[] };
+// `unitId` ties a token to the roster unit it represents, so the editor can gate
+// route complexity by that unit's Tenacity (Part 6). Optional — the canvas itself
+// ignores it; only the shell reads it.
+export type EditorToken = { id: string; weapon: Weapon; pinHex: HexCoord; watchHex?: HexCoord; route?: RouteStep[]; unitId?: string };
 
 const WEAPON_COLOR: Record<Weapon, string> = { rifle: '#46a758', sniper: '#3b82c4', shotgun: '#d4843a' };
 const WEAPON_LETTER: Record<Weapon, string> = { rifle: 'R', sniper: 'S', shotgun: 'G' };

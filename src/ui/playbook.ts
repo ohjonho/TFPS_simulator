@@ -11,6 +11,7 @@ import {
   type Strategy, type StrategySlot, type StrategyVariant,
 } from '../game/strategies.ts';
 import { coachRead } from '../game/playbookCoach.ts';
+import { routeMaxWaypoints, routeAllowsWaitWatch, routeAllowanceLabel, teamAvgTenacity } from '../game/playbookGating.ts';
 import { createPlaybookCanvas, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
 function esc(s: string): string {
@@ -47,13 +48,24 @@ export function showPlaybook(
   existing: readonly Strategy[],
   roster: readonly Unit[],
   cb: PlaybookCallbacks,
+  opts: { authoringUnlocked?: boolean; capacity?: number } = {},
 ): { refresh: () => void } {
   document.getElementById('playbook')?.remove();
   const host = document.createElement('div');
   host.id = 'playbook';
   document.body.appendChild(host);
 
+  // Part 6 gating. Defaults (unlocked + unlimited) keep non-season callers
+  // unchanged; the season passes the real flag + roster-derived capacity.
+  const authoringUnlocked = opts.authoringUnlocked ?? true;
+  const capacity = opts.capacity ?? Infinity;
+  const teamAvg = teamAvgTenacity(roster);
+  let note: string | null = null; // transient gating message (cap hit / route limit)
+
   const plays: Strategy[] = existing.map((s) => s); // live copy for the saved list
+  // A token's Tenacity = its roster unit's (falls back to the team average when a
+  // token isn't paired to a unit). Drives the per-unit route-complexity gate.
+  const tenacityOf = (t: EditorToken): number => roster.find((u) => u.id === t.unitId)?.attributes.tenacity ?? teamAvg;
 
   // --- editor state ---
   let side: Side = 'defender';
@@ -89,7 +101,7 @@ export function showPlaybook(
       : ['rifle', 'rifle', 'rifle', 'rifle', 'sniper'];
     if (baseId === BLANK) {
       const spawns = spawnCells();
-      tokens = rosterWeapons.map((weapon, i) => ({ id: `pos${i + 1}`, weapon, pinHex: spawns[i] ?? fallbackHex() }));
+      tokens = rosterWeapons.map((weapon, i) => ({ id: `pos${i + 1}`, weapon, pinHex: spawns[i] ?? fallbackHex(), unitId: roster[i]?.id }));
       return;
     }
     const b = base();
@@ -97,16 +109,20 @@ export function showPlaybook(
     const slots = b.variants[0];
     const pairing = roster.length ? assignSlots(slots, roster) : {};
     tokens = slots.map((slot) => {
-      const unit = roster.find((u) => u.id === pairing[slot.id]);
+      const unitId = pairing[slot.id];
+      const unit = roster.find((u) => u.id === unitId);
       return {
         id: slot.id,
         weapon: unit?.weapon ?? slot.pick.preferWeapon ?? 'rifle',
         pinHex: regionCentroid(map, slot.region) ?? fallbackHex(),
+        unitId,
       };
     });
   };
 
   const selectBase = (id: string): void => {
+    if (id === BLANK && !authoringUnlocked) return; // gated until the week-2 tutorial
+    note = null;
     baseId = id;
     editingId = null;
     name = id === BLANK ? 'New play' : `${base()?.name ?? ''} (custom)`;
@@ -119,24 +135,37 @@ export function showPlaybook(
   const editPlay = (id: string): void => {
     const p = plays.find((s) => s.id === id);
     if (!p) return;
+    note = null;
     side = p.side;
     name = p.name;
     baseId = null;
     editingId = id;
     selectedId = null;
     mode = 'move';
+    // Recover each slot's roster unit (weapon-aware pairing) so route gating reads
+    // the right unit's Tenacity when editing a saved play.
+    const pairing = roster.length ? assignSlots(p.variants[0] ?? [], roster) : {};
     tokens = (p.variants[0] ?? []).map((slot) => ({
       id: slot.id,
       weapon: slot.pick.preferWeapon ?? 'rifle',
       pinHex: slot.pinHex ?? regionCentroid(map, slot.region) ?? fallbackHex(),
       watchHex: slot.watchHex,
       route: slot.route && slot.route.length ? slot.route.map((st) => ({ ...st })) : undefined,
+      unitId: pairing[slot.id],
     }));
     render();
   };
 
   const save = (): void => {
     if (tokens.length === 0) return;
+    // Capacity gate (Part 6) — a new play can't push the library past what the
+    // squad's discipline can field. Editing in place is always allowed.
+    if (!editingId && plays.length >= capacity) {
+      note = `Your squad can keep ${capacity} set play${capacity === 1 ? '' : 's'} right now — delete one (or train Discipline) to author another.`;
+      render();
+      return;
+    }
+    note = null;
     const variant: StrategyVariant = tokens.map((t): StrategySlot => ({
       id: t.id,
       pick: { preferWeapon: t.weapon },
@@ -185,18 +214,43 @@ export function showPlaybook(
   // The per-waypoint editor (Route mode): the selected unit's waypoints with a
   // wait timer + a "watch" arm per step. Repopulated in place (no shell rebuild,
   // so the canvas stays mounted). Empty when not routing / no waypoints.
+  // Live note line (cap hit / route limit). Updated in place so it doesn't
+  // remount the canvas.
+  const renderNote = (): void => {
+    const el = host.querySelector('#pb-note');
+    if (el) el.textContent = note ?? '';
+  };
+
+  // Keep the Route tool's enabled state in sync with the selected unit's route
+  // allowance — selection updates the panel/canvas in place (not a full render),
+  // so the toolbar button is refreshed here too rather than going stale.
+  const refreshRouteTool = (): void => {
+    const sel = tokens.find((x) => x.id === selectedId) ?? null;
+    const holdsOnly = sel != null && routeMaxWaypoints(tenacityOf(sel)) === 0;
+    const btn = host.querySelector<HTMLButtonElement>('[data-mode="route"]');
+    if (btn) { btn.disabled = holdsOnly; btn.title = holdsOnly ? 'This unit holds only — not disciplined enough to run a route' : ''; }
+  };
+
   const renderWaypointPanel = (): void => {
     const el = host.querySelector('#pb-wp-panel');
     if (!el) return;
     const t = tokens.find((x) => x.id === selectedId);
-    if (mode !== 'route' || !t || !t.route || t.route.length === 0) { el.innerHTML = ''; return; }
-    const rows = t.route.map((st, i) => `
+    if (mode !== 'route' || !t) { el.innerHTML = ''; return; }
+    // Per-unit route gate (Part 6): the allowance label is always shown while
+    // routing a unit; wait/watch controls appear only at the top discipline tier.
+    const ten = tenacityOf(t);
+    const allowWaitWatch = routeAllowsWaitWatch(ten);
+    const rows = (t.route ?? []).map((st, i) => `
       <div class="pb-wp-row ${i === selectedWaypoint ? 'sel' : ''}" data-wp="${i}">
         <span class="pb-wp-n">${i + 1}</span>
-        <label class="pb-wp-wait">wait <input type="number" min="0" max="9" value="${st.waitTicks ?? 0}" data-wpwait="${i}"/></label>
-        <button class="pb-wp-watch ${armWatch && selectedWaypoint === i ? 'sel' : ''}" data-wpwatch="${i}" type="button">${st.watchHex ? 'watch ✓' : 'watch'}</button>
+        ${allowWaitWatch
+          ? `<label class="pb-wp-wait">wait <input type="number" min="0" max="9" value="${st.waitTicks ?? 0}" data-wpwait="${i}"/></label>
+             <button class="pb-wp-watch ${armWatch && selectedWaypoint === i ? 'sel' : ''}" data-wpwatch="${i}" type="button">${st.watchHex ? 'watch ✓' : 'watch'}</button>`
+          : '<span class="pb-wp-locked">move only</span>'}
       </div>`).join('');
-    el.innerHTML = `<div class="mp-group-label" style="margin-top:14px">Waypoints — ${esc(t.id)}</div>${rows}${armWatch ? '<div class="pb-wp-hint">Now click a hex to aim this waypoint.</div>' : ''}`;
+    el.innerHTML = `<div class="mp-group-label" style="margin-top:14px">Waypoints — ${esc(t.id)}</div>`
+      + `<div class="pb-wp-allow">${esc(routeAllowanceLabel(ten))}</div>${rows}`
+      + (allowWaitWatch && armWatch ? '<div class="pb-wp-hint">Now click a hex to aim this waypoint.</div>' : '');
     el.querySelectorAll<HTMLElement>('[data-wp]').forEach((r) => r.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('input,button')) return;
       selectedWaypoint = parseInt(r.getAttribute('data-wp')!, 10); armWatch = false; renderWaypointPanel(); canvasHandle?.redraw();
@@ -215,9 +269,18 @@ export function showPlaybook(
     canvasHandle?.destroy();
     canvasHandle = null;
 
+    // Selected unit's route allowance — disables the Route tool for a holds-only unit.
+    const selTok = tokens.find((x) => x.id === selectedId) ?? null;
+    const routeHoldsOnly = selTok != null && routeMaxWaypoints(tenacityOf(selTok)) === 0;
+
     const sideBtns = (['defender', 'attacker'] as Side[]).map((sd) =>
       `<button class="mp-opt ${sd === side ? 'sel' : ''}" data-side="${sd}"><b>${sd === 'defender' ? 'Defense' : 'Attack'}</b></button>`).join('');
-    const startBtns = `<button class="pb-chip ${baseId === BLANK ? 'sel' : ''}" data-base="${BLANK}">＋ Blank</button>` +
+    // Blank (author from scratch) is gated until the week-2 tutorial; adapting a
+    // basic is always available.
+    const blankChip = authoringUnlocked
+      ? `<button class="pb-chip ${baseId === BLANK ? 'sel' : ''}" data-base="${BLANK}">＋ Blank</button>`
+      : '<button class="pb-chip pb-chip-locked" type="button" disabled title="Authoring from scratch unlocks in week 2">🔒 Blank</button>';
+    const startBtns = blankChip +
       bases().map((s) => `<button class="pb-chip ${s.id === baseId ? 'sel' : ''}" data-base="${s.id}">${esc(s.name)}</button>`).join('');
 
     const savedList = plays.length
@@ -250,15 +313,16 @@ export function showPlaybook(
             ${tokens.length ? `<div class="pb-tools">
               <button class="pb-tool ${mode === 'move' ? 'sel' : ''}" data-mode="move" type="button">↔ Move</button>
               <button class="pb-tool ${mode === 'watch' ? 'sel' : ''}" data-mode="watch" type="button">⌖ Watch</button>
-              <button class="pb-tool ${mode === 'route' ? 'sel' : ''}" data-mode="route" type="button">↳ Route</button>
+              <button class="pb-tool ${mode === 'route' ? 'sel' : ''}" data-mode="route" type="button" ${routeHoldsOnly ? 'disabled title="This unit holds only — not disciplined enough to run a route"' : ''}>↳ Route</button>
               <button class="pb-tool ${showVision ? 'sel' : ''}" data-vision type="button">👁 Vision</button>
               <button class="pb-tool pb-tool-clear" data-clearroute type="button">Clear route</button>
             </div>
             <div id="pb-canvas-host"></div>` : `<div class="pb-hint">Pick a side, then a starting point (Blank or a basic) to author on the map.</div>`}
           </div>
         </div>
-        <div class="mp-group-label" style="margin-top:18px">Saved plays</div>
+        <div class="mp-group-label" style="margin-top:18px">Saved plays <small class="pb-cap">${plays.length}/${capacity === Infinity ? '∞' : capacity}</small></div>
         <div class="pb-savedlist">${savedList}</div>
+        <div id="pb-note" class="pb-note-msg">${note ? esc(note) : ''}</div>
         <div class="mp-actions pb-actions">
           <button class="btn-back" data-close type="button">&larr; Done</button>
           <button class="btn-primary" data-save type="button" ${tokens.length ? '' : 'disabled'}>${editingId ? 'Update play' : 'Save play'}</button>
@@ -305,12 +369,23 @@ export function showPlaybook(
         approachHex: () => enemyApproach(),
         selectedWaypoint: () => selectedWaypoint,
         armWatch: () => armWatch,
-        onSelect: (id) => { selectedId = id; selectedWaypoint = null; armWatch = false; renderWaypointPanel(); canvasHandle?.redraw(); },
+        onSelect: (id) => { selectedId = id; selectedWaypoint = null; armWatch = false; renderWaypointPanel(); refreshRouteTool(); canvasHandle?.redraw(); },
         onMove: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.pinHex = hex; canvasHandle?.redraw(); },
         onSetWatch: (id, hex) => { const t = tokens.find((x) => x.id === id); if (t) t.watchHex = hex; canvasHandle?.redraw(); },
         onAddWaypoint: (id, hex) => {
           const t = tokens.find((x) => x.id === id);
-          if (t) { t.route = [...(t.route ?? []), { hex }]; selectedWaypoint = t.route.length - 1; armWatch = false; }
+          if (!t) return;
+          // Per-unit route-complexity gate (Part 6): cap the number of stops by Tenacity.
+          const max = routeMaxWaypoints(tenacityOf(t));
+          if ((t.route?.length ?? 0) >= max) {
+            note = max === 0
+              ? `${t.id} holds only — not disciplined enough to run a route.`
+              : `${t.id} can run at most ${max} stop${max === 1 ? '' : 's'} — train Discipline to go further.`;
+            renderNote();
+            return;
+          }
+          note = null; renderNote();
+          t.route = [...(t.route ?? []), { hex }]; selectedWaypoint = t.route.length - 1; armWatch = false;
           renderWaypointPanel(); canvasHandle?.redraw();
         },
         onSetWaypointWatch: (id, idx, hex) => {
