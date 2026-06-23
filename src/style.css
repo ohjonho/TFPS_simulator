@@ -1690,6 +1690,27 @@ button.selected:not(:disabled) {
 }
 .usp-head { font-size: 13px; color: var(--text); margin-bottom: 6px; }
 .usp-head small { color: var(--text-dim); font-weight: 400; text-transform: capitalize; }
+/* Guided spotlight walkthrough (first-match onboarding). */
+#walkthrough { position: fixed; inset: 0; z-index: 1400; }
+.wt-spot {
+  position: fixed; border: 2px solid var(--accent); border-radius: 8px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.66); transition: left .2s, top .2s, width .2s, height .2s;
+}
+.wt-tip {
+  position: fixed; width: 320px; max-width: 90vw; background: var(--panel);
+  border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.wt-step { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-dim); }
+.wt-title { font-size: 16px; font-weight: 700; color: var(--text); margin: 4px 0 6px; }
+.wt-body { font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.wt-body strong { color: var(--text); }
+.wt-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.wt-skip { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+.wt-next {
+  background: var(--accent); border: none; border-radius: 6px; color: #0b0e14;
+  font-weight: 700; padding: 7px 16px; cursor: pointer; font-size: 13px;
+}
 
 .attr-bar {
   position: relative;

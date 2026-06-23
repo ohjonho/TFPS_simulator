@@ -76,6 +76,7 @@ import { showMatchPrep } from './ui/matchPrep.ts';
 import { showPlaybook } from './ui/playbook.ts';
 import { reviewPlay } from './ui/coachWorker.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
+import { runWalkthrough, type WalkStep } from './ui/walkthrough.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
 import { showWeekEvent } from './ui/weekEvent.ts';
 import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
@@ -342,16 +343,45 @@ function maybeShowSeasonCoaching(): void {
   // In-match tips fire only in the tutorial match (the telegraphed opponent).
   if (!season || season.idx !== 0) return;
   if (state.phase === 'planning' && state.round === 1) {
-    showCoachmark(
-      'season-plan-1',
-      'Plan the round on the left — and check the <strong>Scout</strong> above the menu for the read. Your first opponent only knows one trick: <strong>Rush</strong> straight at a site. <strong>Stack</strong> or <strong>Hold</strong> meets it. Then hit <strong>Begin Round</strong>.',
-    );
+    // First match → the guided spotlight tour of the match UI (runs once).
+    runWalkthrough('m1-tour', firstMatchTour());
   } else if (state.phase === 'planning' && state.round === HALFTIME_AFTER_ROUND + 1) {
     showCoachmark(
       'season-plan-atk',
       'Sides swapped — you\'re <strong>attacking</strong> now. They sit back in an even <strong>Hold</strong>. <strong>Execute</strong> or <strong>Control</strong> pries that open.',
     );
   }
+}
+
+// First-match guided tour — anchored to real chrome (shell.*), shown once.
+// Canvas steps describe the map/sites/spawns; control steps point at the strategy
+// menu, Begin Round, and playback.
+function firstMatchTour(): WalkStep[] {
+  return [
+    { target: () => shell.canvasArea, title: 'Welcome to Canyon', body: 'This is the map your squad fights on. Win <strong>4 rounds</strong> to take the match.' },
+    { target: () => shell.canvasArea, title: 'The two sites', body: 'The lettered zones are the bomb sites — <strong>A</strong> and <strong>B</strong>. On defense, stop the enemy planting the spike; on attack, plant it and hold.' },
+    { target: () => shell.canvasArea, title: 'Spawns', body: 'Each round both squads start at their spawns — yours on one side, the enemy\'s on the far side.' },
+    { target: () => shell.cardPanel, title: 'Pick your strategy', body: 'Choose your plan for the round here, and check the <strong>Scout</strong> for the read. Your first opponent only knows one trick: <strong>Rush</strong> one site head-on — <strong>Stack</strong> or <strong>Hold</strong> meets it.' },
+    { target: () => shell.topBar, title: 'Begin the round', body: 'When your plan is set, hit <strong>Begin Round</strong> up here to play it out.' },
+    { target: () => shell.bottomBar, title: 'Playback', body: 'Once the round runs, control speed and <strong>pause / resume</strong> down here with the play button.' },
+    { title: "You're set", body: 'The <strong>kill feed</strong> shows the action bottom-left, and you can <strong>hover any unit</strong> on the map to see their stats. Good luck out there.' },
+  ];
+}
+
+// Tutorial pause: the very first round of the first match halts at first enemy
+// contact, so a new manager sees a duel begin before it resolves. Resume via the
+// play button. One-shot per session; the coachmark also dedupes across sessions.
+let tutorialContactDone = false;
+function maybeTutorialContactPause(): void {
+  if (matchMode !== 'season' || !season || season.idx !== 0) return;
+  if (tutorialContactDone || state.round !== 1 || state.phase !== 'resolution') return;
+  // tracking is keyed per-unit with null until acquisition; a non-null entry at
+  // ticksLost 0 = a unit is actively seeing an enemy right now → first contact.
+  const contact = Object.values(state.tracking).some((t) => t != null && t.ticksLost === 0);
+  if (!contact) return;
+  tutorialContactDone = true;
+  loop.pause();
+  showCoachmark('m1-contact', "<strong>Contact!</strong> Your units have spotted the enemy and a duel is about to break out. Watch how it plays — then press <strong>&#9654;</strong> (bottom-left) to resume.");
 }
 
 function setState(next: GameState) {
@@ -363,7 +393,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.80.0', {
+    renderMainMenu(menuHost, 'v0.81.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -380,6 +410,7 @@ function renderMenu(): void {
 function startMode(mode: MatchMode): void {
   clearPlanningUiState();
   clearCoachmarks();
+  tutorialContactDone = false; // re-arm the first-contact pause for a fresh season
   matchMode = mode;
   season = null;
   // Season opens on the campaign intro story, then a player-only draft; the
@@ -785,7 +816,7 @@ function showMatchEndModal(): void {
 const loop = new PlaybackLoop({
   getState: () => state,
   setState: (next) => { state = next; },
-  onTick: () => rerenderAll(),
+  onTick: () => { rerenderAll(); maybeTutorialContactPause(); },
   onRoundEnd: () => handleRoundEnd(),
 });
 

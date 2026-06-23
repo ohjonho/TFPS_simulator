@@ -389,6 +389,17 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.81.0 — Guided first match</h3>
+    <ul>
+      <li><strong>A walkthrough on your first match.</strong> A short spotlight tour points
+        out the map and sites, your spawns, the strategy menu, Begin Round, and playback —
+        so the screen isn't a wall of unknowns.</li>
+      <li><strong>The first round pauses at first contact.</strong> The moment your squad
+        spots the enemy in round one, the sim halts with a heads-up — press play (bottom-left)
+        to watch the duel resolve. Just the once, to get you comfortable.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.80.0 — Know your players + a real shotcaller</h3>
     <ul>
       <li><strong>Hover any player to see their stats.</strong> In Match Prep (the leader
