@@ -82,7 +82,7 @@ import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
 import { showAuthoringTutorial } from './ui/authoringTutorial.ts';
 import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
 import { playbookCapacity } from './game/playbookGating.ts';
-import { applyTraining, applyMatchExperience } from './game/training.ts';
+import { applyTraining, applyMatchExperience, drillPlay } from './game/training.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
 import type { SeasonState, ClubLean } from './game/season.ts';
@@ -361,7 +361,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.77.0', {
+    renderMainMenu(menuHost, 'v0.78.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -435,11 +435,17 @@ function openSeasonPlaybook(onClose: () => void): void {
         handle?.refresh();
       });
     },
-    onDelete: (id) => { if (season) { season = { ...season, customStrategies: season.customStrategies.filter((p) => p.id !== id) }; saveSeason(season); } },
+    onDelete: (id) => {
+      if (!season) return;
+      const { [id]: _drop, ...restMastery } = season.playMastery ?? {};
+      season = { ...season, customStrategies: season.customStrategies.filter((p) => p.id !== id), playMastery: restMastery };
+      saveSeason(season);
+    },
     onClose,
   }, {
     authoringUnlocked: season?.authoringUnlocked ?? false,
     capacity: playbookCapacity(season?.playerRoster ?? []),
+    playMastery: season?.playMastery ?? {},
   });
 }
 
@@ -460,11 +466,14 @@ function runSeasonWeek(onFirstBack?: () => void): void {
   };
   switch (s.phase) {
     case 'training':
-      showTrainingDay(currentWeek(s), s.playerRoster, s.focusFreshness ?? {}, (track, focusId) => {
-        // Apply the session (optionally focused) to the persisted roster + freshness,
-        // then roll the week forward.
+      showTrainingDay(currentWeek(s), s.playerRoster, s.focusFreshness ?? {}, s.customStrategies, s.playMastery ?? {}, (track, focusId, drilledPlayId) => {
+        // Apply the session (optionally focused) to the persisted roster + freshness;
+        // Set-Pieces on a chosen play also drills its mastery. Then roll forward.
         const res = applyTraining(season!.playerRoster, track, { focusId, freshness: season!.focusFreshness ?? {} });
-        season = { ...season!, playerRoster: res.roster, focusFreshness: res.freshness };
+        const playMastery = track === 'setpieces' && drilledPlayId
+          ? drillPlay(season!.playMastery ?? {}, drilledPlayId)
+          : season!.playMastery ?? {};
+        season = { ...season!, playerRoster: res.roster, focusFreshness: res.freshness, playMastery };
         saveSeason(season);
         advance();
       }, s.idx === 0 ? onFirstBack : undefined);

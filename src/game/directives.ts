@@ -28,7 +28,7 @@ import type { Rng } from './rng.ts';
 import { hexDistance } from './hex.ts';
 import { findCoverHoldHex, nearestCellInRegion } from './unit-ai.ts';
 import { regionCentroid, strategyById } from './strategies.ts';
-import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA, FOLLOW_ROUTE } from './config.ts';
+import { BELIEF, CHANNEL_COMMIT, COMPLIANCE_TRAIT_DELTA, FOLLOW_ROUTE, MASTERY } from './config.ts';
 import { beliefInRegions } from './belief.ts';
 
 // H3.2 — compliance formula tunables. Baseline 85% (most units mostly
@@ -89,13 +89,13 @@ export function holdsChannelUnderRetreat(unit: Unit): boolean {
 // Look up the strategy assigned to the unit's team (player or AI side).
 // Returns null when no strategy is committed yet (e.g. planning preview
 // before Begin Round) — caller treats null as "no compliance gating".
-function strategyForUnit(state: GameState, unit: Unit): { complianceThreshold: number } | null {
+function strategyForUnit(state: GameState, unit: Unit): { complianceThreshold: number; stratId: string } | null {
   const stratId = unit.team === state.playerTeam ? state.playerStrategy : state.aiStrategy;
   if (!stratId) return null;
   const side = state.teamSide[unit.team];
   const strat = strategyById(stratId, side, state.map);
   if (!strat) return null;
-  return { complianceThreshold: strat.complianceThreshold ?? 50 };
+  return { complianceThreshold: strat.complianceThreshold ?? 50, stratId };
 }
 
 // Evaluate the unit's directives in priority order (higher first); the first
@@ -122,7 +122,13 @@ export function evaluateDirectives(
     const strat = strategyForUnit(state, unit);
     if (strat) {
       const pressure = visibleEnemies.length > 0 ? COMPLIANCE.enemyVisiblePressure : 0;
-      const pct = compliancePct(unit, strat.complianceThreshold, pressure);
+      // 3c — per-play mastery: a PLAYER unit running a drilled play gets a bonus to
+      // this adherence roll (its other plays don't). Capped at COMPLIANCE.max, and
+      // sized so a drilled rookie play stays under a veteran's baseline. No extra
+      // RNG draw (same rng.chance), so determinism is preserved.
+      const mastery = unit.team === state.playerTeam ? (state.playMastery?.[strat.stratId] ?? 0) : 0;
+      const bonus = mastery * MASTERY.maxBonusPp;
+      const pct = Math.min(COMPLIANCE.max, compliancePct(unit, strat.complianceThreshold, pressure) + bonus);
       if (!rng.chance(pct / 100)) return null;
     }
   }

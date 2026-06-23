@@ -13,6 +13,7 @@ import {
 import { coachRead } from '../game/playbookCoach.ts';
 import { routeMaxWaypoints, routeAllowsWaitWatch, routeAllowanceLabel, teamAvgGameSense, gameSenseOf } from '../game/playbookGating.ts';
 import { PLAYBOOK_GATING } from '../game/config.ts';
+import { masteryLabel } from '../game/training.ts';
 import { shortLabels } from '../game/names.ts';
 import { createPlaybookCanvas, WEAPON_COLOR, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
@@ -50,7 +51,7 @@ export function showPlaybook(
   existing: readonly Strategy[],
   roster: readonly Unit[],
   cb: PlaybookCallbacks,
-  opts: { authoringUnlocked?: boolean; capacity?: number } = {},
+  opts: { authoringUnlocked?: boolean; capacity?: number; playMastery?: Record<string, number> } = {},
 ): { refresh: () => void } {
   document.getElementById('playbook')?.remove();
   const host = document.createElement('div');
@@ -61,6 +62,7 @@ export function showPlaybook(
   // unchanged; the season passes the real flag + roster-derived capacity.
   const authoringUnlocked = opts.authoringUnlocked ?? true;
   const capacity = opts.capacity ?? Infinity;
+  const playMastery = opts.playMastery ?? {};
   const teamAvg = teamAvgGameSense(roster);
   let note: string | null = null; // transient gating message (cap hit / route limit)
 
@@ -335,7 +337,8 @@ export function showPlaybook(
           const coach = read
             ? `<div class="pb-coach v-${read.verdict}"><span class="pb-coach-tag">🧑‍🏫 Coach</span> <b>${esc(read.headline)}</b><div class="pb-coach-detail">${esc(read.character)} ${esc(read.advice)}</div></div>`
             : `<div class="pb-coach pending"><span class="pb-coach-tag">🧑‍🏫 Coach</span> reviewing this play…</div>`;
-          return `<div class="pb-saved"><div class="pb-saved-head"><span>${esc(s.name)} <small>(${s.side === 'defender' ? 'def' : 'atk'})</small>${editingId === s.id ? ' <em class="pb-editing">editing…</em>' : ''}</span><span class="pb-saved-actions"><button class="pb-edit" data-edit="${s.id}">Edit</button><button class="pb-del" data-del="${s.id}">Delete</button></span></div>${coach}</div>`;
+          const mastery = `<span class="pb-mastery" title="Drill this in Set-Pieces training to run it more reliably">🎯 ${masteryLabel(playMastery[s.id] ?? 0)}</span>`;
+          return `<div class="pb-saved"><div class="pb-saved-head"><span>${esc(s.name)} <small>(${s.side === 'defender' ? 'def' : 'atk'})</small> ${mastery}${editingId === s.id ? ' <em class="pb-editing">editing…</em>' : ''}</span><span class="pb-saved-actions"><button class="pb-edit" data-edit="${s.id}">Edit</button><button class="pb-del" data-del="${s.id}">Delete</button></span></div>${coach}</div>`;
         }).join('')
       : `<div class="pb-none">No saved plays yet.</div>`;
 

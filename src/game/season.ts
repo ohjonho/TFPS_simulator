@@ -139,6 +139,10 @@ export type SeasonState = {
   // focusing a player in training, recovered by resting them; gates the
   // focus-one-player bonus (see game/training.ts). Keyed by unit id.
   focusFreshness: Record<string, number>;
+  // Part 6 (3c) — per-play mastery (0..1), keyed by authored play id. Raised by
+  // drilling that play in Set-Pieces; stamped onto the match so its compliance
+  // roll gets a bonus. Player plays only.
+  playMastery: Record<string, number>;
   // Part 5 B0 — player-authored / adapted plays (the Playbook). Stored as live
   // Strategy objects (the season is in-memory only; Strategy is plain data, so a
   // future save system serializes them as-is). Registered into the strategy
@@ -251,7 +255,7 @@ export function startSeason(
     playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName,
     clubLean: null, upgrades: [], customStrategies: [],
     phase: 'training', weekEventMode: buildWeekEventModes(seed, K),
-    authoringUnlocked: false, focusFreshness: {},
+    authoringUnlocked: false, focusFreshness: {}, playMastery: {},
   };
 }
 
@@ -340,6 +344,8 @@ export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?:
     opponentName: info?.name,
     opponentLean: info ? { attacker: info.atk, defender: info.def } : undefined,
     aiCompetence: aiCompetenceForMatch(season.idx),
+    // 3c — the player's drilled-play reliability bonuses (compliance roll reads this).
+    playMastery: season.playMastery,
   };
 }
 

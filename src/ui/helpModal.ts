@@ -389,6 +389,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.78.0 — Drill a play to master it</h3>
+    <ul>
+      <li><strong>Set-Pieces can rehearse a specific play.</strong> Pick Set-Pieces training,
+        then choose one of your saved plays to drill. Each session raises its mastery
+        (undrilled → rehearsed → drilled → second nature), and a more-rehearsed play runs
+        truer under fire — its units break off the plan less often.</li>
+      <li><strong>Depth vs breadth.</strong> A rookie squad can drill one play until it's
+        reliable, even before their Discipline catches up — but a fully-mastered play still
+        can't quite match a veteran squad's all-round reliability. Master your signature, or
+        build a roster that runs anything.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.77.0 — Focus a player + Improvisation from matches</h3>
     <ul>
       <li><strong>Focus one player.</strong> On a training day you can pour the session into

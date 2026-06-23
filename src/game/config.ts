@@ -956,6 +956,16 @@ export const MATCH_XP = {
   adaptability: 1,
 } as const;
 
+// Per-play mastery (3c) — drilling a specific authored play in Set-Pieces makes
+// THAT play execute more reliably: a flat bonus to its compliance roll. `maxBonusPp`
+// is the add at full mastery, deliberately modest so a fully-drilled rookie play
+// approaches but never beats a veteran squad's across-the-board reliability (their
+// breadth still wins). `perSession` = mastery gained per Set-Pieces drill (5 to max).
+export const MASTERY = {
+  perSession: 0.2,
+  maxBonusPp: 18,
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's

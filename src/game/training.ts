@@ -4,7 +4,7 @@
 // aggregate, Improvisation, has no track — it's earned in matches (a later
 // increment). Focus-one-player redistribution layers on top later.
 
-import { TRAINING, MATCH_XP } from './config.ts';
+import { TRAINING, MATCH_XP, MASTERY } from './config.ts';
 import type { Attributes, Unit } from './types.ts';
 
 export type TrainingTrack = 'aim' | 'tactics' | 'team' | 'setpieces';
@@ -83,4 +83,17 @@ export function freshnessLabel(freshness: FocusFreshness, unitId: string): strin
   if (f >= 0.66) return 'fresh';
   if (f >= 0.33) return 'worn';
   return 'needs a break';
+}
+
+// 3c — drill a play in Set-Pieces: +perSession mastery (capped at 1). Pure.
+export function drillPlay(playMastery: Record<string, number>, playId: string): Record<string, number> {
+  return { ...playMastery, [playId]: Math.min(1, (playMastery[playId] ?? 0) + MASTERY.perSession) };
+}
+
+// Qualitative mastery level for a play (player-facing — the pp bonus stays hidden).
+export function masteryLabel(m: number): string {
+  if (m <= 0) return 'undrilled';
+  if (m < 0.4) return 'rehearsed';
+  if (m < 0.8) return 'drilled';
+  return 'second nature';
 }

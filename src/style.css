@@ -829,7 +829,20 @@ body {
 .td-track-agg b { color: var(--text); font-size: 14px; }
 .td-track-blurb { font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
 .td-note { text-align: center; font-size: 12px; color: var(--text-dim); margin: 18px 0 0; font-style: italic; }
-.td-actions { display: flex; justify-content: flex-start; margin-top: 18px; }
+.td-actions { display: flex; justify-content: flex-start; gap: 10px; margin-top: 18px; }
+/* Set-Pieces play-drill picker. */
+.td-plays { display: flex; flex-direction: column; gap: 10px; }
+.td-play {
+  display: flex; justify-content: space-between; align-items: center; text-align: left;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 9px;
+  padding: 13px 16px; cursor: pointer; color: var(--text);
+}
+.td-play:hover { border-color: var(--accent); background: #161b25; }
+.td-play-name { font-size: 15px; font-weight: 700; }
+.td-play-name small { color: var(--text-dim); font-weight: 400; }
+.td-play-mastery { font-size: 12px; color: var(--accent); text-transform: capitalize; }
+/* Mastery badge on saved plays in the editor. */
+.pb-mastery { font-size: 10px; color: var(--accent); white-space: nowrap; }
 
 #dashboard {
   position: fixed; inset: 0; z-index: 1100; overflow-y: auto;

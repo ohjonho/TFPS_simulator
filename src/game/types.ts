@@ -583,4 +583,10 @@ export type GameState = {
   // strength (1.0), so standard/non-season matches are unaffected. Consumed by
   // aiOpponent.pickAiStrategy. Carries across rounds via the startRound spread.
   aiCompetence?: number;
+  // Per-play mastery (3c) — strategy id → mastery (0–1). Stamped by
+  // season.buildSeasonMatch from the season's drilled plays; the compliance roll
+  // adds MASTERY.maxBonusPp·mastery for a PLAYER unit running that play. Absent ⇒
+  // no bonus, so standard/non-season matches are byte-identical. Carries across
+  // rounds via the startRound spread.
+  playMastery?: Record<string, number>;
 };
