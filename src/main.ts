@@ -82,7 +82,7 @@ import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
 import { showAuthoringTutorial } from './ui/authoringTutorial.ts';
 import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
 import { playbookCapacity } from './game/playbookGating.ts';
-import { applyTraining } from './game/training.ts';
+import { applyTraining, applyMatchExperience } from './game/training.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
 import type { SeasonState, ClubLean } from './game/season.ts';
@@ -361,7 +361,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.76.0', {
+    renderMainMenu(menuHost, 'v0.77.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -460,9 +460,11 @@ function runSeasonWeek(onFirstBack?: () => void): void {
   };
   switch (s.phase) {
     case 'training':
-      showTrainingDay(currentWeek(s), s.playerRoster, (track) => {
-        // Apply the session to the persisted roster, then roll the week forward.
-        season = { ...season!, playerRoster: applyTraining(season!.playerRoster, track) };
+      showTrainingDay(currentWeek(s), s.playerRoster, s.focusFreshness ?? {}, (track, focusId) => {
+        // Apply the session (optionally focused) to the persisted roster + freshness,
+        // then roll the week forward.
+        const res = applyTraining(season!.playerRoster, track, { focusId, freshness: season!.focusFreshness ?? {} });
+        season = { ...season!, playerRoster: res.roster, focusFreshness: res.freshness };
         saveSeason(season);
         advance();
       }, s.idx === 0 ? onFirstBack : undefined);
@@ -728,6 +730,9 @@ function showMatchEndModal(): void {
   // the season results once the schedule is done).
   if (season) {
     season = recordSeasonResult(season, playerWon); // advances idx
+    // Part 6 (3d) — bank match experience: Improvisation (Composure/Adaptability)
+    // grows only by playing, so a green squad firms up over the season.
+    season = { ...season, playerRoster: applyMatchExperience(season.playerRoster) };
     season = advanceSeasonPhase(season);            // match → postEvent
     saveSeason(season);
     const wins = seasonWins(season);

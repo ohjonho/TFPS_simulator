@@ -133,8 +133,12 @@ export type SeasonState = {
   // Part 6 (playbook gating) — authoring a play from scratch (the blank canvas)
   // is locked until the week-2 guided tutorial flips this. Adapting a built-in is
   // available from day 1 regardless. Capacity + route complexity gate separately
-  // off roster Tenacity (see game/playbookGating.ts).
+  // off roster Game Sense (see game/playbookGating.ts).
   authoringUnlocked: boolean;
+  // Part 6 (training) — per-unit focus freshness (0..1, default 1). Drained by
+  // focusing a player in training, recovered by resting them; gates the
+  // focus-one-player bonus (see game/training.ts). Keyed by unit id.
+  focusFreshness: Record<string, number>;
   // Part 5 B0 — player-authored / adapted plays (the Playbook). Stored as live
   // Strategy objects (the season is in-memory only; Strategy is plain data, so a
   // future save system serializes them as-is). Registered into the strategy
@@ -247,7 +251,7 @@ export function startSeason(
     playerRoster: [...playerRoster], schedule, opponents, results: [], idx: 0, K, goal, seed, mapName,
     clubLean: null, upgrades: [], customStrategies: [],
     phase: 'training', weekEventMode: buildWeekEventModes(seed, K),
-    authoringUnlocked: false,
+    authoringUnlocked: false, focusFreshness: {},
   };
 }
 

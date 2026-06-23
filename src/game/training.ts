@@ -4,7 +4,7 @@
 // aggregate, Improvisation, has no track — it's earned in matches (a later
 // increment). Focus-one-player redistribution layers on top later.
 
-import { TRAINING } from './config.ts';
+import { TRAINING, MATCH_XP } from './config.ts';
 import type { Attributes, Unit } from './types.ts';
 
 export type TrainingTrack = 'aim' | 'tactics' | 'team' | 'setpieces';
@@ -22,15 +22,65 @@ export const TRAINING_TRACKS: {
 
 const clamp100 = (n: number): number => Math.max(0, Math.min(100, n));
 
-// Apply one session to the whole squad: +perSession to each sub in the track.
-// Pure — returns a fresh roster. (Focus-one-player redistribution comes later.)
-export function applyTraining(roster: readonly Unit[], track: TrainingTrack): Unit[] {
+// Per-unit focus freshness (0..1, default 1 = fully rested). Absent ⇒ fresh.
+export type FocusFreshness = Record<string, number>;
+
+export type TrainingResult = { roster: Unit[]; freshness: FocusFreshness };
+
+// Apply one session. Whole-squad (focusId null) → +perSession to each sub in the
+// track for everyone, and everyone's freshness recovers. Focused → the chosen
+// unit gains ×(1 + bonus·freshness), the rest ×othersMult; the focused unit's
+// freshness then drains, everyone else's recovers. Pure — returns a new roster +
+// the updated freshness map.
+export function applyTraining(
+  roster: readonly Unit[],
+  track: TrainingTrack,
+  opts: { focusId?: string | null; freshness?: FocusFreshness } = {},
+): TrainingResult {
+  const fresh: FocusFreshness = { ...(opts.freshness ?? {}) };
   const def = TRAINING_TRACKS.find((t) => t.id === track);
-  if (!def) return roster.map((u) => u);
+  if (!def) return { roster: roster.map((u) => u), freshness: fresh };
   const g = TRAINING.perSession;
-  return roster.map((u) => {
+  const F = TRAINING.focus;
+  const focusId = opts.focusId ?? null;
+
+  const newRoster = roster.map((u) => {
+    const mult = !focusId ? 1
+      : u.id === focusId ? 1 + F.bonus * (fresh[u.id] ?? 1)
+      : F.othersMult;
+    const add = Math.round(g * mult);
     const a = { ...u.attributes } as unknown as Record<string, number>;
-    for (const s of def.subs) a[s] = clamp100(a[s] + g);
+    for (const s of def.subs) a[s] = clamp100(a[s] + add);
     return { ...u, attributes: a as unknown as Attributes };
   });
+
+  // Freshness: the focused unit drains; everyone else (incl. on a squad session) recovers.
+  for (const u of roster) {
+    fresh[u.id] = focusId && u.id === focusId
+      ? Math.max(0, (fresh[u.id] ?? 1) - F.decay)
+      : Math.min(1, (fresh[u.id] ?? 1) + F.recover);
+  }
+  return { roster: newRoster, freshness: fresh };
+}
+
+// Match experience — bank Improvisation (Composure + Adaptability) after a played
+// match. Pure; applied in the match-end flow. This is the only way Improvisation
+// grows (no training track), so a green squad firms up over the season.
+export function applyMatchExperience(roster: readonly Unit[]): Unit[] {
+  return roster.map((u) => ({
+    ...u,
+    attributes: {
+      ...u.attributes,
+      composure: clamp100(u.attributes.composure + MATCH_XP.composure),
+      adaptability: clamp100(u.attributes.adaptability + MATCH_XP.adaptability),
+    },
+  }));
+}
+
+// Qualitative freshness label for a unit (player-facing — no raw number).
+export function freshnessLabel(freshness: FocusFreshness, unitId: string): string {
+  const f = freshness[unitId] ?? 1;
+  if (f >= 0.66) return 'fresh';
+  if (f >= 0.33) return 'worn';
+  return 'needs a break';
 }

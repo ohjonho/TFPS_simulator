@@ -800,6 +800,23 @@ body {
 .td-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 .td-header h1 { margin: 8px 0 6px; font-size: 28px; color: var(--text); }
 .td-sub { margin: 0 auto; max-width: 560px; font-size: 14px; line-height: 1.5; color: var(--text-dim); }
+.td-focusrow { margin-bottom: 16px; }
+.td-focus-label { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.td-focus-label small { font-weight: 400; color: var(--text-dim); }
+.td-focuses { display: flex; flex-wrap: wrap; gap: 8px; }
+.td-focus {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--panel);
+  border: 1px solid var(--panel-border); border-radius: 7px; padding: 5px 10px;
+  color: var(--text); cursor: pointer; font-size: 12.5px;
+}
+.td-focus:hover { border-color: var(--accent); }
+.td-focus.sel { border-color: var(--accent); background: #1a1f2b; }
+.td-focus small { color: var(--text-dim); font-size: 10px; }
+.td-focus-badge {
+  width: 20px; height: 20px; border-radius: 4px; background: #2a3344; color: var(--text);
+  font-family: ui-monospace, Consolas, monospace; font-size: 10px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 .td-tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .td-track {
   text-align: left; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px;

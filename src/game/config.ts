@@ -934,9 +934,26 @@ export const PLAYBOOK_GATING = {
 // (the visible aggregate rises by the same amount, since aggregate weights sum
 // to 1). Tuned so consistently drilling one area clears the playbook breakpoints
 // (55/65/75) across an 8-week season without letting a squad max everything.
-// Improvisation has no track — it's earned in matches (a later increment).
+// Improvisation has no track — it's earned in matches (MATCH_XP below).
+//
+// `focus` — the optional "focus one player" call: the chosen unit's gain is
+// multiplied by (1 + bonus·freshness) [2× at full freshness], the rest by
+// `othersMult` [half]. Repeating on the SAME player drains their freshness by
+// `decay`, so the bonus shrinks toward nothing; resting them (focusing someone
+// else, or a whole-squad session) recovers it by `recover`. So spamming one
+// player is strictly worse over time — spread the focus.
 export const TRAINING = {
   perSession: 3,
+  focus: { bonus: 1.0, othersMult: 0.5, decay: 0.34, recover: 0.34 },
+} as const;
+
+// Match experience — Improvisation is NOT trainable; the squad banks it by
+// playing matches under real pressure. Each completed match adds these to every
+// unit (Composure feeds the under-fire compliance roll, so a drilled-but-green
+// team firms up as the season goes). Applied in the match-end flow.
+export const MATCH_XP = {
+  composure: 2,
+  adaptability: 1,
 } as const;
 
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------

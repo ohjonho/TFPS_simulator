@@ -389,6 +389,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.77.0 — Focus a player + Improvisation from matches</h3>
+    <ul>
+      <li><strong>Focus one player.</strong> On a training day you can pour the session into
+        a single player — they gain double, the rest gain half. But keep leaning on the same
+        player and they tire (the bonus shrinks); rest them and it recovers. Build a star, or
+        spread it — your call.</li>
+      <li><strong>Improvisation is earned in matches.</strong> There's no track for it — your
+        squad banks Composure (and Adaptability) just by playing. So a freshly-drilled team
+        that folds under pressure early will steady up as the season goes, which is when your
+        set plays start running true under fire.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.76.0 — Training days: your squad improves</h3>
     <ul>
       <li><strong>Each week opens with training.</strong> Pick one focus and the whole
