@@ -1682,6 +1682,14 @@ button.selected:not(:disabled) {
 }
 .attr-subgroup:first-child { margin-top: 2px; }
 .attr-weight { font-size: 9px; color: #7f8794; margin-left: 5px; }
+/* Hover stats popover (management screens). */
+#unit-stats-pop {
+  position: fixed; z-index: 1300; width: 220px; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 9px 11px; box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+}
+.usp-head { font-size: 13px; color: var(--text); margin-bottom: 6px; }
+.usp-head small { color: var(--text-dim); font-weight: 400; text-transform: capitalize; }
 
 .attr-bar {
   position: relative;

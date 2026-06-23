@@ -12,7 +12,7 @@ import { buildStateFromUnits } from './state.ts';
 import { placeSpawns } from './units.ts';
 import { generatePool } from './draft.ts';
 import { createRng } from './rng.ts';
-import { UNIT_DEFAULTS, ROLE_AGGRESSION, AI_COMPETENCE } from './config.ts';
+import { UNIT_DEFAULTS, ROLE_AGGRESSION, AI_COMPETENCE, LEADER } from './config.ts';
 import { BASIC_STRATEGY_IDS, setCustomStrategies, type Strategy } from './strategies.ts';
 import { buildSignaturePlays, signatureMeta } from './signaturePlays.ts';
 import { generateTeamName } from './names.ts';
@@ -85,6 +85,13 @@ export type TeamTalk = 'fire' | 'calm' | 'focus';
 export type MatchPrep = { playStyle: PlayStyle; leaderId: string | null; teamTalk: TeamTalk };
 
 function applyMatchPrep(units: Unit[], prep: MatchPrep): Unit[] {
+  // Shotcaller: the leader's OWN Leadership (comms) lifts the whole squad's comms.
+  // Read before any modification; a high-Leadership leader helps everyone, a poor
+  // one is a mild drag. Pick your best communicator.
+  const leader = units.find((u) => u.id === prep.leaderId);
+  const teamComms = leader
+    ? Math.max(LEADER.minBonus, Math.min(LEADER.maxBonus, Math.round((leader.attributes.comms - 50) * LEADER.teamCommsPerPoint)))
+    : 0;
   return units.map((u) => {
     const m = { ...u.modifiers };
     const a = { ...u.attributes };
@@ -95,7 +102,7 @@ function applyMatchPrep(units: Unit[], prep: MatchPrep): Unit[] {
     if (aggrDelta !== 0) { m.aggression = clamp100(m.aggression + aggrDelta); m.baseAggression = clamp100(m.baseAggression + aggrDelta); }
     if (prep.teamTalk === 'calm') a.composure = clamp100(a.composure + 3);
     if (prep.teamTalk === 'focus') a.tenacity = clamp100(a.tenacity + 3);
-    if (prep.leaderId === u.id) a.comms = clamp100(a.comms + 6); // the in-game leader steadies the team
+    if (teamComms !== 0) a.comms = clamp100(a.comms + teamComms); // shotcaller lifts the whole squad
     return { ...u, modifiers: m, attributes: a };
   });
 }

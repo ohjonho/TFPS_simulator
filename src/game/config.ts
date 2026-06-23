@@ -966,6 +966,17 @@ export const MASTERY = {
   maxBonusPp: 18,
 } as const;
 
+// In-game leader (Match Prep) — the chosen leader is a shotcaller: THEIR
+// Leadership lifts the whole squad's comms (trade coordination). Bonus per point
+// of the leader's Leadership above 50, applied to every unit, clamped — so a great
+// communicator clearly helps and a poor one is a mild drag (don't hand the call to
+// your worst). Ties the pick to the attribute (pick your best communicator).
+export const LEADER = {
+  teamCommsPerPoint: 0.25,
+  maxBonus: 10,
+  minBonus: -3,
+} as const;
+
 // Attribute breakpoints (3e) — when a team-average aggregate crosses one of these
 // tiers (from training or match XP), a one-time milestone beat announces it and
 // the capability it represents (Game Sense ⇒ more/bolder plays; Discipline ⇒

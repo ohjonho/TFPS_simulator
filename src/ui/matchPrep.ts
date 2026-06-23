@@ -10,6 +10,7 @@ import type { MapDefinition } from '../game/types.ts';
 import { buildSignaturePlays } from '../game/signaturePlays.ts';
 import { strategyById } from '../game/strategies.ts';
 import { scoutReadForCustom } from '../game/playbookCoach.ts';
+import { attachUnitStatsPopover, hideUnitStatsPopover } from './unitStatsPopover.ts';
 
 // The prep calls are TRADE-OFFS, not power-ups — each helps one way and costs
 // another, so there's no single best pick. Notes describe the texture; the actual
@@ -74,6 +75,11 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
       `<button class="mp-opt ${t.id === teamTalk ? 'sel' : ''}" data-talk="${t.id}"><b>${t.name}</b><span>${t.note}</span></button>`).join('');
     const leaderBtns = season.playerRoster.map((u) =>
       `<button class="mp-leader ${u.id === leaderId ? 'sel' : ''}" data-leader="${u.id}">${u.name}<small>${u.role}</small></button>`).join('');
+    // Playbook is locked for the very first match (onboarding) — adapt/author opens in week 2.
+    const playbookBtn = !onPlaybook ? ''
+      : season.idx === 0
+        ? '<button class="btn-back" type="button" disabled title="Custom plays unlock after your first match">📋 Playbook</button>'
+        : '<button class="btn-back" data-playbook type="button">📋 Playbook</button>';
 
     host.innerHTML = `
       <div class="mp-card">
@@ -103,27 +109,23 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
         </div>
         <div class="mp-decisions">
           <div class="mp-group"><div class="mp-group-label">How to play</div><div class="mp-opts">${styleBtns}</div></div>
-          <div class="mp-group"><div class="mp-group-label">In-game leader</div><div class="mp-leaders">${leaderBtns}</div></div>
+          <div class="mp-group"><div class="mp-group-label">In-game leader <small>(your shotcaller — their Leadership lifts the whole squad)</small></div><div class="mp-leaders">${leaderBtns}</div></div>
           <div class="mp-group"><div class="mp-group-label">Pre-match team talk</div><div class="mp-opts">${talkBtns}</div></div>
         </div>
-        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}${onPlaybook ? '<button class="btn-back" data-playbook type="button">📋 Playbook</button>' : ''}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
+        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}${playbookBtn}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
       </div>`;
 
     host.querySelectorAll<HTMLButtonElement>('[data-style]').forEach((b) => b.addEventListener('click', () => { playStyle = b.getAttribute('data-style') as PlayStyle; render(); }));
     host.querySelectorAll<HTMLButtonElement>('[data-talk]').forEach((b) => b.addEventListener('click', () => { teamTalk = b.getAttribute('data-talk') as TeamTalk; render(); }));
-    host.querySelectorAll<HTMLButtonElement>('[data-leader]').forEach((b) => b.addEventListener('click', () => { leaderId = b.getAttribute('data-leader') ?? leaderId; render(); }));
-    host.querySelector<HTMLButtonElement>('[data-play]')?.addEventListener('click', () => {
-      host.remove();
-      onPlay({ playStyle, leaderId, teamTalk });
+    host.querySelectorAll<HTMLButtonElement>('[data-leader]').forEach((b) => {
+      b.addEventListener('click', () => { leaderId = b.getAttribute('data-leader') ?? leaderId; render(); });
+      const u = season.playerRoster.find((x) => x.id === b.getAttribute('data-leader'));
+      if (u) attachUnitStatsPopover(b, u); // hover → that player's stats
     });
-    host.querySelector<HTMLButtonElement>('[data-back]')?.addEventListener('click', () => {
-      host.remove();
-      onBack?.();
-    });
-    host.querySelector<HTMLButtonElement>('[data-playbook]')?.addEventListener('click', () => {
-      host.remove();
-      onPlaybook?.();
-    });
+    const leave = (fn?: () => void) => { hideUnitStatsPopover(); host.remove(); fn?.(); };
+    host.querySelector<HTMLButtonElement>('[data-play]')?.addEventListener('click', () => leave(() => onPlay({ playStyle, leaderId, teamTalk })));
+    host.querySelector<HTMLButtonElement>('[data-back]')?.addEventListener('click', () => leave(onBack));
+    host.querySelector<HTMLButtonElement>('[data-playbook]')?.addEventListener('click', () => leave(onPlaybook));
   };
   render();
 }

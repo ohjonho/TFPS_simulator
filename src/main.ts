@@ -363,7 +363,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.79.0', {
+    renderMainMenu(menuHost, 'v0.80.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),

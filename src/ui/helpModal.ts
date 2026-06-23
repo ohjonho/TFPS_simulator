@@ -389,6 +389,19 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.80.0 — Know your players + a real shotcaller</h3>
+    <ul>
+      <li><strong>Hover any player to see their stats.</strong> In Match Prep (the leader
+        pick) and the Playbook roster, hovering a player pops their role, weapon, and five
+        ratings — no more guessing who's who.</li>
+      <li><strong>The in-game leader actually matters now.</strong> Your leader is a
+        shotcaller: <em>their</em> Leadership lifts the whole squad's coordination, so pick
+        your best communicator. A weak leader is a mild drag — choose well.</li>
+      <li><strong>Playbook waits for match two.</strong> The first match keeps it simple —
+        custom plays unlock right after, with a guided walkthrough.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.79.0 — Breakthrough moments</h3>
     <ul>
       <li><strong>Hitting an attribute tier is now a moment.</strong> When training (or

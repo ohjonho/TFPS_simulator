@@ -15,6 +15,7 @@ import { routeMaxWaypoints, routeAllowsWaitWatch, routeAllowanceLabel, teamAvgGa
 import { PLAYBOOK_GATING } from '../game/config.ts';
 import { masteryLabel } from '../game/training.ts';
 import { shortLabels } from '../game/names.ts';
+import { attachUnitStatsPopover } from './unitStatsPopover.ts';
 import { createPlaybookCanvas, WEAPON_COLOR, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
 function esc(s: string): string {
@@ -387,9 +388,11 @@ export function showPlaybook(
     host.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((el) => el.addEventListener('click', () => editPlay(el.getAttribute('data-edit')!)));
     // Roster-strip row → select that unit (full render so the strip highlight +
     // route-tool state refresh together; canvas remount on a click is cheap).
-    host.querySelectorAll<HTMLElement>('[data-rsunit]').forEach((el) => el.addEventListener('click', () => {
-      selectedId = el.getAttribute('data-rsunit'); selectedWaypoint = null; armWatch = false; render();
-    }));
+    host.querySelectorAll<HTMLElement>('[data-rsunit]').forEach((el) => {
+      el.addEventListener('click', () => { selectedId = el.getAttribute('data-rsunit'); selectedWaypoint = null; armWatch = false; render(); });
+      const u = roster.find((x) => x.id === tokens.find((t) => t.id === el.getAttribute('data-rsunit'))?.unitId);
+      if (u) attachUnitStatsPopover(el, u); // hover → that unit's stats
+    });
     host.querySelector<HTMLInputElement>('.pb-name')?.addEventListener('input', (e) => { name = (e.target as HTMLInputElement).value; });
     host.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((el) => el.addEventListener('click', () => removePlay(el.getAttribute('data-del')!)));
     host.querySelector<HTMLButtonElement>('[data-save]')?.addEventListener('click', save);
