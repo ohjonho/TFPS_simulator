@@ -12,6 +12,7 @@ import {
 } from '../game/strategies.ts';
 import { coachRead } from '../game/playbookCoach.ts';
 import { routeMaxWaypoints, routeAllowsWaitWatch, routeAllowanceLabel, teamAvgGameSense, gameSenseOf } from '../game/playbookGating.ts';
+import { PLAYBOOK_GATING } from '../game/config.ts';
 import { shortLabels } from '../game/names.ts';
 import { createPlaybookCanvas, WEAPON_COLOR, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
@@ -292,6 +293,24 @@ export function showPlaybook(
     return `<div class="mp-group-label" style="margin-top:14px">Your units ${legend}</div><div class="pb-roster-strip">${rows}</div>`;
   };
 
+  // Always-visible explainer: how Game Sense (what you can author) and Discipline
+  // (how faithfully it's run) gate custom plays, with the actual thresholds read
+  // from config so the copy can't drift from the mechanic.
+  const helpHtml = (): string => {
+    const caps = [...PLAYBOOK_GATING.capacity].filter((t) => t.minAvg > 0).sort((a, b) => a.minAvg - b.minAvg)
+      .map((t) => `${t.plays} at ${t.minAvg}`).join(' · ');
+    const r = PLAYBOOK_GATING.route;
+    return `<div class="pb-help">
+      <span class="pb-help-h">How custom plays work</span>
+      <span><b>Game Sense</b> — your squad's tactical smarts — sets how many set plays you can keep
+        (team avg: ${caps}) and how elaborate a route each unit can run
+        (holds only below ${r.oneWaypoint} · 1 stop at ${r.oneWaypoint} · up to ${r.multiMax} at ${r.multi} · full routes + lurks at ${r.full}).</span>
+      <span><b>Discipline</b> decides how faithfully each unit actually runs the play once the match starts — under fire, low-discipline units break off.</span>
+      ${authoringUnlocked ? '' : '<span class="pb-help-lock">🔒 Authoring from scratch unlocks in week 2 — for now, adapt a basic.</span>'}
+      <span class="pb-help-tip">Train <b>Game Sense</b> to author more &amp; bolder plays; train <b>Discipline</b> so they’re run as drawn.</span>
+    </div>`;
+  };
+
   const render = (): void => {
     canvasHandle?.destroy();
     canvasHandle = null;
@@ -326,6 +345,7 @@ export function showPlaybook(
           <div class="mp-kicker">Playbook · author on the map</div>
           <h1>Author a play</h1>
         </div>
+        ${helpHtml()}
         <div class="pb-grid">
           <div class="pb-col">
             <div class="mp-group-label">Side</div>

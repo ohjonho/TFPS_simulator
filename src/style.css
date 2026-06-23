@@ -841,6 +841,11 @@ body {
 .ne-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
 .ne-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
 .ne-pct { font-size: 30px; font-weight: 700; color: var(--text); line-height: 1.1; }
+/* Qualitative outlook word (replaces the win%) — colour comes from the band class. */
+.ne-band { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1.15; margin-top: 2px; }
+.net-effect.good .ne-band { color: #5fcf8a; }
+.net-effect.even .ne-band { color: #e0c050; }
+.net-effect.tough .ne-band { color: #e07a6a; }
 .ne-pctsign { font-size: 16px; color: var(--text-dim); }
 .ne-factors { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
 .ne-factor { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
@@ -955,6 +960,16 @@ body {
   margin: 10px 0 0; padding: 7px 10px; border-radius: 6px; font-size: 12px;
   color: #d6a02b; background: rgba(214,160,43,0.1); border: 1px solid rgba(214,160,43,0.35);
 }
+/* Always-visible "how custom plays work" explainer at the top of the editor. */
+.pb-help {
+  display: flex; flex-direction: column; gap: 4px; margin: 0 0 14px; padding: 10px 12px;
+  border-radius: 8px; background: #11151d; border: 1px solid var(--panel-border);
+  font-size: 11.5px; line-height: 1.45; color: var(--text-dim);
+}
+.pb-help-h { font-weight: 700; color: var(--text); font-size: 12px; }
+.pb-help b { color: var(--text); }
+.pb-help-lock { color: #d6a02b; }
+.pb-help-tip { color: var(--accent); }
 /* Roster strip — per-unit identity + loadout legend + route allowance (Part 6). */
 .pb-legend { font-weight: 400; color: var(--text-dim); font-size: 10px; margin-left: 6px; }
 .pb-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }

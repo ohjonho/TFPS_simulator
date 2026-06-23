@@ -389,6 +389,20 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.75.0 — Clearer playbook + honest match prep</h3>
+    <ul>
+      <li><strong>The Playbook explains itself.</strong> A “How custom plays work” panel
+        now sits at the top of the editor: <em>Game Sense</em> sets how many plays you can
+        keep and how elaborate a route each unit can run (with the actual thresholds), and
+        <em>Discipline</em> decides how faithfully they run it once the match starts.</li>
+      <li><strong>Match prep is a read, not a slot machine.</strong> The win-percentage is
+        gone — it had a single “best” combo, which made the calls meaningless. Instead you
+        get a plain outlook (Favored / Even / Tough) from team strength, and each call —
+        play style, team talk, leader — is now a genuine trade-off, not a free buff. Pick
+        what fits the matchup; the round-by-round reads still decide it.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.74.0 — Playbook legibility: who's who, and why</h3>
     <ul>
       <li><strong>Units read as players, not loadouts.</strong> In the Playbook editor

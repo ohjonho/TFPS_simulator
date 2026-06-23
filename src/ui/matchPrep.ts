@@ -11,17 +11,20 @@ import { buildSignaturePlays } from '../game/signaturePlays.ts';
 import { strategyById } from '../game/strategies.ts';
 import { scoutReadForCustom } from '../game/playbookCoach.ts';
 
-const STYLES: { id: PlayStyle; name: string; note: string; delta: number }[] = [
-  { id: 'cautious', name: 'Cautious', note: 'Protect the round — safer, lower ceiling.', delta: -2 },
-  { id: 'standard', name: 'Standard', note: 'Balanced. No tactical bias.', delta: 0 },
-  { id: 'aggressive', name: 'Aggressive', note: 'Press the tempo — higher ceiling, more risk.', delta: 3 },
+// The prep calls are TRADE-OFFS, not power-ups — each helps one way and costs
+// another, so there's no single best pick. Notes describe the texture; the actual
+// mechanical effect is applied in season.applyMatchPrep. (No win% deltas — the
+// outlook is a coarse strength read, deliberately not moved by these choices.)
+const STYLES: { id: PlayStyle; name: string; note: string }[] = [
+  { id: 'cautious', name: 'Cautious', note: 'Protect the round — trade space for safety. Steadier as the underdog; cedes tempo to a passive defense.' },
+  { id: 'standard', name: 'Standard', note: 'Balanced — no bias. Read the match and adapt round to round.' },
+  { id: 'aggressive', name: 'Aggressive', note: 'Press the tempo — higher ceiling. Punishes passive holds, but a disciplined defense can trade you down.' },
 ];
-const TALKS: { id: TeamTalk; name: string; note: string; delta: number }[] = [
-  { id: 'fire', name: 'Fire Up', note: 'Light a fire — the team pushes harder.', delta: 2 },
-  { id: 'calm', name: 'Calm & Steady', note: 'Steady hands for tight rounds (+composure).', delta: 1 },
-  { id: 'focus', name: 'Focus Up', note: 'Lock onto the plan (+discipline).', delta: 2 },
+const TALKS: { id: TeamTalk; name: string; note: string }[] = [
+  { id: 'fire', name: 'Fire Up', note: 'More duels and first contact — and more exposure.' },
+  { id: 'calm', name: 'Calm & Steady', note: 'Nerve for tight, last-alive rounds — at the cost of urgency.' },
+  { id: 'focus', name: 'Focus Up', note: 'Your set plays run truer — less off-plan improvisation.' },
 ];
-const LEADER_DELTA = 2;
 
 function prettyLean(strategy: string, site: 'A' | 'B' | null): string {
   return `${strategy.replace(/_/g, ' ')}${site ? ` ${site}` : ''}`;
@@ -56,16 +59,14 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
   const render = (): void => {
     const { player, opp } = seasonRatings(season);
     const info = season.opponents[season.idx];
-    const ratingPct = Math.round((player - opp) * 2);
-    const styleDelta = STYLES.find((s) => s.id === playStyle)!.delta;
-    const talkDelta = TALKS.find((t) => t.id === teamTalk)!.delta;
-    const leaderDelta = leaderId ? LEADER_DELTA : 0;
-    const pct = Math.max(10, Math.min(90, 50 + ratingPct + styleDelta + talkDelta + leaderDelta));
-    const band = pct >= 60 ? 'good' : pct >= 45 ? 'even' : 'tough';
-    const leaderName = season.playerRoster.find((u) => u.id === leaderId)?.name ?? '—';
-
-    const factor = (label: string, d: number) =>
-      d === 0 ? '' : `<div class="ne-factor"><span>${label}</span><span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${d}%</span></div>`;
+    const gap = player - opp;
+    // Coarse outlook from team STRENGTH only — deliberately not moved by the prep
+    // calls below, so there's no number to min-max. It's a read, not a forecast.
+    const band = gap >= 2.5 ? 'good' : gap <= -2.5 ? 'tough' : 'even';
+    const outlookWord = band === 'good' ? 'Favored' : band === 'tough' ? 'Tough' : 'Even';
+    const outlookSub = band === 'good' ? 'Stronger on paper — but nothing’s decided yet.'
+      : band === 'tough' ? 'Underdogs on paper — out-read them round by round.'
+      : 'Evenly matched — the calls and the reads will decide it.';
 
     const styleBtns = STYLES.map((s) =>
       `<button class="mp-opt ${s.id === playStyle ? 'sel' : ''}" data-style="${s.id}"><b>${s.name}</b><span>${s.note}</span></button>`).join('');
@@ -95,15 +96,9 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
             </div>
           </div>
           <div class="net-effect ${band} mp-outlook">
-            <div class="ne-head">Win outlook</div>
-            <div class="ne-pct">${pct}<span class="ne-pctsign">%</span></div>
-            <div class="ne-factors">
-              ${factor(`Rating ${(player - opp >= 0 ? '+' : '') + (player - opp).toFixed(1)}`, ratingPct)}
-              ${factor(`${STYLES.find((s) => s.id === playStyle)!.name} approach`, styleDelta)}
-              ${factor(`Team talk: ${TALKS.find((t) => t.id === teamTalk)!.name}`, talkDelta)}
-              ${factor(`${leaderName} leads`, leaderDelta)}
-            </div>
-            <div class="ne-note">Shifts with your calls below. The match is still decided round by round.</div>
+            <div class="ne-head">Outlook</div>
+            <div class="ne-band">${outlookWord}</div>
+            <div class="ne-note">${outlookSub}</div>
           </div>
         </div>
         <div class="mp-decisions">
