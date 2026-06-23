@@ -389,6 +389,16 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.79.0 — Breakthrough moments</h3>
+    <ul>
+      <li><strong>Hitting an attribute tier is now a moment.</strong> When training (or
+        match experience) pushes your squad's average across 55, 65, or 75 in an area, a
+        coach beat calls it out — and tells you what it unlocked. Crossing a Game Sense tier
+        announces your new play count and route range; Discipline announces truer execution
+        under fire.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.78.0 — Drill a play to master it</h3>
     <ul>
       <li><strong>Set-Pieces can rehearse a specific play.</strong> Pick Set-Pieces training,

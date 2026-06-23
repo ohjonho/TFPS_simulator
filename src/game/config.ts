@@ -966,6 +966,14 @@ export const MASTERY = {
   maxBonusPp: 18,
 } as const;
 
+// Attribute breakpoints (3e) — when a team-average aggregate crosses one of these
+// tiers (from training or match XP), a one-time milestone beat announces it and
+// the capability it represents (Game Sense ⇒ more/bolder plays; Discipline ⇒
+// truer execution; the rest are flavor). Mirrors the playbook-gating tiers.
+export const BREAKPOINTS = {
+  tiers: [55, 65, 75],
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's

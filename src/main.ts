@@ -83,6 +83,8 @@ import { showAuthoringTutorial } from './ui/authoringTutorial.ts';
 import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
 import { playbookCapacity } from './game/playbookGating.ts';
 import { applyTraining, applyMatchExperience, drillPlay } from './game/training.ts';
+import { crossedBreakpoints } from './game/breakpoints.ts';
+import { showBreakpoints } from './ui/breakpointModal.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
 import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
 import type { SeasonState, ClubLean } from './game/season.ts';
@@ -361,7 +363,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.78.0', {
+    renderMainMenu(menuHost, 'v0.79.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -469,13 +471,15 @@ function runSeasonWeek(onFirstBack?: () => void): void {
       showTrainingDay(currentWeek(s), s.playerRoster, s.focusFreshness ?? {}, s.customStrategies, s.playMastery ?? {}, (track, focusId, drilledPlayId) => {
         // Apply the session (optionally focused) to the persisted roster + freshness;
         // Set-Pieces on a chosen play also drills its mastery. Then roll forward.
+        const before = season!.playerRoster;
         const res = applyTraining(season!.playerRoster, track, { focusId, freshness: season!.focusFreshness ?? {} });
         const playMastery = track === 'setpieces' && drilledPlayId
           ? drillPlay(season!.playMastery ?? {}, drilledPlayId)
           : season!.playMastery ?? {};
         season = { ...season!, playerRoster: res.roster, focusFreshness: res.freshness, playMastery };
         saveSeason(season);
-        advance();
+        // 3e — announce any attribute tier the session pushed the squad across, then advance.
+        showBreakpoints(crossedBreakpoints(before, res.roster), res.roster, advance);
       }, s.idx === 0 ? onFirstBack : undefined);
       break;
     case 'preEvent': {
@@ -741,14 +745,18 @@ function showMatchEndModal(): void {
     season = recordSeasonResult(season, playerWon); // advances idx
     // Part 6 (3d) — bank match experience: Improvisation (Composure/Adaptability)
     // grows only by playing, so a green squad firms up over the season.
+    const beforeXp = season.playerRoster;
     season = { ...season, playerRoster: applyMatchExperience(season.playerRoster) };
+    const xpCrossings = crossedBreakpoints(beforeXp, season.playerRoster); // 3e — match-XP milestones
+    const afterRoster = season.playerRoster;
     season = advanceSeasonPhase(season);            // match → postEvent
     saveSeason(season);
     const wins = seasonWins(season);
     const seasonLine = `Season: ${wins}–${season.results.length - wins} after ${season.idx} of ${season.K} — need ${season.goal} wins to save the shop.`;
     const title = w === 'draw' ? 'Match drawn' : playerWon ? 'Match won' : 'Match lost';
     showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p>${scoreboard}`, [
-      { label: 'Continue', primary: true, onClick: () => runSeasonWeek() },
+      // Surface any tier the match XP pushed the squad across, then continue the week.
+      { label: 'Continue', primary: true, onClick: () => showBreakpoints(xpCrossings, afterRoster, () => runSeasonWeek()) },
       { label: 'Main menu', onClick: goToMenu },
     ]);
     return;
