@@ -73,9 +73,14 @@ function strategyMenuHtml(state: GameState, side: Side): string {
   }
   const sel = state.playerStrategy;
   const variantChoice = state.playerVariantChoice;
+  // Onboarding — strategies that unlocked this match get a NEW flag + a note.
+  const newly = new Set(state.newlyUnlockedStrategyIds ?? []);
+  const anyNew = options.some((s) => newly.has(s.id));
   const items = options.map((s) => {
     const isSelected = sel === s.id;
-    const cls = isSelected ? 'strategy selected' : 'strategy';
+    const isNew = newly.has(s.id);
+    const cls = `${isSelected ? 'strategy selected' : 'strategy'}${isNew ? ' is-new' : ''}`;
+    const newBadge = isNew ? '<span class="s-new">NEW</span>' : '';
     let variantRow = '';
     if (isSelected && s.variants.length > 1) {
       const buttons = s.variants.map((_v, idx) => {
@@ -88,9 +93,13 @@ function strategyMenuHtml(state: GameState, side: Side): string {
       variantRow = `<div class="variant-row">${hint}${buttons}</div>`;
     }
     return `<button class="${cls}" data-strategy="${s.id}">
-      <div class="s-name">${s.name}</div>
+      <div class="s-name">${s.name}${newBadge}</div>
       <div class="s-desc">${s.description}</div>
     </button>${variantRow}`;
   }).join('');
-  return `<h3>Strategy (${side}) — required</h3><div class="strategy-menu">${items}</div>`;
+  // "Why unlocked" note when the squad's experience opened new plays this match.
+  const newNote = anyNew
+    ? '<div class="strategy-newnote">Your squad\'s more experienced — <strong>new plays</strong> are available. Read what each is good for below.</div>'
+    : '';
+  return `<h3>Strategy (${side}) — required</h3>${newNote}<div class="strategy-menu">${items}</div>`;
 }

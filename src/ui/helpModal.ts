@@ -389,6 +389,14 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.82.0 — New plays, flagged</h3>
+    <ul>
+      <li><strong>Unlocked strategies are called out.</strong> When your squad's experience
+        opens new strategies (starting match two with Mind Games), the menu flags them
+        <strong>NEW</strong> with a note — read each one's description for what it's good for.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.81.0 — Guided first match</h3>
     <ul>
       <li><strong>A walkthrough on your first match.</strong> A short spotlight tour points

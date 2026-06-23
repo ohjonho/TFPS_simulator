@@ -13,7 +13,7 @@ import { placeSpawns } from './units.ts';
 import { generatePool } from './draft.ts';
 import { createRng } from './rng.ts';
 import { UNIT_DEFAULTS, ROLE_AGGRESSION, AI_COMPETENCE, LEADER } from './config.ts';
-import { BASIC_STRATEGY_IDS, setCustomStrategies, type Strategy } from './strategies.ts';
+import { BASIC_STRATEGY_IDS, setCustomStrategies, strategiesFor, type Strategy } from './strategies.ts';
 import { buildSignaturePlays, signatureMeta } from './signaturePlays.ts';
 import { generateTeamName } from './names.ts';
 import { teamRating } from './ratings.ts';
@@ -315,6 +315,18 @@ export function aiCompetenceForMatch(idx: number): number {
   return Math.max(AI_COMPETENCE.min, Math.min(1, c));
 }
 
+// Strategy ids newly available THIS match vs last (so the menu can flag them +
+// explain the unlock). First match → none (keeps match 1 uncluttered). "All"
+// (null) expands to every strategy id on the map.
+export function newlyUnlockedForMatch(idx: number, map: MapDefinition): string[] {
+  if (idx <= 0) return [];
+  const all = new Set<string>();
+  for (const side of ['attacker', 'defender'] as const) for (const s of strategiesFor(side, map)) all.add(s.id);
+  const expand = (set: readonly string[] | null): string[] => (set ? [...set] : [...all]);
+  const prev = new Set(expand(unlockedStrategiesForMatch(idx - 1)));
+  return expand(unlockedStrategiesForMatch(idx)).filter((id) => !prev.has(id));
+}
+
 // The campaign's first match faces a telegraphed opponent so the read → counter
 // loop is learnable: it Rushes one site head-on while attacking (meet it with
 // Stack / Hold) and sits in an even Hold while defending (out-read it). Returns
@@ -353,6 +365,8 @@ export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?:
     aiCompetence: aiCompetenceForMatch(season.idx),
     // 3c — the player's drilled-play reliability bonuses (compliance roll reads this).
     playMastery: season.playMastery,
+    // Onboarding C — strategies that became available this match (menu flags them).
+    newlyUnlockedStrategyIds: newlyUnlockedForMatch(season.idx, map),
   };
 }
 
