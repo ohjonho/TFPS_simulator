@@ -389,6 +389,21 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.76.0 — Training days: your squad improves</h3>
+    <ul>
+      <li><strong>Each week opens with training.</strong> Pick one focus and the whole
+        squad sharpens that area: <em>Aim Training</em> (Mechanics), <em>Strategy &amp;
+        Tactics</em> (Game Sense — a deeper playbook), <em>Team-Building</em> (Leadership),
+        or <em>Set-Pieces</em> (Discipline). Each track shows the squad's current level so
+        you can shore up a weakness.</li>
+      <li><strong>Attributes carry across the season</strong> and feed straight into the
+        gates you've seen — train Game Sense to author more &amp; bolder plays, Discipline so
+        they're run as drawn. You can't max everything, so choose what the run needs.</li>
+      <li><strong>Improvisation is earned, not drilled</strong> — it grows from playing
+        matches under real pressure (coming next).</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.75.0 — Clearer playbook + honest match prep</h3>
     <ul>
       <li><strong>The Playbook explains itself.</strong> A “How custom plays work” panel

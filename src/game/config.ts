@@ -929,6 +929,16 @@ export const PLAYBOOK_GATING = {
   route: { oneWaypoint: 55, multi: 65, multiMax: 3, full: 75 },
 } as const;
 
+// Part 6 (season meta-loop) — training. Each weekly session drills ONE track,
+// adding `perSession` to every sub-attribute in that track across the squad
+// (the visible aggregate rises by the same amount, since aggregate weights sum
+// to 1). Tuned so consistently drilling one area clears the playbook breakpoints
+// (55/65/75) across an 8-week season without letting a squad max everything.
+// Improvisation has no track — it's earned in matches (a later increment).
+export const TRAINING = {
+  perSession: 3,
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's
