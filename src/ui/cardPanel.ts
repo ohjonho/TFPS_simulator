@@ -60,10 +60,10 @@ function strategyMenuHtml(state: GameState, side: Side): string {
   // H3 — show baseline + roster-unlocked strategies only.
   const teamUnits = state.units.filter((u) => u.team === state.playerTeam);
   let options = availableStrategies(teamUnits, side, state.map);
-  // Campaign progressive unlock: the season opens on the basics and unlocks the
-  // advanced reads over its first matches (season.unlockedStrategiesForMatch).
+  // Campaign: the player's menu is the basics + their own authored plays
+  // (playerStrategyIds). Falls back to unlockedStrategyIds for non-season callers;
   // null/absent = no restriction (standard / draft / fully-unlocked season).
-  const unlocked = state.unlockedStrategyIds;
+  const unlocked = state.playerStrategyIds !== undefined ? state.playerStrategyIds : state.unlockedStrategyIds;
   if (unlocked) {
     const allow = new Set(unlocked);
     // B1 — player-authored plays are always offered (the manager built them on

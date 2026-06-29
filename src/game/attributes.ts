@@ -53,14 +53,6 @@ function applyAttrBonuses(u: Unit, bonuses: Record<string, number> | undefined):
 
 // Pick two DISTINCT entries from a pool with exactly two seeded draws (no retry
 // loop, so the rng-draw count is fixed → determinism-stable).
-function pickTwoDistinct<T>(rng: Rng, pool: readonly T[]): T[] {
-  const n = pool.length;
-  if (n <= 1) return pool.slice(0, n);
-  const i = rng.int(n);
-  let j = rng.int(n - 1);
-  if (j >= i) j++;
-  return [pool[i], pool[j]];
-}
 
 export type AttributeOverride = Partial<
   Pick<Unit, 'tacticalTraits' | 'personality' | 'role' | 'preferredRole' | 'hero'>
@@ -178,11 +170,13 @@ export function rollUnitMeta(
   // An override key that is *present* is honored literally — even when empty/null
   // (meaning "no traits"); only an absent key randomizes. This keeps A/B tests
   // clean (e.g. "vanilla" = explicit []/null).
-  // v0.29.0 — draw TWO distinct tactical traits (from the 8-pool) + ONE
-  // personality (from the 4 quadrants).
+  // Draw ONE tactical trait (from the 8-pool) + ONE personality (from the 4
+  // quadrants). One trait keeps a recruit's identity legible — a single clear
+  // edge rather than a muddled pair. (Stored as a 1-element array; the field
+  // stays plural so existing rosters/overrides with 2 still load fine.)
   u.tacticalTraits = 'tacticalTraits' in override
     ? override.tacticalTraits!
-    : pickTwoDistinct(rng, TACTICALS);
+    : [rng.pick(TACTICALS)];
   u.personality = 'personality' in override
     ? override.personality!
     : rng.pick(PERSONALITIES_LIST);

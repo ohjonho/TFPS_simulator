@@ -564,6 +564,13 @@ export type GameState = {
   // null = no restriction (standard / draft / fully-unlocked season). Set by
   // season.buildSeasonMatch; carries across rounds via the startRound spread.
   unlockedStrategyIds?: readonly string[] | null;
+  // The strategies offered in the PLAYER's menu — separate from the AI restriction
+  // above so the campaign can hold the player to the basics + their own authored
+  // plays while the AI keeps its full toolkit. When set (non-null), the menu shows
+  // only these ids (authored plays are always offered on top). Absent = fall back
+  // to unlockedStrategyIds (non-season / standard = no restriction). Set by
+  // season.buildSeasonMatch; read by cardPanel.
+  playerStrategyIds?: readonly string[] | null;
   // Scripted tutorial opponent. When set, the AI plays this fixed strategy for
   // the given side instead of the weighted pick — the campaign's first match
   // faces a telegraphed opponent so the player learns read → counter cleanly.

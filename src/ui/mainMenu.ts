@@ -33,8 +33,8 @@ export function renderMainMenu(host: HTMLElement, version: string, cb: MainMenuC
         ${continueBtn}
         <button class="menu-mode${cb.onContinue ? '' : ' featured'}" data-play="season">
           <span class="mm-text">
-            <span class="mm-name">Season <span class="mm-badge">Campaign</span></span>
-            <span class="mm-desc">Draft a roster, then run a gauntlet of matches toward a goal.</span>
+            <span class="mm-name">New Season <span class="mm-badge">Campaign</span></span>
+            <span class="mm-desc">Start the story: build a team, win the circuit, save the shop.</span>
           </span>
           <span class="mm-arrow" aria-hidden="true">&rsaquo;</span>
         </button>

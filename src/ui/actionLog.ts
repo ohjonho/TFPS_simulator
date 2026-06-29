@@ -1,5 +1,5 @@
-// Formats the combat event log into spec §18.4-style kill-feed lines.
-// Pure string building; mounted by the side panel overlay.
+// Formats the combat event log into spec §18.4-style Action Log lines.
+// Pure string building; mounted by the Action Log overlay.
 //
 // H3.4 — cardPlay / safeWindowBlock event formatters removed (card system
 // deleted). strategyPick lines no longer include card sub-text.
@@ -15,7 +15,7 @@ const WEAPON_NAME: Record<Weapon, string> = {
 // One line per resolved shot, e.g.
 //   T:12 — D1 (Rifle) → A2 [HEAD, 2 dmg] @ short, cover · KILL
 //   T:8 — A3 (Sniper) → D2 [miss] @ long
-export function killFeedLines(state: GameState, max = 14): string[] {
+export function actionLogLines(state: GameState, max = 14): string[] {
   // Tick+target keys that ended in a death, to flag KILL on the lethal shot.
   const deaths = new Set<string>();
   for (const e of state.events) {

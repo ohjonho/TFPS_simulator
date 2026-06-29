@@ -32,8 +32,8 @@ export function showWelcome(onContinue: () => void, onBack?: () => void): void {
     <div class="welcome-card">
       <div class="welcome-header">
         <div class="welcome-kicker">Welcome, Coach</div>
-        <h1>You're taking over a scrappy local team</h1>
-        <p class="welcome-sub">One season, one shot to win the circuit and save the shop. Here's how it works.</p>
+        <h1>Your squad is set</h1>
+        <p class="welcome-sub">Five players, one season, one shot to win the circuit and save Pixel Perfect. Here's how the season works.</p>
       </div>
       <h2 class="welcome-section">How the game works</h2>
       <div class="welcome-grid">
@@ -44,16 +44,16 @@ export function showWelcome(onContinue: () => void, onBack?: () => void): void {
         ${TIPS.map((c) => `<div class="welcome-tip"><div class="wt-title">${c.title}</div><div class="wt-body">${c.body}</div></div>`).join('')}
       </div>
       <div class="welcome-firststeps">
-        <div class="wt-title">First steps</div>
+        <div class="wt-title">Your week, every week</div>
         <ol>
-          <li>Draft your 5 from the pool of 8.</li>
-          <li>Each round, read the Scout's lean on the opponent.</li>
-          <li>Pick the counter, then watch it play out — and learn from the recap.</li>
+          <li>Training day — drill the squad, spend League Points to sharpen them.</li>
+          <li>Match day — read the opponent's tape, pick your counters round by round.</li>
+          <li>Climb the table — finish top 4 to reach the playoffs, then win it all.</li>
         </ol>
       </div>
       <div class="welcome-actions">
         ${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}
-        <button class="btn-primary" data-continue type="button">Draft your team &rarr;</button>
+        <button class="btn-primary" data-continue type="button">Start the season &rarr;</button>
       </div>
     </div>`;
   document.body.appendChild(host);

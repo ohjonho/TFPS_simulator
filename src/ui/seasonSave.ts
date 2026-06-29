@@ -12,7 +12,14 @@ import type { SeasonState } from '../game/season.ts';
 const SAVE_KEY = 'tfps-season-save';
 // v2 adds SeasonState.authoringUnlocked (Part 6 playbook gating); a v1 save would
 // default it falsy and wrongly re-lock a season already past week 2, so discard.
-const SAVE_VERSION = 2;
+// v3 added SeasonState.money (v1 economy); v4 replaces it with leaguePoints (the
+// economy redesign — LP in-season, money end-season-only), so v3 saves discard.
+// v5 added the round-robin standings (derived — no field, but a v4 save predates
+// the league framing); v6 adds SeasonState.playoffs (R2d bracket); v7 adds
+// SeasonState.morale (Phase 4) — a v6 save lacks it, so discard. v8 adds
+// SeasonState.storyFlags (opening-cutscene hooks). v9 adds SeasonState.roundScores
+// (per-match round tallies for standings round-differential) — a v8 save lacks it.
+const SAVE_VERSION = 9;
 
 // Best-effort write; called on every phase advance. Storage failures (quota,
 // privacy mode) are swallowed — a missing autosave shouldn't break play.

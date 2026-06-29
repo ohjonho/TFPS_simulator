@@ -3,8 +3,8 @@
 //   resolution → hovered-unit info
 //
 // Pass E3 — the strategy menu moved to the left panel (cardPanel.ts) so this
-// side is purely "who's playing + who am I looking at." Card hand + kill
-// feed also moved out (cardPanel + killFeedOverlay).
+// side is purely "who's playing + who am I looking at." Card hand + Action
+// Log also moved out (cardPanel + actionLogOverlay).
 
 import type { GameState, Unit } from '../game/types.ts';
 import { UNIT_DEFAULTS } from '../game/config.ts';

@@ -5,7 +5,7 @@
 //   - Render pipeline (`render` from render/renderer.ts).
 //   - Playback loop (resolution-phase timer; calls `stepTick` → `onTick`).
 //   - UI panels (topBar, sidePanel, cardPanel, draftPanel, bottomControls,
-//     attributesPanel, killFeedOverlay, helpModal).
+//     attributesPanel, actionLog, helpModal).
 //   - Mouse + keyboard interactions (hover, click-to-select, drag-in-spawn,
 //     V/R toggles).
 //   - Match flow (planning → resolution → round-end modal → halftime swap →
@@ -56,8 +56,8 @@ import { renderBottomControls } from './ui/bottomControls.ts';
 import { renderTopBar } from './ui/topBar.ts';
 import { renderCardPanel } from './ui/cardPanel.ts';
 import { renderDraftPanel } from './ui/draftPanel.ts';
-import { autoDraft, commitDraftPick, finalizeDraft } from './game/draft.ts';
-import { renderKillFeedOverlay } from './ui/killFeedOverlay.ts';
+import { autoDraft, commitDraftPick, finalizeDraft, undoDraftPick } from './game/draft.ts';
+import { renderActionLogOverlay } from './ui/actionLogOverlay.ts';
 import { attachHover } from './ui/hover.ts';
 import { attachClickToCommand } from './ui/clickToCommand.ts';
 import { attachUnitDrag, isValidDropHex } from './ui/unitDrag.ts';
@@ -68,27 +68,49 @@ import { renderRoundEndStats } from './ui/roundEndPanel.ts';
 import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
 import { computeMatchStats, computeRoundStats } from './game/stats.ts';
 import { renderMainMenu } from './ui/mainMenu.ts';
-import { showSeasonIntro } from './ui/seasonIntro.ts';
+import { showSeasonOpening } from './ui/seasonOpening.ts';
 import { showWelcome } from './ui/welcome.ts';
-import { showTeamTalk } from './ui/teamTalk.ts';
-import { showDashboard } from './ui/dashboard.ts';
+import { showPreDraftBeat } from './ui/preDraftBeat.ts';
+import { showCardTutorial } from './ui/cardTutorial.ts';
+import { showFirstTeamMeeting } from './ui/firstTeamMeeting.ts';
+import { showTeamStats } from './ui/teamStats.ts';
 import { showMatchPrep } from './ui/matchPrep.ts';
 import { showPlaybook } from './ui/playbook.ts';
 import { reviewPlay } from './ui/coachWorker.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { runWalkthrough, type WalkStep } from './ui/walkthrough.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
-import { showWeekEvent } from './ui/weekEvent.ts';
-import { showMidSeasonBreak } from './ui/midSeasonBreak.ts';
-import { showAuthoringTutorial } from './ui/authoringTutorial.ts';
+import { showEventScreen } from './ui/eventScreen.ts';
+import { rollEvent, applyEvent, applyEffects, eventFlavor } from './game/events/runtime.ts';
+import { effectChipsHtml } from './ui/effectChips.ts';
+import { applyMatchMorale, teamMorale, moraleLabel } from './game/morale.ts';
+import { showPostMatch1Beat } from './ui/postMatch1Beat.ts';
+import { showScoutIntroBeat } from './ui/scoutIntroBeat.ts';
+import { showWeek4Beat } from './ui/week4Beat.ts';
+import { showWeek5Break } from './ui/week5Break.ts';
+import { offWeekEffects } from './game/offWeek.ts';
+import { flightRiskCandidate, seasonLeavers } from './game/flightRisk.ts';
+import { showFlightRiskBeat } from './ui/flightRiskBeat.ts';
+import { showSeasonEpilogue } from './ui/seasonEpilogue.ts';
+import { showStandings, standingsTableHtml } from './ui/standings.ts';
+import { showBracket, bracketHtml } from './ui/playoffBracket.ts';
+import { playerRank, madePlayoffs, playoffSeeds, rivalMatchIndexFor, simPlayoffWinner, teamNameForIndex } from './game/standings.ts';
+import { LEAGUE, ECONOMY } from './game/config.ts';
+
+// 1 → "1st", 2 → "2nd", … (standings ordinal).
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
 import { saveSeason, loadSeason, clearSavedSeason, hasSavedSeason } from './ui/seasonSave.ts';
 import { playbookCapacity } from './game/playbookGating.ts';
 import { applyTraining, applyMatchExperience, drillPlay } from './game/training.ts';
 import { crossedBreakpoints } from './game/breakpoints.ts';
 import { showBreakpoints } from './ui/breakpointModal.ts';
 import { HALFTIME_AFTER_ROUND } from './game/config.ts';
-import { startSeason, buildSeasonMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, seasonMadeGoal } from './game/season.ts';
-import type { SeasonState, ClubLean } from './game/season.ts';
+import { startSeason, buildSeasonMatch, buildPlayoffMatch, recordSeasonResult, advanceSeasonPhase, currentWeek, seasonOver, seasonWins, leaguePointsForResult } from './game/season.ts';
+import type { SeasonState } from './game/season.ts';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app root missing in index.html');
@@ -99,6 +121,35 @@ const shell = buildShell(root);
 const menuHost = document.createElement('div');
 menuHost.id = 'main-menu';
 root.appendChild(menuHost);
+// Phase 4 — thin management header (week / next match / LP / team-stats), shown
+// across the season's management + dialogue screens (not the live match or menu).
+const seasonHeaderHost = document.createElement('div');
+seasonHeaderHost.id = 'season-header';
+seasonHeaderHost.style.display = 'none';
+document.body.appendChild(seasonHeaderHost);
+let seasonHeaderOn = false;
+function renderSeasonHeader(): void {
+  if (!seasonHeaderOn || !season) {
+    seasonHeaderHost.style.display = 'none';
+    document.body.classList.remove('with-mgmt-header');
+    return;
+  }
+  const s = season;
+  const nextOpp = s.idx < s.K ? (s.opponents[s.idx]?.name ?? '—') : 'Playoffs';
+  seasonHeaderHost.style.display = 'flex';
+  document.body.classList.add('with-mgmt-header');
+  seasonHeaderHost.innerHTML = `
+    <div class="sh-left">
+      <span class="sh-item"><b>Week ${currentWeek(s)}</b> / ${s.K}</span>
+      <span class="sh-sep">·</span>
+      <span class="sh-item">Next: <b>${nextOpp}</b></span>
+      <span class="sh-sep">·</span>
+      <span class="sh-item">LP <b>${s.leaguePoints}</b></span>
+    </div>
+    <button class="sh-team" data-team type="button">Team stats</button>`;
+  seasonHeaderHost.querySelector<HTMLButtonElement>('[data-team]')?.addEventListener('click', () => { if (season) showTeamStats(season); });
+}
+function setSeasonHeader(on: boolean): void { seasonHeaderOn = on; renderSeasonHeader(); }
 // Open on Foundry IV — the canonical live map (Foundry II / v1 retired from the picker).
 let state: GameState = buildInitialState('Foundryv4');
 
@@ -171,11 +222,14 @@ function snapPlayerToPlan(): void {
 // --- Render pipeline -------------------------------------------------------
 
 function rerenderCanvas() {
+  // Tutorial match (season match 1) — show the faint A/B site labels so a new
+  // manager can map the lettered sites to the canvas.
+  const showSiteLabels = matchMode === 'season' && season?.idx === 0;
   render(
     handle.ctx, state, hover, selection, debug,
     handle.cssWidth, handle.cssHeight,
     showEnemiesPlanning, previewRoutes, showRegionLabels,
-    dragState,
+    dragState, showSiteLabels,
   );
   updateTargetingBanner();
   updateCanvasCursor();
@@ -249,6 +303,9 @@ function rerenderChrome() {
       const next = commitDraftPick(state, unitId);
       setState(next);
     },
+    onUnpick: (unitId: string) => {
+      setState(undoDraftPick(state, unitId));
+    },
     onAutoToggle: () => {
       if (!state.draft) return;
       // Toggling on = run-to-end; toggling off = leave the rest manual.
@@ -266,25 +323,28 @@ function rerenderChrome() {
       if (matchMode === 'season') {
         const roster = finalized.units.filter((u) => u.team === finalized.playerTeam);
         const s = startSeason(roster, finalized.map.name, matchSeed, 8, 5);
-        // Team talk (club lean) → dashboard (invest) → the week loop (training →
-        // event → match → event), with Back stepping back (week-1 training →
-        // dashboard → team talk).
-        let chosenLean: ClubLean = 'disciplined';
-        const flowTeamTalk = (): void => showTeamTalk((lean) => { chosenLean = lean; flowDashboard(); });
-        const flowDashboard = (): void => showDashboard(
-          { ...s, clubLean: chosenLean },
-          (upgrades) => { season = { ...s, clubLean: chosenLean, upgrades }; saveSeason(season); runSeasonWeek(flowDashboard); },
-          flowTeamTalk,
-        );
-        flowTeamTalk();
+        seasonEpilogueDone = false; // fresh season — re-arm the end-of-season epilogue
+        // Advance past draft phase so the canvas shows planning (not the draft
+        // overlay) while the management screens run on top.
+        initialUnitsById = snapshotUnits(finalized.units);
+        setState(finalized);
+        // First Team Meeting (the drafted squad meets; the highest-Leadership player
+        // offers the identity choice → club lean; records story hooks) → Welcome
+        // briefing ("Start the season") → the week loop.
+        showFirstTeamMeeting(s.playerRoster, (lean) => {
+          season = { ...s, clubLean: lean, upgrades: [], storyFlags: seasonStoryFlags };
+          saveSeason(season);
+          setSeasonHeader(true);
+          showWelcome(() => runSeasonWeek(), undefined);
+        });
         return;
       }
       initialUnitsById = snapshotUnits(finalized.units);
       setState(finalized);
     },
   });
-  // Pass E m4 — kill feed as a small overlay anchored bottom-left in canvas.
-  renderKillFeedOverlay(shell.killFeedOverlay, state);
+  // Pass E m4 — Action Log overlay anchored top-left in canvas.
+  renderActionLogOverlay(shell.actionLog, state);
   renderBottomControls(shell.bottomBar, state, {
     onPlayToggle: () => {
       if (state.playback.playing) loop.pause();
@@ -359,12 +419,12 @@ function maybeShowSeasonCoaching(): void {
 function firstMatchTour(): WalkStep[] {
   return [
     { target: () => shell.canvasArea, title: 'Welcome to Canyon', body: 'This is the map your squad fights on. Win <strong>4 rounds</strong> to take the match.' },
-    { target: () => shell.canvasArea, title: 'The two sites', body: 'The lettered zones are the bomb sites — <strong>A</strong> and <strong>B</strong>. On defense, stop the enemy planting the spike; on attack, plant it and hold.' },
-    { target: () => shell.canvasArea, title: 'Spawns', body: 'Each round both squads start at their spawns — yours on one side, the enemy\'s on the far side.' },
-    { target: () => shell.cardPanel, title: 'Pick your strategy', body: 'Choose your plan for the round here, and check the <strong>Scout</strong> for the read. Your first opponent only knows one trick: <strong>Rush</strong> one site head-on — <strong>Stack</strong> or <strong>Hold</strong> meets it.' },
-    { target: () => shell.topBar, title: 'Begin the round', body: 'When your plan is set, hit <strong>Begin Round</strong> up here to play it out.' },
+    { target: () => shell.canvasArea, title: 'The two sites', body: 'There are two plant sites on this map — <strong>A</strong> and <strong>B</strong>. On defense, stop the enemy planting the spike there; on attack, plant it and hold the site.' },
+    { target: () => shell.canvasArea, title: 'Your squad', body: 'The coloured dots are your units at their starting positions. Each round both squads spawn at opposite ends of the map — yours below, the enemy\'s above.' },
+    { target: () => shell.cardPanel, title: 'Pick your strategy', body: 'Choose your plan for the round here, and check the <strong>Scout</strong> for the read. For this first match, your opponent only knows one trick: <strong>Rush</strong> one site head-on — <strong>Stack</strong> or <strong>Hold</strong> meets it.' },
+    { target: () => shell.topBar.querySelector('.btn-primary') ?? shell.topBar, title: 'Begin the round', body: 'When your plan is set, hit <strong>Begin Round</strong> — the yellow button here — to play it out.' },
     { target: () => shell.bottomBar, title: 'Playback', body: 'Once the round runs, control speed and <strong>pause / resume</strong> down here with the play button.' },
-    { title: "You're set", body: 'The <strong>kill feed</strong> shows the action bottom-left, and you can <strong>hover any unit</strong> on the map to see their stats. Good luck out there.' },
+    { title: "You're set", body: 'The <strong>Action Log</strong> (top-left) shows every shot, kill and plant as the round plays out, and you can <strong>hover any unit</strong> on the map to see their stats. Good luck out there.' },
   ];
 }
 
@@ -372,6 +432,22 @@ function firstMatchTour(): WalkStep[] {
 // contact, so a new manager sees a duel begin before it resolves. Resume via the
 // play button. One-shot per session; the coachmark also dedupes across sessions.
 let tutorialContactDone = false;
+// R2d — set while a player PLAYOFF match is in flight so showMatchEndModal routes
+// the result into the bracket (showPlayoffResult) rather than the season recorder.
+let playoffActive = false;
+// Guards the season-end morale epilogue (showSeasonEpilogue) so it plays at most
+// once even though the end screens can be re-reached on resume/re-entry.
+let seasonEpilogueDone = false;
+// Phase 4 — story-flag hooks captured during the opening cutscene (Worlds winner,
+// the player's dialogue choices); threaded into the new season at draft confirm.
+let seasonStoryFlags: Record<string, string> = {};
+// Plays the morale epilogue (any season-end leavers say goodbye) once, then runs
+// the actual ending. A well-managed squad has no leavers ⇒ straight to the result.
+function runEpilogueThen(after: () => void): void {
+  if (!season || seasonEpilogueDone) { after(); return; }
+  seasonEpilogueDone = true;
+  showSeasonEpilogue(seasonLeavers(season), after);
+}
 function maybeTutorialContactPause(): void {
   if (matchMode !== 'season' || !season || season.idx !== 0) return;
   if (tutorialContactDone || state.round !== 1 || state.phase !== 'resolution') return;
@@ -393,7 +469,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.82.0', {
+    renderMainMenu(menuHost, 'v0.100.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -411,15 +487,30 @@ function startMode(mode: MatchMode): void {
   clearPlanningUiState();
   clearCoachmarks();
   tutorialContactDone = false; // re-arm the first-contact pause for a fresh season
+  playoffActive = false;
+  setSeasonHeader(false);
   matchMode = mode;
   season = null;
   // Season opens on the campaign intro story, then a player-only draft; the
   // other modes launch straight into a match on the Settings-selected map.
   if (mode === 'season') {
-    // Intro story → welcome briefing → the draft, with Back stepping back up the
-    // chain (intro Back → main menu; welcome Back → intro).
-    const flowIntro = (): void => showSeasonIntro(() => showWelcome(launchSeasonDraft, flowIntro), goToMenu);
-    flowIntro();
+    // Opening cutscene → welcome briefing → the draft, with Back stepping back up
+    // the chain. The Worlds winner is rolled once here (stable across re-entry) and
+    // the cutscene's choices + result are captured into seasonStoryFlags for the
+    // season to carry (threaded in at draft confirm).
+    seasonStoryFlags = {};
+    const worldsChampion = Math.random() < 0.5 ? 'G3' : 'Paper Hex';
+    // Opening cutscene → pre-draft "tryouts" beat → card tutorial → draft. Back
+    // steps up the chain; the Worlds winner + cutscene choices feed seasonStoryFlags.
+    const flowOpening = (): void => showSeasonOpening(worldsChampion, (flags) => {
+      seasonStoryFlags = flags;
+      flowPreDraft();
+    }, goToMenu);
+    const flowPreDraft = (): void => showPreDraftBeat(
+      () => showCardTutorial(launchSeasonDraft, flowPreDraft),
+      flowOpening,
+    );
+    flowOpening();
     return;
   }
   // Standard / Draft are dev/testing modes — keep enemies visible in planning.
@@ -442,15 +533,19 @@ function launchMatchPrep(onBack?: () => void): void {
   showMatchPrep(s, state.map, (prep) => {
     const m = buildSeasonMatch(s, state.map, prep);
     initialUnitsById = snapshotUnits(m.units);
+    setSeasonHeader(false); // live match — hide the management header
     setState(m);
-  }, onBack, () => openSeasonPlaybook(() => launchMatchPrep(onBack)));
+  }, onBack,
+    () => openSeasonPlaybook(() => launchMatchPrep(onBack)),
+    // League table — view standings any time; re-open prep on close.
+    () => showStandings(s, () => launchMatchPrep(onBack)));
 }
 
 // Open the season Playbook editor (B1 + Part 6 gating). Passes the authoring
 // unlock (week-2 gate) and roster-derived capacity through to the editor; saves
 // and deletes land on the live season.customStrategies AND the autosave so they
 // persist + resolve. `onClose` decides where we return.
-function openSeasonPlaybook(onClose: () => void): void {
+function openSeasonPlaybook(onClose: () => void, tutorial = false): void {
   let handle: { refresh: () => void } | null = null;
   handle = showPlaybook(state.map, season?.customStrategies ?? [], season?.playerRoster ?? [], {
     onSave: (play) => {
@@ -479,6 +574,24 @@ function openSeasonPlaybook(onClose: () => void): void {
     authoringUnlocked: season?.authoringUnlocked ?? false,
     capacity: playbookCapacity(season?.playerRoster ?? []),
     playMastery: season?.playMastery ?? {},
+    tutorial,
+  });
+}
+
+// Phase 4 — run a data-driven ambient event for a week slot. Rolls the event
+// deterministically (stable per slotKey), shows the generic screen, applies the
+// chosen effects to the live season, then hands off (onDone advances + saves).
+// Effects are applied here but NOT saved until onDone advances the phase, so a
+// reload mid-event re-rolls the same event and re-applies nothing.
+function runWeekEvent(slotKey: string, onDone: () => void): void {
+  if (!season) return;
+  const { event, subjectId } = rollEvent(season, slotKey);
+  const subject = subjectId ? (season.playerRoster.find((u) => u.id === subjectId) ?? null) : null;
+  const subjectName = subject?.name ?? null;
+  const extra = eventFlavor(event, subject, season.results);
+  showEventScreen(event, subjectName, extra, (choiceIdx) => {
+    season = applyEvent(season!, event, subjectId, choiceIdx);
+    onDone();
   });
 }
 
@@ -492,41 +605,84 @@ function openSeasonPlaybook(onClose: () => void): void {
 function runSeasonWeek(onFirstBack?: () => void): void {
   const s = season;
   if (!s) return;
+  setSeasonHeader(true); // management context — show the header (refreshes week/LP)
   const advance = (): void => {
     season = advanceSeasonPhase(season!);
     saveSeason(season);
     runSeasonWeek();
   };
   switch (s.phase) {
-    case 'training':
-      showTrainingDay(currentWeek(s), s.playerRoster, s.focusFreshness ?? {}, s.customStrategies, s.playMastery ?? {}, (track, focusId, drilledPlayId) => {
-        // Apply the session (optionally focused) to the persisted roster + freshness;
-        // Set-Pieces on a chosen play also drills its mastery. Then roll forward.
+    case 'training': {
+      const openTraining = (): void => {
+      const cur = season!; // live read — a flight-risk beat may have moved morale first
+      showTrainingDay(currentWeek(cur), cur.playerRoster, cur.focusFreshness ?? {}, cur.morale ?? {}, cur.customStrategies, cur.playMastery ?? {}, cur.leaguePoints, (choice) => {
+        // Apply the free session (optionally focused), then any LP-bought extra
+        // whole-squad sessions; Set-Pieces on a chosen play also drills its mastery.
+        // Deduct the League Points spent. Then roll the week forward.
         const before = season!.playerRoster;
-        const res = applyTraining(season!.playerRoster, track, { focusId, freshness: season!.focusFreshness ?? {} });
-        const playMastery = track === 'setpieces' && drilledPlayId
-          ? drillPlay(season!.playMastery ?? {}, drilledPlayId)
+        let res = applyTraining(season!.playerRoster, choice.track, { focusId: choice.focusId, freshness: season!.focusFreshness ?? {} });
+        let roster = res.roster;
+        let freshness = res.freshness;
+        for (const [t, n] of Object.entries(choice.extras)) {
+          for (let i = 0; i < n; i++) {
+            res = applyTraining(roster, t as typeof choice.track, { freshness });
+            roster = res.roster;
+            freshness = res.freshness;
+          }
+        }
+        const playMastery = choice.track === 'setpieces' && choice.drilledPlayId
+          ? drillPlay(season!.playMastery ?? {}, choice.drilledPlayId)
           : season!.playMastery ?? {};
-        season = { ...season!, playerRoster: res.roster, focusFreshness: res.freshness, playMastery };
+        season = { ...season!, playerRoster: roster, focusFreshness: freshness, playMastery, leaguePoints: season!.leaguePoints - choice.lpSpent };
         saveSeason(season);
-        // 3e — announce any attribute tier the session pushed the squad across, then advance.
-        showBreakpoints(crossedBreakpoints(before, res.roster), res.roster, advance);
-      }, s.idx === 0 ? onFirstBack : undefined);
-      break;
-    case 'preEvent': {
-      const info = s.opponents[s.idx];
-      // Week 2 (idx 1): the one-time guided authoring tutorial replaces the pre-
-      // event placeholder, framed around the scouted opponent. Flips the unlock.
-      if (s.idx === 1 && !s.authoringUnlocked && info) {
-        const pretty = (l: { strategy: string; site: 'A' | 'B' | null }): string =>
-          `${l.strategy.replace(/_/g, ' ')}${l.site ? ` ${l.site}` : ''}`;
-        const leanLine = `They lean <strong>${pretty(info.atk)}</strong> on attack and <strong>${pretty(info.def)}</strong> on defense.`;
-        const unlock = (then: () => void): void => { season = { ...season!, authoringUnlocked: true }; saveSeason(season); then(); };
-        showAuthoringTutorial(info.name, leanLine,
-          () => unlock(() => openSeasonPlaybook(advance)),
-          () => unlock(advance));
+        // 3e — announce any attribute tier the session(s) pushed the squad across, then advance.
+        showBreakpoints(crossedBreakpoints(before, roster), roster, advance);
+      }, cur.idx === 0 ? onFirstBack : undefined, cur.idx === Math.floor(cur.K / 2));
+      };
+      // Mid-season flight risk: surface a struggling player once (before training).
+      // Intervening lifts their morale clear of it; ignoring leaves them at risk for
+      // the season-end epilogue. Fires at most once per player (frHandled list).
+      const afterIntro = (): void => {
+        const handled = (season!.storyFlags?.frHandled ?? '').split(',').filter(Boolean);
+        const at = flightRiskCandidate(season!, handled);
+        if (at) {
+          showFlightRiskBeat(at, (effects) => {
+            season = applyEffects(season!, effects, at.id);
+            season = { ...season!, storyFlags: { ...(season!.storyFlags ?? {}), frHandled: [...handled, at.id].join(',') } };
+            saveSeason(season);
+            openTraining();
+          });
+        } else openTraining();
+      };
+      // Week 4 (idx 3): Sam's coffee check-in + off-week heads-up, once, before training.
+      if (s.idx === 3 && !s.storyFlags?.offWeekLean) {
+        showWeek4Beat(seasonWins(s), s.playerRoster, (lean) => {
+          season = { ...season!, storyFlags: { ...(season!.storyFlags ?? {}), offWeekLean: lean } };
+          saveSeason(season);
+          afterIntro();
+        });
       } else {
-        showWeekEvent(currentWeek(s), 'pre', s.weekEventMode[s.idx] ?? 'S', advance);
+        afterIntro();
+      }
+      break;
+    }
+    case 'preEvent': {
+      // Week 2 (idx 1): the analyst kid (Remi) ambushes you outside — accepting
+      // unlocks detailed scouting (you pick a focus) AND the custom playbook.
+      if (s.idx === 1 && !s.authoringUnlocked) {
+        showScoutIntroBeat((focus) => {
+          season = {
+            ...season!,
+            authoringUnlocked: true,
+            storyFlags: { ...(season!.storyFlags ?? {}), scoutingUnlocked: 'true', scoutFocus: focus },
+          };
+          saveSeason(season);
+          // The playbook just opened — drop the player straight into the editor with
+          // a guided tour the week it's introduced, then carry on to the match.
+          openSeasonPlaybook(advance, true);
+        });
+      } else {
+        runWeekEvent(`pre-${s.idx}`, advance);
       }
       break;
     }
@@ -536,16 +692,50 @@ function runSeasonWeek(onFirstBack?: () => void): void {
       launchMatchPrep();
       break;
     case 'postEvent':
-      // idx was advanced by recordSeasonResult, so the just-played week is idx
-      // and its pacing roll is weekEventMode[idx - 1].
-      showWeekEvent(currentWeek(s), 'post', s.weekEventMode[s.idx - 1] ?? 'S', () => {
-        if (seasonOver(season!)) { showSeasonEndModal(); return; }
+      // After match 1 (idx === 1): Sam and the player reflect on the first match
+      // (tone branches on win/loss) — planting the idea of deeper scouting + their
+      // own playbook (both unlock at the week-2 pre-match scout-kid beat).
+      if (s.idx === 1) {
+        showPostMatch1Beat(s.results[0] === 'W', s.playerRoster, advance);
+        break;
+      }
+      // After match 3 (idx === 3): the assistant coach explains the league format
+      // on the standings screen — round-robin, and your next match is the last
+      // before the bye (the mid-season break, when the league plays on without you).
+      if (s.idx === 3) {
+        showStandings(s, () => {
+          if (seasonOver(season!)) { endRegularSeason(); return; }
+          advance();
+        }, {
+          kicker: 'Assistant coach',
+          title: 'How the league works',
+          sub: `It's a round-robin — you'll face all eight rivals once, and the top ${LEAGUE.playoffTeams} make the playoffs. Heads up: after your next match it's your <strong>bye week</strong> — the mid-season break. The league plays on without you, so the table will shift while you rest. Reach the final to save the shop.`,
+        });
+        break;
+      }
+      runWeekEvent(`post-${s.idx}`, () => {
+        if (seasonOver(season!)) { endRegularSeason(); return; }
         advance();
       });
       break;
-    case 'break':
-      showMidSeasonBreak(currentWeek(s) + 1, advance);
+    case 'break': {
+      // Week-5 bye: lock in the off-week focus (anchored to the week-4 lean), the
+      // squad reacts in character, then the trade-off lands + is shown before the
+      // week rolls on to its Special Training.
+      const lean = s.storyFlags?.offWeekLean ?? 'undecided';
+      showWeek5Break(s.playerRoster, s.morale ?? {}, seasonWins(s), s.results.length, lean, (focus) => {
+        const effects = offWeekEffects(focus);
+        const body = effects.length
+          ? `<p class="me-headline">How the week landed:</p>${effectChipsHtml(effects, null)}`
+          : `<p class="me-headline">The week drifted by — no plan, no edge gained. A missed chance the rivals won't waste.</p>`;
+        showModal('The bye week', body, [{ label: 'On to Special Training →', primary: true, onClick: () => {
+          season = { ...applyEffects(season!, effects, null), storyFlags: { ...(season!.storyFlags ?? {}), offWeekFocus: focus } };
+          saveSeason(season);
+          advance();
+        } }]);
+      });
       break;
+    }
   }
 }
 
@@ -569,8 +759,12 @@ function continueSeason(): void {
   if (!seasonOver(loaded)) state = buildSeasonMatch(loaded, state.map);
   initialUnitsById = snapshotUnits(state.units);
   screen = 'match';
+  playoffActive = false;
   rerenderAll();
-  runSeasonWeek();
+  // Regular season done → resume the playoffs (or the missed-out ending);
+  // otherwise pick up the week loop at the saved phase.
+  if (seasonOver(loaded)) endRegularSeason();
+  else runSeasonWeek();
 }
 
 function launchSeasonDraft(): void {
@@ -588,6 +782,8 @@ function goToMenu(): void {
   clearCoachmarks();
   loop.pause();
   season = null;
+  playoffActive = false;
+  setSeasonHeader(false);
   // B0/B1 — drop any authored plays from the strategy registry so a fresh
   // (non-season) match started from the menu doesn't inherit the prior season's
   // custom plays. Season matches re-register their own set in buildSeasonMatch.
@@ -613,21 +809,182 @@ function showSettingsModal(): void {
   seedInp?.addEventListener('change', () => { const s = parseInt(seedInp.value, 10); if (!Number.isNaN(s)) matchSeed = s >>> 0; });
 }
 
+// Missed the playoffs (finished 5th–9th) — the season ends here. (Making the top
+// 4 routes to the playoff bracket instead; see endRegularSeason / showPlayoffEnd.)
 function showSeasonEndModal(): void {
   const s = season;
   if (!s) return;
-  // Part 6 — the season is complete; drop the autosave so "Continue" doesn't
-  // resurface a finished campaign.
+  setSeasonHeader(false);
+  // Morale reckoning first — any low-morale players say goodbye before the result.
+  if (!seasonEpilogueDone) { runEpilogueThen(showSeasonEndModal); return; }
   clearSavedSeason();
   const wins = seasonWins(s);
   const losses = s.results.length - wins;
-  const made = seasonMadeGoal(s);
-  const title = made ? 'You saved the shop' : 'The season ends';
-  const story = made
-    ? `<strong>You did it.</strong> ${wins}–${losses} on the season — enough to take the prize. Pixel Pursuit keeps its lights on, and Sam re-signs the lease the next morning, your bracket pinned to the wall behind the counter.`
-    : `<strong>So close.</strong> ${wins}–${losses} — short of the ${s.goal} wins it took to claim the prize. The shop's future is still up in the air... but a scrappy roster of locals just proved it can hang with the circuit. There's always next season.`;
-  const body = `<p class="me-headline">${story}</p><p class="me-headline">Season results: ${s.results.join('  ')}</p>${renderMatchEndScoreboard(state)}`;
-  showModal(title, body, [
+  const rank = playerRank(s);
+  const story = `<strong>${ordinal(rank)} of ${LEAGUE.teams}.</strong> ${wins}–${losses} — short of the top ${LEAGUE.playoffTeams} it took to reach the playoffs. The shop's future is up in the air... but a scrappy roster of locals just proved it can hang with the circuit. There's always next season.`;
+  const body = `<p class="me-headline">${story}</p>${standingsTableHtml(s)}`;
+  showModal('The season ends', body, [
+    { label: 'New season', primary: true, onClick: () => startMode('season') },
+    { label: 'Main menu', onClick: goToMenu },
+  ]);
+}
+
+// --- R2d: playoffs ---------------------------------------------------------
+// The bracket team-index of the player's current opponent: in a semifinal it's
+// the other team in their pair; in the final it's the other semifinal's winner.
+function playerPlayoffOpponent(po: { seeds: number[]; semiA: number | null; semiB: number | null; stage: string }): number {
+  const p = LEAGUE.playerTeamIndex;
+  const inA = po.seeds[0] === p || po.seeds[3] === p;
+  if (po.stage === 'semi') {
+    return inA ? (po.seeds[0] === p ? po.seeds[3] : po.seeds[0]) : (po.seeds[1] === p ? po.seeds[2] : po.seeds[1]);
+  }
+  return inA ? (po.semiB ?? -1) : (po.semiA ?? -1);
+}
+
+// Regular season over → branch: top 4 enter the bracket (init once, idempotent on
+// resume), everyone else gets the missed-playoffs ending.
+function endRegularSeason(): void {
+  if (!season) return;
+  if (!madePlayoffs(season)) { showSeasonEndModal(); return; }
+  if (!season.playoffs) {
+    const seeds = playoffSeeds(season).map((r) => r.teamIndex);
+    season = { ...season, playoffs: { seeds, semiA: null, semiB: null, champion: null, stage: 'semi' } };
+    saveSeason(season);
+  }
+  if (season.playoffs!.stage === 'done') { showPlayoffEnd(); return; }
+  runPlayoffs();
+}
+
+// Drive the bracket: resolve the rival half of the round (seeded sim), show the
+// bracket, then play the player's match — or finish. Re-entrant + resumable.
+function runPlayoffs(): void {
+  if (!season?.playoffs) return;
+  setSeasonHeader(true);
+  const po = season.playoffs;
+  if (po.stage === 'done') { showPlayoffEnd(); return; }
+  const p = LEAGUE.playerTeamIndex;
+  const inA = po.seeds[0] === p || po.seeds[3] === p;
+  if (po.stage === 'semi') {
+    // Sim the semifinal the player isn't in (once) so the final opponent is known.
+    let semiA = po.semiA;
+    let semiB = po.semiB;
+    if (inA && semiB === null) semiB = simPlayoffWinner(season, 0, po.seeds[1], po.seeds[2]);
+    if (!inA && semiA === null) semiA = simPlayoffWinner(season, 0, po.seeds[0], po.seeds[3]);
+    if (semiA !== po.semiA || semiB !== po.semiB) {
+      season = { ...season, playoffs: { ...po, semiA, semiB } };
+      saveSeason(season);
+    }
+    showBracket(season, () => launchPlayoffMatch('Semifinal', 0), {
+      title: 'Semifinals',
+      sub: 'Win it to reach the final. The other semifinal has already been decided.',
+      cta: 'To your semifinal →',
+    });
+    return;
+  }
+  // final
+  showBracket(season, () => launchPlayoffMatch('Final', 1), {
+    title: 'The Final',
+    sub: 'One match for the title — and to save the shop.',
+    cta: 'To the final →',
+  });
+}
+
+// Player's playoff match through Match Prep (with the bracket opponent override).
+function launchPlayoffMatch(label: string, roundSalt: number): void {
+  if (!season?.playoffs) return;
+  const oppTi = playerPlayoffOpponent(season.playoffs);
+  const k = rivalMatchIndexFor(oppTi);
+  const oppRoster = season.schedule[k];
+  const oppInfo = season.opponents[k];
+  const reenter = (): void => launchPlayoffMatch(label, roundSalt);
+  showMatchPrep(season, state.map, (prep) => {
+    const m = buildPlayoffMatch(season!, state.map, prep, oppRoster, oppInfo, roundSalt);
+    initialUnitsById = snapshotUnits(m.units);
+    playoffActive = true;
+    setSeasonHeader(false); // live match — hide the management header
+    setState(m);
+  }, undefined,
+    () => openSeasonPlaybook(reenter),
+    () => showStandings(season!, reenter),
+    { info: oppInfo, oppRoster, label });
+}
+
+// A playoff match ended — award LP + match XP (no idx++/recordSeasonResult),
+// update the bracket, then continue (next stage or the season-end).
+function showPlayoffResult(): void {
+  playoffActive = false;
+  if (!season?.playoffs) return;
+  const po = season.playoffs;
+  const playedStage = po.stage;
+  const p = LEAGUE.playerTeamIndex;
+  const inA = po.seeds[0] === p || po.seeds[3] === p;
+  const oppTi = playerPlayoffOpponent(po);
+  const w = state.matchWinner;
+  const playerWon = w === state.playerTeam;
+  const oppTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
+  const pr = state.scores[state.playerTeam];
+  const or = state.scores[oppTeam];
+  const lp = leaguePointsForResult(playerWon, pr, or);
+  // Bank LP + match XP + morale ripple (carry to next season). No idx advance, no results[] push.
+  let next: SeasonState = {
+    ...season,
+    leaguePoints: season.leaguePoints + lp,
+    playerRoster: applyMatchExperience(season.playerRoster),
+    morale: applyMatchMorale(season.morale ?? {}, season.playerRoster, playerWon),
+  };
+  let semiA = po.semiA;
+  let semiB = po.semiB;
+  let champion = po.champion;
+  let stage = po.stage;
+  const winnerTi = playerWon ? p : oppTi;
+  if (playedStage === 'semi') {
+    if (inA) semiA = winnerTi; else semiB = winnerTi;
+    if (playerWon) {
+      stage = 'final';
+    } else {
+      // Eliminated — crown a champion from the two semifinal winners (flavour).
+      const otherWinner = inA ? semiB! : semiA!;
+      champion = simPlayoffWinner(next, 1, otherWinner, winnerTi);
+      stage = 'done';
+    }
+  } else {
+    champion = winnerTi;
+    stage = 'done';
+  }
+  next = { ...next, playoffs: { ...po, semiA, semiB, champion, stage } };
+  season = next;
+  saveSeason(season);
+
+  const stageName = playedStage === 'final' ? 'Final' : 'Semifinal';
+  const headline = playerWon ? `You win the ${stageName}!` : `You lose the ${stageName}.`;
+  const lpLine = `League Points: <strong>+${lp}</strong> earned · <strong>${season.leaguePoints}</strong> total.`;
+  showModal(playerWon ? `${stageName} won` : `${stageName} lost`,
+    `<p class="me-headline">${headline}</p><p class="me-headline">${lpLine}</p>${renderMatchEndScoreboard(state)}`,
+    [{ label: 'Continue', primary: true, onClick: runPlayoffs }]);
+}
+
+// Bracket complete — champion / finalist (shop saved) / semifinalist ending.
+function showPlayoffEnd(): void {
+  if (!season?.playoffs) return;
+  setSeasonHeader(false);
+  // Morale reckoning first — even champions can lose a disillusioned player.
+  if (!seasonEpilogueDone) { runEpilogueThen(showPlayoffEnd); return; }
+  clearSavedSeason();
+  const po = season.playoffs;
+  const p = LEAGUE.playerTeamIndex;
+  const reachedFinal = po.semiA === p || po.semiB === p;
+  const isChampion = po.champion === p;
+  const outcome: 'champion' | 'finalist' | 'semifinalist' = isChampion ? 'champion' : reachedFinal ? 'finalist' : 'semifinalist';
+  const prize = ECONOMY.playoffPrize[outcome];
+  const champName = po.champion != null ? teamNameForIndex(season, po.champion) : '—';
+  const title = isChampion ? 'CHAMPIONS — the shop is saved!' : reachedFinal ? 'Finalists — the shop is saved' : 'Out in the semifinals';
+  const story = isChampion
+    ? '<strong>You won it all.</strong> Pixel Perfect lifts the trophy — the prize money clears the debt with room to spare, and Sam frames the bracket above the counter.'
+    : reachedFinal
+      ? `<strong>So close.</strong> You made the final — ${champName} took the title, but reaching it was enough: the finalist prize keeps the lights on. Next season, the trophy.`
+      : `<strong>A real run.</strong> You made the playoffs and pushed to the semifinals before ${champName} ended it. Not the fairytale — but a scrappy shop squad just proved it belongs.`;
+  const moneyLine = `Prize money: <strong>$${prize.toLocaleString()}</strong>${outcome === 'semifinalist' ? ' — not enough to save the shop, but a foundation for next season.' : ''}`;
+  showModal(title, `<p class="me-headline">${story}</p><p class="me-headline">${moneyLine}</p>${bracketHtml(season)}`, [
     { label: 'New season', primary: true, onClick: () => startMode('season') },
     { label: 'Main menu', onClick: goToMenu },
   ]);
@@ -671,7 +1028,7 @@ function beginRound(): void {
     state, state.playerTeam, state.playerStrategy, aiTeam, aiId, pickRng,
     state.playerVariantChoice,
   );
-  // Pass 9 m1 / H3.4 — round-start summary in the kill feed. Card fields
+  // Pass 9 m1 / H3.4 — round-start summary in the Action Log. Card fields
   // dropped (card system removed).
   next = {
     ...next,
@@ -761,6 +1118,8 @@ function showHalftimeModal(): void {
 }
 
 function showMatchEndModal(): void {
+  // R2d — a playoff match routes into the bracket, not the regular-season recorder.
+  if (playoffActive) { showPlayoffResult(); return; }
   const w = state.matchWinner;
   const playerWon = w === state.playerTeam;
   const headline =
@@ -773,19 +1132,32 @@ function showMatchEndModal(): void {
   // re-enter the week loop (it surfaces the post-event, then the next week — or
   // the season results once the schedule is done).
   if (season) {
-    season = recordSeasonResult(season, playerWon); // advances idx
+    // v1 economy — League Points earned from this result (win base + margin, or a
+    // loss consolation), banked in recordSeasonResult. Computed here too for the
+    // matchday readout. Round scores: player's vs the opponent's.
+    const oppTeam: Team = state.playerTeam === 'defenders' ? 'attackers' : 'defenders';
+    const playerRounds = state.scores[state.playerTeam];
+    const oppRounds = state.scores[oppTeam];
+    const lpEarned = leaguePointsForResult(playerWon, playerRounds, oppRounds);
+    season = recordSeasonResult(season, playerWon, playerRounds, oppRounds); // advances idx + banks LP
     // Part 6 (3d) — bank match experience: Improvisation (Composure/Adaptability)
     // grows only by playing, so a green squad firms up over the season.
     const beforeXp = season.playerRoster;
     season = { ...season, playerRoster: applyMatchExperience(season.playerRoster) };
     const xpCrossings = crossedBreakpoints(beforeXp, season.playerRoster); // 3e — match-XP milestones
     const afterRoster = season.playerRoster;
+    // Phase 4 — morale ripple: a win lifts the room, a loss stings.
+    season = { ...season, morale: applyMatchMorale(season.morale ?? {}, season.playerRoster, playerWon) };
     season = advanceSeasonPhase(season);            // match → postEvent
     saveSeason(season);
     const wins = seasonWins(season);
-    const seasonLine = `Season: ${wins}–${season.results.length - wins} after ${season.idx} of ${season.K} — need ${season.goal} wins to save the shop.`;
+    const rank = playerRank(season);
+    const seasonLine = `Season: ${wins}–${season.results.length - wins} after ${season.idx} of ${season.K} · currently <strong>${ordinal(rank)} of ${LEAGUE.teams}</strong> — top ${LEAGUE.playoffTeams} make the playoffs.`;
+    // v1 economy — League Points earned this match + running total (spend on training).
+    const lpLine = `League Points: <strong>+${lpEarned}</strong> earned · <strong>${season.leaguePoints}</strong> total — spend them on training.`;
+    const moraleLine = `Squad morale: <strong>${moraleLabel(teamMorale(season.morale, season.playerRoster))}</strong> — ${playerWon ? 'the win lifts the room' : 'a tough one to take'}.`;
     const title = w === 'draw' ? 'Match drawn' : playerWon ? 'Match won' : 'Match lost';
-    showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p>${scoreboard}`, [
+    showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p><p class="me-headline">${lpLine}</p><p class="me-headline">${moraleLine}</p>${scoreboard}`, [
       // Surface any tier the match XP pushed the squad across, then continue the week.
       { label: 'Continue', primary: true, onClick: () => showBreakpoints(xpCrossings, afterRoster, () => runSeasonWeek()) },
       { label: 'Main menu', onClick: goToMenu },

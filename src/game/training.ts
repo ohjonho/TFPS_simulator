@@ -77,6 +77,23 @@ export function applyMatchExperience(roster: readonly Unit[]): Unit[] {
   }));
 }
 
+// R3 — League-Point cost of an extra whole-squad session, given how many of the
+// SAME track are already in this week's cart (0 → base). Same-track repeats
+// escalate; different tracks each start at base. Pure; config-driven.
+export function extraSessionCost(nthAlreadyBought: number): number {
+  return TRAINING.extraBaseCost + TRAINING.extraStepCost * nthAlreadyBought;
+}
+
+// Total LP cost of a cart of extra sessions (counts keyed by track).
+export function extrasCost(extras: Partial<Record<TrainingTrack, number>>): number {
+  let total = 0;
+  for (const t of TRAINING_TRACKS) {
+    const n = extras[t.id] ?? 0;
+    for (let i = 0; i < n; i++) total += extraSessionCost(i);
+  }
+  return total;
+}
+
 // Qualitative freshness label for a unit (player-facing — no raw number).
 export function freshnessLabel(freshness: FocusFreshness, unitId: string): string {
   const f = freshness[unitId] ?? 1;

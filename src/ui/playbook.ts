@@ -16,6 +16,7 @@ import { PLAYBOOK_GATING } from '../game/config.ts';
 import { masteryLabel } from '../game/training.ts';
 import { shortLabels } from '../game/names.ts';
 import { attachUnitStatsPopover } from './unitStatsPopover.ts';
+import { runWalkthrough, type WalkStep } from './walkthrough.ts';
 import { createPlaybookCanvas, WEAPON_COLOR, type EditorToken, type EditorMode, type PlaybookCanvasHandle } from './playbookCanvas.ts';
 
 function esc(s: string): string {
@@ -52,7 +53,7 @@ export function showPlaybook(
   existing: readonly Strategy[],
   roster: readonly Unit[],
   cb: PlaybookCallbacks,
-  opts: { authoringUnlocked?: boolean; capacity?: number; playMastery?: Record<string, number> } = {},
+  opts: { authoringUnlocked?: boolean; capacity?: number; playMastery?: Record<string, number>; tutorial?: boolean } = {},
 ): { refresh: () => void } {
   document.getElementById('playbook')?.remove();
   const host = document.createElement('div');
@@ -458,6 +459,22 @@ export function showPlaybook(
     }
   };
 
+  // Forced week-2 tutorial: pre-seed a Blank layout so the canvas + toolbar exist
+  // to point at, then run the one-time spotlight tour over the real editor tools.
+  const q = <T extends HTMLElement>(sel: string): (() => T | null) => () => host.querySelector<T>(sel);
+  const TOUR: readonly WalkStep[] = [
+    { title: 'Your playbook', body: 'This is where you draw up your own plays. Your five players are already on the map — let\'s walk through the tools.' },
+    { target: q('#pb-canvas-host'), title: 'The map', body: 'A top-down of the arena. Each token is one of your players, sitting where they\'ll start the round.' },
+    { target: q('[data-mode="move"]'), title: 'Move', body: 'Drag a player to set where they hold. This is the heart of a play — who covers what.' },
+    { target: q('[data-mode="watch"]'), title: 'Watch', body: 'Select a player, then click a hex to aim where they look. A good cone catches enemies the instant they peek.' },
+    { target: q('[data-mode="route"]'), title: 'Route', body: 'Draw a path of waypoints for a player to run — if they\'re disciplined enough. Higher Game Sense unlocks longer, bolder routes.' },
+    { target: q('[data-vision]'), title: 'Vision', body: 'Toggle this to shade everything your setup can see. The dark gaps are your blind spots — mind them.' },
+    { target: q('[data-save]'), title: 'Name it and save', body: 'Save the play and Coach Remi grades it. Build one now, then hit Done to head into your match. You can always come back and tweak it.' },
+  ];
+  if (opts.tutorial && authoringUnlocked && baseId === null) { baseId = BLANK; seedTokens(); }
   render();
+  if (opts.tutorial && authoringUnlocked) {
+    requestAnimationFrame(() => runWalkthrough('pb-editor', TOUR));
+  }
   return { refresh: render };
 }

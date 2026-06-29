@@ -4,13 +4,24 @@
 // recalculates as you toggle them. On confirm it hands a MatchPrep to main.ts,
 // which bakes it into the player roster for this match. Pure DOM.
 
-import type { SeasonState, MatchPrep, PlayStyle, TeamTalk } from '../game/season.ts';
+import type { SeasonState, MatchPrep, PlayStyle, TeamTalk, OpponentInfo } from '../game/season.ts';
 import { seasonRatings } from '../game/season.ts';
-import type { MapDefinition } from '../game/types.ts';
+import { teamRating } from '../game/ratings.ts';
+import type { MapDefinition, Unit } from '../game/types.ts';
 import { buildSignaturePlays } from '../game/signaturePlays.ts';
 import { strategyById } from '../game/strategies.ts';
 import { scoutReadForCustom } from '../game/playbookCoach.ts';
+import { playerRank } from '../game/standings.ts';
+import { teamMorale, moraleLabel } from '../game/morale.ts';
+import { LEAGUE } from '../game/config.ts';
 import { attachUnitStatsPopover, hideUnitStatsPopover } from './unitStatsPopover.ts';
+
+// 1 → "1st", 2 → "2nd", … (small standings helper).
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
 
 // The prep calls are TRADE-OFFS, not power-ups — each helps one way and costs
 // another, so there's no single best pick. Notes describe the texture; the actual
@@ -31,7 +42,11 @@ function prettyLean(strategy: string, site: 'A' | 'B' | null): string {
   return `${strategy.replace(/_/g, ' ')}${site ? ` ${site}` : ''}`;
 }
 
-export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (prep: MatchPrep) => void, onBack?: () => void, onPlaybook?: () => void): void {
+// `override` repurposes this screen for a PLAYOFF match (R2d): a specific bracket
+// opponent + a stage label ("Semifinal"/"Final") instead of the league-match line.
+export type PrepOverride = { info: OpponentInfo; oppRoster: readonly Unit[]; label: string };
+
+export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (prep: MatchPrep) => void, onBack?: () => void, onPlaybook?: () => void, onStandings?: () => void, override?: PrepOverride): void {
   document.getElementById('match-prep')?.remove();
   const host = document.createElement('div');
   host.id = 'match-prep';
@@ -58,8 +73,10 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
   let leaderId: string = season.playerRoster[0]?.id ?? '';
 
   const render = (): void => {
-    const { player, opp } = seasonRatings(season);
-    const info = season.opponents[season.idx];
+    const sr = seasonRatings(season);
+    const player = sr.player;
+    const opp = override ? teamRating(override.oppRoster) : sr.opp;
+    const info = override ? override.info : season.opponents[season.idx];
     const gap = player - opp;
     // Coarse outlook from team STRENGTH only — deliberately not moved by the prep
     // calls below, so there's no number to min-max. It's a read, not a forecast.
@@ -80,12 +97,39 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
       : season.idx === 0
         ? '<button class="btn-back" type="button" disabled title="Custom plays unlock after your first match">📋 Playbook</button>'
         : '<button class="btn-back" data-playbook type="button">📋 Playbook</button>';
+    // League table — open the standings any time (the read on where you stand).
+    const standingsBtn = !onStandings ? ''
+      : '<button class="btn-back" data-standings type="button">📊 League table</button>';
+    // Live league position (top 4 make the playoffs) — the season-long stake.
+    const rank = playerRank(season);
+    const rankNote = rank <= LEAGUE.playoffTeams ? 'in the playoff places' : 'chasing the top 4';
+
+    // Detailed scouting (unlocked at the week-2 scout-kid beat) — Remi focuses on
+    // the area you chose and surfaces a sharper read for that match.
+    const sf = season.storyFlags ?? {};
+    let analystHtml = '';
+    if (sf.scoutingUnlocked === 'true') {
+      const focus = sf.scoutFocus;
+      let line = '';
+      if (focus === 'defense' && info) line = `Their defense: ${leanText(info.def)} Here's where they'll sit.`;
+      else if (focus === 'weakness') {
+        // A coach-level game-plan read off the strength gap (no per-unit micro — the
+        // manager thinks in terms of how to play THEM, not which enemy to frag).
+        line = band === 'good'
+          ? 'You\'re the stronger side on paper. Dictate the tempo — take your duels early and don\'t let them settle into their holds.'
+          : band === 'tough'
+            ? 'They\'ve got the edge on paper. Deny them tempo — play for picks, fight on your terms, and punish their over-aggression.'
+            : 'Nothing separates you on paper. Whoever wins the mid-round reads takes it — stay a step ahead of their tells.';
+      } else if (info) line = `Their attack: ${leanText(info.atk)} Expect it.`;
+      if (line) analystHtml = `<div class="mp-analyst"><div class="mp-analyst-head">📊 Remi's analysis</div><div class="mp-analyst-line">${line}</div></div>`;
+    }
 
     host.innerHTML = `
       <div class="mp-card">
         <div class="mp-header">
-          <div class="mp-kicker">Match prep · match ${season.idx + 1} of ${season.K}</div>
+          <div class="mp-kicker">${override ? `Playoffs · ${override.label}` : `Match prep · match ${season.idx + 1} of ${season.K}`}</div>
           <h1>vs ${info?.name ?? 'the opponent'}</h1>
+          <div class="mp-budget">League Points: <strong>${season.leaguePoints}</strong> · Currently <strong>${ordinal(rank)} of ${LEAGUE.teams}</strong> <span style="color:var(--text-dim);">(${rankNote})</span> · Morale: <strong>${moraleLabel(teamMorale(season.morale ?? {}, season.playerRoster))}</strong></div>
         </div>
         <div class="mp-body">
           <div class="mp-left">
@@ -95,11 +139,12 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
               <div class="mp-team"><div class="mp-team-label">${info?.name ?? 'Opponent'}</div><div class="mp-rating">${opp.toFixed(1)}</div></div>
             </div>
             <div class="mp-scout">
-              <div class="mp-scout-head">Scouting report</div>
+              <div class="mp-scout-head">Tape study <small>— what you &amp; Sam pulled from their replays</small></div>
               ${info ? `<div class="mp-lean">On attack they lean ${leanText(info.atk)}.</div>
               <div class="mp-lean">On defense they lean ${leanText(info.def)}.</div>
               <div class="mp-scout-note">You'll pick the counter round by round once the match starts.</div>` : ''}
             </div>
+            ${analystHtml}
           </div>
           <div class="net-effect ${band} mp-outlook">
             <div class="ne-head">Outlook</div>
@@ -112,7 +157,7 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
           <div class="mp-group"><div class="mp-group-label">In-game leader <small>(your shotcaller — their Leadership lifts the whole squad)</small></div><div class="mp-leaders">${leaderBtns}</div></div>
           <div class="mp-group"><div class="mp-group-label">Pre-match team talk</div><div class="mp-opts">${talkBtns}</div></div>
         </div>
-        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}${playbookBtn}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
+        <div class="mp-actions">${onBack ? '<button class="btn-back" data-back type="button">&larr; Back</button>' : ''}${playbookBtn}${standingsBtn}<button class="btn-primary" data-play type="button">Play match &rarr;</button></div>
       </div>`;
 
     host.querySelectorAll<HTMLButtonElement>('[data-style]').forEach((b) => b.addEventListener('click', () => { playStyle = b.getAttribute('data-style') as PlayStyle; render(); }));
@@ -126,6 +171,7 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
     host.querySelector<HTMLButtonElement>('[data-play]')?.addEventListener('click', () => leave(() => onPlay({ playStyle, leaderId, teamTalk })));
     host.querySelector<HTMLButtonElement>('[data-back]')?.addEventListener('click', () => leave(onBack));
     host.querySelector<HTMLButtonElement>('[data-playbook]')?.addEventListener('click', () => leave(onPlaybook));
+    host.querySelector<HTMLButtonElement>('[data-standings]')?.addEventListener('click', () => leave(onStandings));
   };
   render();
 }
