@@ -17,8 +17,10 @@ export function showModal(title: string, body: string, actions: ModalAction[]): 
   const root = document.createElement('div');
   root.id = 'modal-root';
   root.style.cssText =
+    // z above the management overlays (1100), header (1300) and walkthrough (1400)
+    // so a modal opened from the season header isn't buried behind them.
     'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;' +
-    'align-items:center;justify-content:center;z-index:1000;font-family:inherit;';
+    'align-items:center;justify-content:center;z-index:1500;font-family:inherit;';
 
   const panel = document.createElement('div');
   panel.style.cssText =

@@ -50,6 +50,7 @@ import {
   HALFTIME_AFTER_ROUND,
   HERO_ABILITIES_ENABLED,
   HOLD_TARGETING_OVERRIDE,
+  FOLLOW_ROUTE,
   MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
@@ -410,6 +411,13 @@ export function applyStrategies(
       const resolved = resolveDirectiveSpec(spec, ctx);
       if (resolved) directives.push(resolved);
     }
+    // Visual-play system (Stage 1) — synthesize directives from the slot's
+    // exact-hex authoring (the map-canvas editor): a precise watch angle and a
+    // movement route. Region/spec-based slots set neither, so they're untouched.
+    if (slot?.watchHex) directives.push({ kind: 'hold_angle', priority: 50, facingHex: slot.watchHex });
+    if (slot?.route && slot.route.length > 0) {
+      directives.push({ kind: 'follow_route', priority: FOLLOW_ROUTE.priority, route: slot.route });
+    }
 
     // Part 5 A1 — threat-aware INITIAL hold target (defenders, opt-in per map).
     // Instead of the region centroid + weapon/anchor/role offsets, head to the
@@ -420,8 +428,11 @@ export function applyStrategies(
     // when off / no cell qualifies.
     const holdMatrixOn =
       side === 'defender' && (HOLD_TARGETING_OVERRIDE ?? state.map.holdTargeting ?? false);
-    let adjusted: HexCoord | null = null;
-    if (holdMatrixOn) {
+    // Visual-play system (Stage 1) — an exact pinned hold target wins outright
+    // (the player placed the unit there); skip region centroid / holdTargeting /
+    // weapon+role offsets. Absent ⇒ the existing resolution paths below.
+    let adjusted: HexCoord | null = slot?.pinHex ?? null;
+    if (!adjusted && holdMatrixOn) {
       const cells = state.map.regions[regionName];
       if (cells && cells.length > 0) {
         const exp = holdExposure[side];

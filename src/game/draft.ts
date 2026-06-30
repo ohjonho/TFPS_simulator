@@ -271,6 +271,25 @@ export function commitDraftPick(state: GameState, unitId: string): GameState {
   return newState;
 }
 
+// Remove a previously-committed pick (lets the player change their mind before
+// confirming). Restricted to player-only drafts (the season draft) where every
+// slot is the player's — so there's no interleaved AI cascade to rewind. Pure:
+// drops the pick and resets currentPickIdx to the new pick count (always valid
+// in a player-only draft, where currentPickIdx === picks.length). Turns autoMode
+// off so the freed slot waits for a deliberate re-pick. No-op otherwise.
+export function undoDraftPick(state: GameState, unitId: string): GameState {
+  if (!state.draft) return state;
+  const { picks, pickOrder } = state.draft;
+  const playerOnly = pickOrder.every((t) => t === state.playerTeam);
+  if (!playerOnly) return state;
+  if (!picks.some((p) => p.unitId === unitId)) return state;
+  const newPicks = picks.filter((p) => p.unitId !== unitId);
+  return {
+    ...state,
+    draft: { ...state.draft, picks: newPicks, currentPickIdx: newPicks.length, autoMode: false },
+  };
+}
+
 // Switch into auto-mode and immediately resolve all remaining picks. Returns
 // a state with the draft completed (currentPickIdx === pickOrder.length).
 export function autoDraft(state: GameState): GameState {

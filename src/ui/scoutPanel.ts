@@ -1,4 +1,4 @@
-// Pre-round Scout — surfaces the ENEMY team's strategy tendencies from the
+// Pre-round Tape —surfaces the ENEMY team's strategy tendencies from the
 // cross-round pick history (state.strategyLean) so the player's pre-round pick is
 // a READ, not a gamble. Qualitative leans only (a poker range, never odds), and
 // the read can't lie: it reflects the same picks the enemy actually made this
@@ -7,6 +7,7 @@
 
 import type { GameState, Team } from '../game/types.ts';
 import { strategiesFor, strategyById } from '../game/strategies.ts';
+import { scoutReadForCustom } from '../game/playbookCoach.ts';
 
 // One-line "tell" + a read-based (not odds-based) counter hint per strategy.
 const TELLS: Record<string, { tell: string; counter: string }> = {
@@ -58,8 +59,8 @@ export function scoutReportHtml(state: GameState): string {
   const known = state.opponentLean?.[enemySide];
   if (known && known.strategy) {
     const head = state.opponentName
-      ? `Scout — ${state.opponentName} (${sideLabel})`
-      : `Scout — enemy ${sideLabel}`;
+      ? `Tape — ${state.opponentName} (${sideLabel})`
+      : `Tape — enemy ${sideLabel}`;
     const lname = strategyById(known.strategy, enemySide, state.map)?.name ?? known.strategy;
     const siteTxt = known.site ? ` <strong>${known.site}</strong>` : '';
     const t = TELLS[known.strategy];
@@ -69,6 +70,18 @@ export function scoutReportHtml(state: GameState): string {
     if (t) {
       rows.push(`<div class="scout-tell"><span class="scout-tag">tell</span> ${t.tell}</div>`);
       rows.push(`<div class="scout-counter"><span class="scout-tag">counter</span> ${t.counter}</div>`);
+    } else {
+      // B2.2 — a custom/signature play has no fixed TELL; derive one from its
+      // measured matchup (the option that is the play's softest matchup = the
+      // player's best counter, named on the player's own side).
+      const play = strategyById(known.strategy, enemySide, state.map);
+      const read = play ? scoutReadForCustom(play) : null;
+      if (read) {
+        const playerSide = state.teamSide[state.playerTeam];
+        const cName = strategyById(read.counterId, playerSide, state.map)?.name ?? read.counterId;
+        rows.push(`<div class="scout-tell"><span class="scout-tag">tell</span> ${read.tell}</div>`);
+        rows.push(`<div class="scout-counter"><span class="scout-tag">counter</span> ${cName} is its softest matchup</div>`);
+      }
     }
     if (total > 0) {
       const top0 = entries[0];
@@ -83,16 +96,16 @@ export function scoutReportHtml(state: GameState): string {
   if (total === 0 || entries.length === 0) {
     if (!onboardingSeen()) {
       return `<div class="scout">
-      <div class="scout-head">Scout — reading the opponent</div>
+      <div class="scout-head">Tape — reading the opponent</div>
       <div class="scout-body">
         <div class="scout-onboard">This isn't a coin flip: <strong>every strategy beats some and loses to others</strong>, so the best pick depends on what your opponent favors.</div>
-        <div class="scout-onboard">I track what the enemy keeps choosing and show their lean here — read it, then pick the counter. No read yet; make your call and I'll start building one.</div>
+        <div class="scout-onboard">You and Sam have been through their replays — when they keep favouring a play, it shows up here. Read it, then pick the counter. No read yet; make your call and we'll start building one.</div>
       </div>
     </div>`;
     }
     return `<div class="scout">
-      <div class="scout-head">Scout — enemy ${sideLabel}</div>
-      <div class="scout-body"><div class="scout-empty">First encounter — no tendencies yet. The Scout builds a read as the match unfolds.</div></div>
+      <div class="scout-head">Tape — enemy ${sideLabel}</div>
+      <div class="scout-body"><div class="scout-empty">First look — no tendencies yet. You and Sam build the read as the match unfolds.</div></div>
     </div>`;
   }
 
@@ -116,7 +129,7 @@ export function scoutReportHtml(state: GameState): string {
 
   markOnboardingSeen(); // a real read has appeared — the counter-web explainer is consumed
   return `<div class="scout">
-    <div class="scout-head">Scout — enemy ${sideLabel}</div>
+    <div class="scout-head">Tape — enemy ${sideLabel}</div>
     <div class="scout-body">${rows.join('')}</div>
   </div>`;
 }

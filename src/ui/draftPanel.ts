@@ -27,6 +27,9 @@ export type DraftPanelCallbacks = {
   onPick: (unitId: string) => void;
   onAutoToggle: () => void;
   onConfirm: () => void;
+  // Player-only (season) draft: click a unit you've already picked to release
+  // them back into the pool before confirming. No-op in the snake draft.
+  onUnpick: (unitId: string) => void;
 };
 
 const PANEL_ID = 'draft-panel';
@@ -46,7 +49,6 @@ export function renderDraftPanel(
   panel.id = PANEL_ID;
 
   const draft = state.draft;
-  const pickedIds = new Set(draft.picks.map((p) => p.unitId));
   const pickerByUnit = new Map(draft.picks.map((p) => [p.unitId, p.pickerTeam]));
   const playerTeam = state.playerTeam;
   const aiTeam: Team = playerTeam === 'defenders' ? 'attackers' : 'defenders';
@@ -73,7 +75,7 @@ export function renderDraftPanel(
     </div>
     ${playerOnly ? `<details class="draft-legend" open><summary>How to read a player card</summary>${draftCardLegendHtml()}</details>` : ''}
     <div class="draft-body">
-      <div class="draft-pool">${poolHtml(draft, pickerByUnit, playerTeam, aiTeam)}</div>
+      <div class="draft-pool">${poolHtml(draft, pickerByUnit, playerTeam, aiTeam, playerOnly)}</div>
       <div class="draft-rosters">
         <div class="draft-roster you">
           <h3>${playerOnly ? 'Your squad' : 'You'} (${playerTeam === 'defenders' ? 'DEF' : 'ATK'})</h3>
@@ -95,13 +97,19 @@ export function renderDraftPanel(
 
   host.appendChild(panel);
 
-  // Pool card clicks → if player's turn AND card not yet picked, commit.
+  // Pool card clicks:
+  //   • not yet picked + your turn → commit the pick.
+  //   • picked by YOU, in a player-only draft → release them (change your mind).
   panel.querySelectorAll<HTMLElement>('[data-unit-id]').forEach((el) => {
     const id = el.getAttribute('data-unit-id');
     if (!id) return;
-    if (pickedIds.has(id)) return;
-    if (!playerTurn) return;
-    el.addEventListener('click', () => cb.onPick(id));
+    const pickedBy = pickerByUnit.get(id) ?? null;
+    if (pickedBy === null) {
+      if (!playerTurn) return;
+      el.addEventListener('click', () => cb.onPick(id));
+    } else if (playerOnly && pickedBy === playerTeam) {
+      el.addEventListener('click', () => cb.onUnpick(id));
+    }
   });
 
   // Auto-draft toggle.
@@ -134,11 +142,11 @@ function progressHtml(draft: DraftState, playerTeam: Team): string {
 function statusLine(finished: boolean, playerTurn: boolean, autoMode: boolean, playerOnly = false): string {
   if (finished) {
     return playerOnly
-      ? '<strong>Squad set</strong> — review and confirm to start the season.'
+      ? '<strong>Squad set</strong> — review and confirm, or click a picked unit to swap them out.'
       : '<strong>Draft complete</strong> — review and confirm.';
   }
   if (autoMode) return 'Auto-drafting…';
-  if (playerOnly) return '<strong>Your pick.</strong> Click a unit to add them to your squad.';
+  if (playerOnly) return '<strong>Your pick.</strong> Click a unit to add them — or click a picked one to release them.';
   return playerTurn
     ? '<strong>Your pick.</strong> Click any unit in the pool.'
     : 'Opponent is picking…';
@@ -149,22 +157,26 @@ function poolHtml(
   pickerByUnit: Map<string, Team>,
   playerTeam: Team,
   _aiTeam: Team,
+  playerOnly: boolean,
 ): string {
   return draft.pool
-    .map((u) => poolCardHtml(u, pickerByUnit.get(u.id) ?? null, playerTeam))
+    .map((u) => poolCardHtml(u, pickerByUnit.get(u.id) ?? null, playerTeam, playerOnly))
     .join('');
 }
 
-function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team): string {
+export function poolCardHtml(u: Unit, pickedBy: Team | null, playerTeam: Team, playerOnly: boolean): string {
   const picked = pickedBy !== null;
   const byYou = pickedBy === playerTeam;
+  // In the player-only draft your own picks are clickable to release — flag them
+  // so CSS can show a "remove" affordance (pointer + ✕ on the tag).
+  const removable = playerOnly && byYou;
   const tag = !picked
     ? ''
     : byYou
-      ? '<span class="pick-tag you">YOU</span>'
+      ? `<span class="pick-tag you">YOU${removable ? ' ✕' : ''}</span>`
       : '<span class="pick-tag opp">OPP</span>';
-  const cls = ['pool-card', picked ? 'picked' : 'available'].join(' ');
-  // Trait chips with hover tooltips. v0.29.0 — 2 tactical traits + 1 personality.
+  const cls = ['pool-card', picked ? 'picked' : 'available', removable ? 'removable' : ''].filter(Boolean).join(' ');
+  // Trait chips with hover tooltips — one tactical trait + one personality.
   const tacticalChipsHtml = u.tacticalTraits.map((t) => traitSpan(t, 'skill')).join(' ');
   const personalityChipHtml = traitSpan(u.personality, 'personality');
   // Attribute bars: Pass H1 — pool cards show the 5 visible aggregates only,

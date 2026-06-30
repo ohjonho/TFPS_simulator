@@ -13,6 +13,7 @@ import { drawEngagements } from './drawEngagements.ts';
 import { drawDebugVision } from './drawDebugVision.ts';
 import { drawCardEffects } from './drawCardEffects.ts';
 import { drawRegionLabels } from './drawRegionLabels.ts';
+import { drawSiteLabels } from './drawSiteLabels.ts';
 import { hexKey } from '../game/vision.ts';
 import { COLORS } from '../game/config.ts';
 
@@ -40,6 +41,7 @@ export function render(
   previewRoutes: Record<string, HexCoord[]> | null = null,
   showRegionLabels = false,
   dragState: DragState = null,
+  showSiteLabels = false,
 ): void {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
@@ -53,6 +55,8 @@ export function render(
   // Pass D — region labels drawn after grid (so background) but before
   // anything player-actionable so they don't fight routes/units for attention.
   if (showRegionLabels) drawRegionLabels(ctx, state.map);
+  // Tutorial — faint "A SITE" / "B SITE" backdrop so a new manager learns the map.
+  if (showSiteLabels) drawSiteLabels(ctx, state.map);
   if (state.phase === 'resolution') {
     drawRoutes(ctx, state, state.playerTeam, showEnemiesPlanning);
   } else if (previewRoutes) {

@@ -117,7 +117,7 @@ const HOW_TO_PLAY = `
   <section>
     <h3>Resolution phase</h3>
     <ul>
-      <li>Watch the round play out tick by tick. Kill feed (bottom-left)
+      <li>Watch the round play out tick by tick. The <strong>Action Log</strong> (top-left)
         shows every shot, hit, plant / defuse / detonate, and the
         round-start strategy summary for both teams.</li>
       <li>Bottom bar: Play / Pause, speed 1× / 2× / 4×, Replay (re-runs the
@@ -160,7 +160,7 @@ const HOW_TO_PLAY = `
         as you go. See "The campaign" in the Glossary.</li>
       <li><strong>Draft</strong>: a single match — you and the AI snake-pick 5
         players each from a 14-unit pool (≥2 of each weapon). Drafted units carry
-        random attributes (40–60) + two tactical traits and a personality. The seed
+        random attributes (40–60) + one tactical trait and a personality. The seed
         in the right panel reproduces the same pool + AI picks.</li>
       <li><strong>Standard</strong> (testing): fixed four rifles + one sniper per
         team, all attributes at 50 — removes attribute / trait RNG so you can read
@@ -278,11 +278,11 @@ const GLOSSARY = `
     </ul>
   </section>
   <section>
-    <h3>Traits — 2 tactical + 1 personality per unit</h3>
-    <p>Every unit draws two distinct <strong>tactical traits</strong> from one pool
-      plus a single <strong>personality</strong>. Each gives small sub-attribute
-      bonuses; tactical traits also carry a combat or behaviour hook. Hover any chip
-      for the full description.</p>
+    <h3>Traits — 1 tactical + 1 personality per unit</h3>
+    <p>Every unit draws a single <strong>tactical trait</strong> from the pool below
+      plus one <strong>personality</strong>. Each gives small sub-attribute
+      bonuses; the tactical trait also carries a combat or behaviour hook. Hover any
+      chip for the full description.</p>
     <h4>Tactical (8)</h4>
     <ul class="glossary">
       <li><strong>Aggressor</strong> — lower bar to take a duel, never retreats,
@@ -388,6 +388,520 @@ const GLOSSARY = `
 // happened, not just what.
 
 const PATCH_NOTES = `
+  <section>
+    <h3>v0.100.0 — Morale has teeth, and a clearer draft</h3>
+    <ul>
+      <li><strong>Morale consequences.</strong> Let a player's morale bottom out and they become a
+        <strong>flight risk</strong>: mid-season, a beat surfaces it and you get a fight you can win —
+        a heart-to-heart or a personality-fitting intervention pulls them back; brush it off and they
+        stay on the edge. Neglect it all the way to season's end and they <strong>walk</strong> in an
+        epilogue — a roster hole you'll feel next season. Look after your people.</li>
+      <li><strong>League table now shows RD</strong> (round differential — rounds won minus rounds
+        lost, as a +/− figure), and it's the tiebreaker above raw rating.</li>
+      <li><strong>One tactical trait per player</strong> (down from two) — a single clear edge reads
+        cleaner than a muddled pair. The draft tutorial reflects it.</li>
+      <li><strong>Consistent draft card language.</strong> The "how to read a card" guide now uses the
+        exact same Weapon / Role / Hero chips as the cards themselves (same colours + hover), with
+        each role and hero broken out as its own bullet. Personality copy updated now that the
+        management layer reads it.</li>
+      <li><strong>Smoother opening.</strong> A short time-skip (and a gentle fade) now separates the
+        café opening from the tryouts, so they read as two scenes, not one.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.99.0 — The bye week, the playbook, and a tidier menu</h3>
+    <ul>
+      <li><strong>Week 5 — the bye week is now a real decision.</strong> With no match to play, you
+        lock in how the squad spends the week (anchored to the instinct you gave Sam in week 4). The
+        team reacts in character — by personality, mood, and your record — and the call lands as a
+        genuine <strong>trade-off</strong> (grind for sharper hands at the cost of morale, pull back
+        to recharge, split the difference, or drift and miss the chance). Then a Special Training
+        bootcamp.</li>
+      <li><strong>Guided playbook tutorial.</strong> The week the playbook opens, you're dropped
+        straight into the editor with a hands-on tour of Move, Watch, Route, Vision and saving — no
+        more being left to figure it out cold.</li>
+      <li><strong>Cleaner strategy menu.</strong> Your in-match menu is now just the core plays for
+        your side plus the plays you author yourself — the built-in advanced reads are gone from your
+        list (the AI still uses its full toolkit, and your scouting still reads it).</li>
+      <li><strong>Smarter scouting option.</strong> Remi's third focus is no longer "danger player"
+        (you're a coach, not a fragger) — it's now a game-plan read on how to exploit the opponent.</li>
+      <li><strong>Fixed:</strong> the Team stats button in the management header now opens (it was
+        rendering behind the screen).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.98.0 — Random events read the room</h3>
+    <ul>
+      <li><strong>Locker-room events react to who they land on.</strong> When an event is about a
+        specific player, it now reads differently depending on their personality — the Firebrand
+        grinding to be the best, the Analyst with a spreadsheet, the Stabilizer who'd never say a
+        word.</li>
+      <li><strong>...and to how the season's going.</strong> The same event carries a different
+        aside whether you're on a winning run, scraping even, or struggling — so the world reflects
+        your form, not just a fixed script.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.97.0 — Your players sound like themselves</h3>
+    <ul>
+      <li><strong>Personality-reactive story beats.</strong> In the first team meeting, players
+        speak in character — and if two share a personality, they now <em>play off each other</em>
+        (agree, one-up, collaborate) instead of repeating the same line.</li>
+      <li><strong>Sam talks about your squad.</strong> The post-match-1 and week-4 chats now name a
+        standout player and react to them — flavoured by their personality and your result — so the
+        story reflects the team you actually built.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.96.0 — Effects you can see, and a week-4 chat</h3>
+    <ul>
+      <li><strong>Events now show what they changed.</strong> After an event (and after a choice),
+        a "What changed" summary spells out the effects — squad stats ▲/▼, morale, or League
+        Points — so a beat's impact is never a mystery.</li>
+      <li><strong>Week 4: coffee with Sam.</strong> Before training, a personal check-in — ask how
+        he feels about the team (he reads your record) or about the shop and the developer's offer,
+        in any order. Then he flags the week-5 bye and asks what you want to do with it.</li>
+      <li><strong>Simpler strategy unlocks.</strong> The built-in menu now tops out at the six
+        basics plus Mind Games — Coordinated Lockdown and Rotate no longer auto-unlock. Beyond
+        that, you author your own plays.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.95.0 — Meet Remi, your analyst</h3>
+    <ul>
+      <li><strong>After match 1,</strong> you and Sam talk it over (win or loss) and land on a plan:
+        scout deeper, and start drawing up your own plays.</li>
+      <li><strong>Week 2 — the analyst arrives.</strong> A binder-toting teenager named Remi
+        ambushes you outside the café desperate to help. Take them on and you <strong>unlock
+        detailed scouting</strong> — pick what to focus on (their attack, their defense, or how to
+        game-plan their weak spot) and Remi delivers a sharper read on the Match Prep screen.</li>
+      <li><strong>The custom playbook opens here too</strong> — from week 2 you can author your own
+        strategies (the old tutorial pop-up is replaced by this scene).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.94.0 — Tryouts, the team meeting, and a season header</h3>
+    <ul>
+      <li><strong>The draft has a story around it now.</strong> Before picking, you address the
+        tryout room and learn how to read a player card; after, the squad's <strong>First Team
+        Meeting</strong> — where your highest-Leadership player kicks off the team's identity
+        (your old club-lean choice), and each player chimes in based on their personality.</li>
+      <li><strong>Reordered pre-season flow:</strong> opening → tryouts → card tutorial → draft →
+        team meeting → "how the season works" → first training. The "Welcome, Coach" briefing
+        now ends on <strong>Start the season</strong>.</li>
+      <li><strong>Management header.</strong> Across the season screens, a thin top bar shows the
+        week, your next opponent, League Points, and a <strong>Team stats</strong> button.</li>
+      <li><strong>No pro scout — just you and Sam.</strong> The opponent read is reframed as
+        amateur tape study from replays (a hired analyst can come later). And the team is now
+        named after the café: <strong>Pixel Perfect</strong>.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.93.0 — A proper opening</h3>
+    <ul>
+      <li><strong>New Season starts with a story.</strong> A click-to-advance opening cutscene
+        sets the stage: you and Sam watching the Worlds final at the café Pixel Perfect, the
+        shop's trouble, and the crazy idea to enter the circuit and save it.</li>
+      <li><strong>Your choices colour the scene</strong> — express your personality and your
+        dynamic with Sam. They don't change the path (you always build the team), but they're
+        remembered as hooks for later story beats.</li>
+      <li>(The old text-box season intro is gone; the menu button is now <strong>New Season</strong>.)</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.92.0 — Squad morale</h3>
+    <ul>
+      <li><strong>Your players have morale now.</strong> A win lifts the room, a loss stings,
+        and events can swing it. A confident squad holds its nerve under fire; a rattled one
+        wobbles — morale gives a small nudge to composure in-match.</li>
+      <li><strong>Read it before you play.</strong> Squad morale shows on Match Prep and per
+        player on Training day; the post-match screen tells you which way it moved.</li>
+      <li><strong>Events can cost or build morale</strong> — e.g. stepping in to clear locker-room
+        tension lifts the whole squad, while ignoring it to grind sours the mood.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.91.0 — Between-match events</h3>
+    <ul>
+      <li><strong>The locker-room weeks do something now.</strong> Those between-match beats
+        are real events — a scrim that sharpens your reads, a player grinding aim, a visiting
+        pro's clinic, a local sponsor chipping in — with small, lasting effects.</li>
+      <li><strong>Some events are decisions.</strong> A clinic or a player's rough patch asks
+        you to choose what to focus on, each option a different trade-off for the squad.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.90.0 — Spend your League Points</h3>
+    <ul>
+      <li><strong>Extra drilling on training day.</strong> On top of the free weekly session,
+        spend League Points on extra whole-squad sessions in any of the four tracks.</li>
+      <li><strong>Spread or stack — your call.</strong> Each extra session of the <em>same</em>
+        track that week costs more than the last, so drilling four different areas is cheaper
+        than hammering one — or you can save up. A real weekly allocation decision.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.89.0 — Playoffs</h3>
+    <ul>
+      <li><strong>Make the top 4, reach the bracket.</strong> Finish the regular season in a
+        playoff place and the season continues into a <strong>single-elimination bracket</strong>
+        — semifinal, then final. Your matches play out for real; the other ties are simulated.</li>
+      <li><strong>Reach the final to save the shop.</strong> Win your semifinal to make the final
+        (the shop survives), then win it all to be <strong>champion</strong>. Prize money scales
+        with how far you go (champion &gt; finalist &gt; semifinalist).</li>
+      <li><strong>Playoff matches still pay out</strong> League Points and experience — they carry
+        into next season. View the bracket between rounds; your seed and path are highlighted.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.88.0 — Clearer first match</h3>
+    <ul>
+      <li><strong>Sites are labelled in the tutorial.</strong> Faint <strong>A SITE</strong> /
+        <strong>B SITE</strong> markers show on the map during your first match, so the
+        walkthrough's "two sites" actually point at something.</li>
+      <li><strong>"Kill feed" is now the Action Log.</strong> Renamed throughout, and it's a
+        proper titled panel (top-left) that's visible from the start of the round — with a
+        note telling you what'll appear there — instead of an easy-to-miss little box.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.87.0 — It's a league now</h3>
+    <ul>
+      <li><strong>League standings.</strong> You're one of <strong>nine teams</strong> in a
+        round-robin — everyone plays everyone once. A real table tracks every team's record,
+        and your results move it (beat a rival, they drop). Check it any time via
+        <strong>📊 League table</strong> on Match Prep; your live rank shows there and on the
+        post-match screen.</li>
+      <li><strong>Top 4 make the playoffs.</strong> The season goal is now a <strong>top-4
+        finish</strong> to reach the playoff bracket — reaching the final saves the shop.
+        (The bracket itself arrives next update.)</li>
+      <li><strong>Your bye is the mid-season break.</strong> With nine teams, everyone sits out
+        one round — yours is the break, when the league plays on without you and the table
+        shifts. Your assistant coach explains the format after match 3.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.86.0 — League Points</h3>
+    <ul>
+      <li><strong>Win matches, earn League Points.</strong> Every match pays League Points —
+        more for a convincing win (4–0 beats 4–3), with a small consolation even in a loss.
+        They're the in-season currency for sharpening your squad (training spend lands next).</li>
+      <li><strong>No more per-match cash or weekly overhead.</strong> That felt like odd
+        bookkeeping — prize money now comes at the <strong>end of the season</strong> for your
+        final placement (the real "save the shop" payoff), not drip-fed each week.</li>
+      <li><strong>Sam's gift.</strong> After your first match Sam gives you <strong>one free
+        club upgrade</strong>; the bigger investment comes from end-of-season prize money.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.84.0 — Bigger draft, room to grow</h3>
+    <ul>
+      <li><strong>Draft from a pool of 12</strong> (was 8) — a real choice of squad,
+        with a rifle-weighted split and a guaranteed couple of snipers/shotguns.</li>
+      <li><strong>Change your mind mid-draft.</strong> Click a unit you've already
+        picked to release them back into the pool before confirming.</li>
+      <li><strong>Hover players on Training day</strong> to see their stats popover —
+        know who you're focusing before you commit the session.</li>
+      <li><strong>Week events are their own screen</strong> now, not a pop-up over the
+        map — room for the dialogue and choices richer events will carry.</li>
+      <li><strong>Rookies start lower.</strong> Fresh squads now generate as scrappy
+        amateurs rather than near-pros, leaving real headroom to grow across several
+        seasons of training. Match odds are unchanged — opponents start from the same
+        baseline, so this is about the growth arc, not difficulty.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.83.0 — Training confirm + flow fixes</h3>
+    <ul>
+      <li><strong>Training now has a confirm step.</strong> Clicking a track selects
+        it (highlighted); a Confirm button locks it in — no more accidental commits on
+        the first tap.</li>
+      <li><strong>Club upgrades moved to post-match-1.</strong> Sam reacts to your
+        first result and offers the investment — win or loss, each gets its own pitch.
+        The pre-season dashboard is now a squad overview only.</li>
+      <li><strong>Player names are hoverable on the squad overview</strong> — mouse
+        over any name to see that player's stats popover.</li>
+      <li><strong>Event screen no longer flashes the draft overlay</strong> when
+        dismissing between week beats.</li>
+      <li><strong>Tutorial text fixes:</strong> sites wording, spawns description,
+        "For this first match…" phrasing, Begin Round button targeted directly,
+        kill feed location corrected to top-left.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.82.0 — New plays, flagged</h3>
+    <ul>
+      <li><strong>Unlocked strategies are called out.</strong> When your squad's experience
+        opens new strategies (starting match two with Mind Games), the menu flags them
+        <strong>NEW</strong> with a note — read each one's description for what it's good for.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.81.0 — Guided first match</h3>
+    <ul>
+      <li><strong>A walkthrough on your first match.</strong> A short spotlight tour points
+        out the map and sites, your spawns, the strategy menu, Begin Round, and playback —
+        so the screen isn't a wall of unknowns.</li>
+      <li><strong>The first round pauses at first contact.</strong> The moment your squad
+        spots the enemy in round one, the sim halts with a heads-up — press play (bottom-left)
+        to watch the duel resolve. Just the once, to get you comfortable.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.80.0 — Know your players + a real shotcaller</h3>
+    <ul>
+      <li><strong>Hover any player to see their stats.</strong> In Match Prep (the leader
+        pick) and the Playbook roster, hovering a player pops their role, weapon, and five
+        ratings — no more guessing who's who.</li>
+      <li><strong>The in-game leader actually matters now.</strong> Your leader is a
+        shotcaller: <em>their</em> Leadership lifts the whole squad's coordination, so pick
+        your best communicator. A weak leader is a mild drag — choose well.</li>
+      <li><strong>Playbook waits for match two.</strong> The first match keeps it simple —
+        custom plays unlock right after, with a guided walkthrough.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.79.0 — Breakthrough moments</h3>
+    <ul>
+      <li><strong>Hitting an attribute tier is now a moment.</strong> When training (or
+        match experience) pushes your squad's average across 55, 65, or 75 in an area, a
+        coach beat calls it out — and tells you what it unlocked. Crossing a Game Sense tier
+        announces your new play count and route range; Discipline announces truer execution
+        under fire.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.78.0 — Drill a play to master it</h3>
+    <ul>
+      <li><strong>Set-Pieces can rehearse a specific play.</strong> Pick Set-Pieces training,
+        then choose one of your saved plays to drill. Each session raises its mastery
+        (undrilled → rehearsed → drilled → second nature), and a more-rehearsed play runs
+        truer under fire — its units break off the plan less often.</li>
+      <li><strong>Depth vs breadth.</strong> A rookie squad can drill one play until it's
+        reliable, even before their Discipline catches up — but a fully-mastered play still
+        can't quite match a veteran squad's all-round reliability. Master your signature, or
+        build a roster that runs anything.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.77.0 — Focus a player + Improvisation from matches</h3>
+    <ul>
+      <li><strong>Focus one player.</strong> On a training day you can pour the session into
+        a single player — they gain double, the rest gain half. But keep leaning on the same
+        player and they tire (the bonus shrinks); rest them and it recovers. Build a star, or
+        spread it — your call.</li>
+      <li><strong>Improvisation is earned in matches.</strong> There's no track for it — your
+        squad banks Composure (and Adaptability) just by playing. So a freshly-drilled team
+        that folds under pressure early will steady up as the season goes, which is when your
+        set plays start running true under fire.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.76.0 — Training days: your squad improves</h3>
+    <ul>
+      <li><strong>Each week opens with training.</strong> Pick one focus and the whole
+        squad sharpens that area: <em>Aim Training</em> (Mechanics), <em>Strategy &amp;
+        Tactics</em> (Game Sense — a deeper playbook), <em>Team-Building</em> (Leadership),
+        or <em>Set-Pieces</em> (Discipline). Each track shows the squad's current level so
+        you can shore up a weakness.</li>
+      <li><strong>Attributes carry across the season</strong> and feed straight into the
+        gates you've seen — train Game Sense to author more &amp; bolder plays, Discipline so
+        they're run as drawn. You can't max everything, so choose what the run needs.</li>
+      <li><strong>Improvisation is earned, not drilled</strong> — it grows from playing
+        matches under real pressure (coming next).</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.75.0 — Clearer playbook + honest match prep</h3>
+    <ul>
+      <li><strong>The Playbook explains itself.</strong> A “How custom plays work” panel
+        now sits at the top of the editor: <em>Game Sense</em> sets how many plays you can
+        keep and how elaborate a route each unit can run (with the actual thresholds), and
+        <em>Discipline</em> decides how faithfully they run it once the match starts.</li>
+      <li><strong>Match prep is a read, not a slot machine.</strong> The win-percentage is
+        gone — it had a single “best” combo, which made the calls meaningless. Instead you
+        get a plain outlook (Favored / Even / Tough) from team strength, and each call —
+        play style, team talk, leader — is now a genuine trade-off, not a free buff. Pick
+        what fits the matchup; the round-by-round reads still decide it.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.74.0 — Playbook legibility: who's who, and why</h3>
+    <ul>
+      <li><strong>Units read as players, not loadouts.</strong> In the Playbook editor
+        each unit now shows its handle initials (same as in-match) instead of R/S/G, with
+        a colour legend for the weapon. A new “Your units” strip lists each player's role,
+        weapon, Game Sense, and exactly what route they're cleared to run.</li>
+      <li><strong>Game Sense gates the playbook</strong> (it used to read Discipline). How
+        complex a play you can draw — and how many you can keep — now scales with your
+        squad's tactical smarts; how faithfully they then run it under fire is still
+        Discipline. Train Game Sense to widen what you can author.</li>
+      <li><strong>Clearer attributes.</strong> The sub-attribute details now group under
+        their parent (Mechanics / Game Sense / Discipline / Improvisation / Leadership) and
+        show each one's weight, so it's obvious what rolls into what.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.73.0 — Playbook gating: earn your authoring</h3>
+    <ul>
+      <li><strong>Authoring unlocks in week 2.</strong> From day one you can adapt the
+        basics, but drawing a play from scratch (the blank canvas) stays locked until a
+        guided tutorial in week 2 — framed around countering your scouted opponent.</li>
+      <li><strong>Squad discipline limits your playbook.</strong> How many set plays you
+        can keep scales with your roster's Discipline — a rookie squad maintains one and
+        masters it; a disciplined one keeps several.</li>
+      <li><strong>Routes are gated per unit.</strong> An undisciplined unit holds its
+        position only; more disciplined units can run one stop, then several, and the
+        steadiest can run full routes with lurks (wait + watch at each stop). Train
+        Discipline to widen what your squad can pull off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.72.0 — Season weeks: training days, events &amp; autosave</h3>
+    <ul>
+      <li><strong>The season runs in weeks.</strong> Each week now flows training day →
+        pre-match event → match → post-match event, across an 8-week season with a
+        mid-season break at the halfway point. (Training and events are placeholders for
+        now — the structure is in; the content lands next.)</li>
+      <li><strong>Events alternate with intent.</strong> Most weeks build to a scripted
+        beat with a result-reactive aftermath; the rest roll a random locker-room moment —
+        but never two random weeks in a row, and never three scripted ones, so the rhythm
+        stays varied.</li>
+      <li><strong>Autosave + Continue.</strong> A season now spans many sittings, so progress
+        saves automatically after each step. Pick up where you left off from <em>Continue</em>
+        on the main menu.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.71.0 — Playbook: smarter routes (waypoints that wait + watch)</h3>
+    <ul>
+      <li><strong>Sequential waypoints.</strong> In Route mode each click drops the next
+        waypoint in order, so a unit's flank reads left-to-right the way you draw it.</li>
+      <li><strong>Hold &amp; watch at a waypoint.</strong> Each waypoint can carry a <em>wait</em>
+        (ticks to hold there) and its own <em>watch</em> angle — so you can author real lurks and
+        baits: creep to a spot, watch a lane, hold a beat, then swing. As ever, discipline decides
+        how faithfully a unit runs it, and contact still pulls it into the fight.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.70.0 — Playbook: see paths, coverage, and dead ends</h3>
+    <ul>
+      <li><strong>Paths from spawn.</strong> Each unit's route from its spawn to its hold (through
+        any waypoints you drew) is now drawn on the map, so you can see how the play actually
+        unfolds — and a hold you can't reach gets a red ring.</li>
+      <li><strong>Vision overlay.</strong> Toggle <em>👁 Vision</em> to shade everything your
+        placed units can collectively see, given where they hold and what they watch. Dark gaps
+        are blind spots — an instant read on whether your angles cover the map.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.69.0 — Playbook: your real squad + editable plays</h3>
+    <ul>
+      <li><strong>Your actual loadout.</strong> The units you place are now your real squad —
+        including shotguns — instead of an assumed 4 rifles + 1 sniper, so a play is built for
+        the team that runs it (rifle R, sniper S, shotgun G).</li>
+      <li><strong>Edit saved plays.</strong> Hit <em>Edit</em> on any saved play to load it back
+        onto the map, rearrange it, and update it in place — no more delete-and-redo.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.68.0 — Playbook: author plays on the map</h3>
+    <ul>
+      <li><strong>The Playbook is now visual.</strong> Instead of picking regions from menus,
+        you author on the actual map: drag your five units onto the hexes they should hold
+        (<em>Move</em>), aim each one's view cone (<em>Watch</em>), and sketch a flank/lurk path
+        for them to take (<em>Route</em>). The old abstract editor is gone.</li>
+      <li><strong>Routes are run on discipline.</strong> A drawn route is a plan, not a rail —
+        a disciplined unit executes the flank faithfully, while a low-discipline one breaks off
+        and takes the direct line. So discipline (and who you put on a trick play) matters, and
+        units still react to contact instead of marching blindly. The coach reviews your map
+        plays just like any other.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.67.0 — Playbook: build a play from scratch</h3>
+    <ul>
+      <li><strong>Author from a blank slate.</strong> The Playbook now has a <em>＋ Blank slate</em>
+        option alongside the basics to adapt: start with five empty positions, set each one's
+        region, and add directives (hold an angle, commit a site, trade for an ally, peek &
+        retreat, read &amp; commit…) to compose a play entirely your own. The assistant coach
+        reviews it the same way, so a from-scratch play still gets a viability read.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.66.0 — rivals get smarter as the season goes on</h3>
+    <ul>
+      <li><strong>Early opponents play dumber.</strong> Your first opponents don't reliably
+        commit to their reads and barely counter your signature plays — room to learn the
+        ropes. Their tactical sharpness ramps up match by match, so by the back end of the
+        season they're committing their reads and punishing a one-note Playbook. (Raw skill
+        still comes from their roster; this is purely how well they use their brains.)</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.65.0 — match prep reads the rival's signature</h3>
+    <ul>
+      <li><strong>Prep scouting names their signature.</strong> When a rival is known for a
+        signature play, the match-prep scouting report now names it and tells you what to
+        counter it with — the same read the in-match Scout gives — instead of a raw label. The
+        Win Outlook stays a team-strength estimate; the matchup is yours to read round by round.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.64.0 — rival teams have signature plays</h3>
+    <ul>
+      <li><strong>Scout the enemy's playbook.</strong> From your third match on, some opponents
+        are known for a signature play of their own — a custom look they lean on. The Scout
+        names it, tells you what it does, and points out its softest matchup so you can counter
+        it, just like reading any other tendency.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.63.0 — opponents adapt to your signature play</h3>
+    <ul>
+      <li><strong>The AI reads your Playbook.</strong> Lean on a custom play across a match and
+        the opponent starts tilting its picks toward whatever counters it — the same matchup
+        the assistant coach measured. It's a soft adjustment, not a hard counter: your play
+        still wins its good matchups, but spamming one signature gets punished, so mixing your
+        looks matters. Only kicks in once you've authored and deployed a play.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.62.0 — Playbook: the assistant coach reviews your plays</h3>
+    <ul>
+      <li><strong>Save a play, get a read.</strong> When you save a play in the Playbook, an
+        assistant coach quietly scrims it in the background and comes back with a verdict —
+        is it viable, or a trap? — plus its character (what it beats, what beats it) and one
+        tip to shore up its softest matchup. Saving stays instant; the read lands a few
+        seconds later.</li>
+      <li>The coach gives you a <em>feel</em>, not a spreadsheet — no win-percentage table, on
+        purpose. Strategy is still a read: you decide when to deploy your play, the coach just
+        tells you what it's good and bad against.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.61.0 — Playbook: adapt &amp; save your own plays</h3>
+    <ul>
+      <li><strong>Author a play.</strong> Between matches, hit <em>📋 Playbook</em> on the
+        match-prep screen to clone any basic strategy and make it yours: retarget each slot's
+        region and switch its directives on or off, give it a name, and save. Your plays carry
+        through the season and show up in the round-by-round strategy menu alongside the
+        built-ins.</li>
+      <li>Saved plays run through the same engine as everything else, so a custom play behaves
+        exactly as authored — no special-casing. (A measured matchup readout for your plays is
+        coming next.)</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.60.0 — watch the site you're taking</h3>
+    <ul>
+      <li><strong>Attackers face their objective.</strong> An attacker that had reached its
+        site with no enemy in sight used to point its view cone back toward the enemy spawn —
+        across the map, away from the site it had just pushed into. Now, with no read on the
+        enemy, it watches the depth of the site it's attacking (where defenders hold), so it's
+        looking at the angle it actually has to clear instead of the wrong way.</li>
+    </ul>
+  </section>
   <section>
     <h3>v0.59.0 — get shot, fight back</h3>
     <ul>

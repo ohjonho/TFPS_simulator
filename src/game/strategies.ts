@@ -21,7 +21,7 @@
 // A/B) declare `variants[]`. The player picks the variant explicitly via the A/B
 // sub-button; the AI picks via the seeded RNG.
 
-import type { HexCoord, MapDefinition, Side, Unit, Weapon } from './types.ts';
+import type { HexCoord, MapDefinition, RouteStep, Side, Unit, Weapon } from './types.ts';
 import { neighbors, passableAt } from './pathfind.ts';
 import { STRATEGY_MODS } from './config.ts';
 import type { DirectiveSpec } from './directives.ts';
@@ -47,6 +47,15 @@ export type StrategySlot = {
   anchorOffset?: number;
   usePerimeterPath?: boolean;
   directives: DirectiveSpec[];
+  // Visual-play system (Stage 1) — exact-hex authoring from the map-canvas editor.
+  // `pinHex`: the precise hold target (overrides region centroid / holdTargeting).
+  // `watchHex`: the precise watch direction (synthesizes a hold_angle directive).
+  // `route`: waypoints to move through to reach the pin (synthesizes follow_route;
+  // last waypoint should be the pin). All optional; region-based slots are
+  // unaffected. Resolved in match.applyStrategies.
+  pinHex?: HexCoord;
+  watchHex?: HexCoord;
+  route?: RouteStep[];
 };
 
 // A variant is a complete slot list (one slot per actual unit on the team,
@@ -75,6 +84,18 @@ export type Strategy = {
   // strategy behind earned unlocks. NOTHING sets it today (the menu is fully
   // available); `availableStrategies` still filters on it so the seam is live.
   requiresUnlock?: boolean;
+  // Part 5 B0 — true on a PLAYER-AUTHORED / adapted custom play (registered via
+  // setCustomStrategies, persisted on SeasonState.customStrategies). Resolves
+  // through strategyById like any builtin so the sim + fingerprint harness treat
+  // it identically; the marker lets later phases (B2) decide whether AI opponents
+  // may auto-pick authored plays. Unused by sim logic today.
+  authored?: boolean;
+  // Part 5 B1b — measured matchup of this authored play vs the live opposing
+  // pool (defender-win% per opponent id), filled lazily in a background worker
+  // after authoring. The assistant-coach UI derives a qualitative read from it,
+  // and B2's counter-web / AI picker price the play from these numbers. Absent
+  // until measured; sim logic ignores it.
+  measured?: { matchups: Record<string, number>; seeds: number };
 };
 
 // --- Directive-spec authoring helpers (terse) ----------------------------
@@ -541,12 +562,35 @@ const BY_MAP: Record<MapDefinition['name'], Strategy[]> = {
   Foundryv4: [...ALL_STRATEGIES.filter((s) => s.id !== 'Pressure'), MID_CONTROL],
 };
 
+// Part 5 B0 — custom-strategy registry (the resolver seam). Player-authored /
+// adapted plays (persisted on SeasonState.customStrategies) are injected here so
+// strategyById / strategiesFor resolve them exactly like a builtin — without
+// threading state through the ~30 call sites. Mirrors the config.ts `*_OVERRIDE`
+// idiom (module-level mutable + setter). DETERMINISM: the registry must be set
+// deterministically BEFORE any resolution (buildSeasonMatch for live play, the
+// fingerprint wrapper for headless scoring); the same registry contents → same
+// results. Default empty ⇒ the sim is byte-identical to pre-B0 (the dormant case).
+let CUSTOM_STRATEGIES: Strategy[] = [];
+export function setCustomStrategies(list: readonly Strategy[]): void {
+  CUSTOM_STRATEGIES = list.map((s) => s); // shallow defensive copy of the array
+}
+export function clearCustomStrategies(): void {
+  CUSTOM_STRATEGIES = [];
+}
+export function customStrategies(): readonly Strategy[] {
+  return CUSTOM_STRATEGIES;
+}
+
 export function strategiesFor(side: Side, map: MapDefinition): Strategy[] {
-  return BY_MAP[map.name].filter((s) => s.side === side);
+  return [...BY_MAP[map.name], ...CUSTOM_STRATEGIES].filter((s) => s.side === side);
 }
 
 export function strategyById(id: string, side: Side, map: MapDefinition): Strategy | null {
-  return BY_MAP[map.name].find((s) => s.side === side && s.id === id) ?? null;
+  return (
+    BY_MAP[map.name].find((s) => s.side === side && s.id === id) ??
+    CUSTOM_STRATEGIES.find((s) => s.side === side && s.id === id) ??
+    null
+  );
 }
 
 // Middle passable hex of a region (deterministic). Falls back to the region's

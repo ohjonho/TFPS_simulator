@@ -364,14 +364,26 @@ export function setHoldTargetingOverride(v: boolean | null): void {
 // depth, capped) before a wall — staying near the intended angle but not blocked.
 // Affects the vision cone ⇒ what a unit sees ⇒ engagement, so it's measured like
 // any AI change (not purely cosmetic). Default on; override forces it for A/B.
+// objectiveFallback (Part 5 2a): when a unit has zero enemy info (no directive
+// angle, no tracked enemy, nothing suspected), the legacy fallback faces the
+// enemy SPAWN. For an arrived attacker that points the cone back across the map
+// instead of into the site it just took (the "faces NE not its NW objective"
+// case). On, an attacker with no read instead watches the depth of its committed
+// site (the back, where defenders anchor). Defenders keep the spawn watch (it
+// already faces the entry they defend). Pure / deterministic; own override for A/B.
 export const FACING = {
   wallAware: true,
   considerNearest: 3,
   sightDepthCap: 5,
+  objectiveFallback: true,
 } as const;
 export let FACING_WALL_AWARE_OVERRIDE: boolean | null = null;
 export function setFacingWallAwareOverride(v: boolean | null): void {
   FACING_WALL_AWARE_OVERRIDE = v;
+}
+export let FACING_OBJECTIVE_OVERRIDE: boolean | null = null;
+export function setFacingObjectiveOverride(v: boolean | null): void {
+  FACING_OBJECTIVE_OVERRIDE = v;
 }
 
 // --- Spawn placement -------------------------------------------------------
@@ -851,6 +863,136 @@ export const MIN_ROUND_TICKS_FOR_HOLD_END = 20;
 // uniform [0, AI_STRATEGY_EXPLORATION) is added on top of `1 + wins`.
 export const AI_STRATEGY_EXPLORATION = 2;
 
+// Part 5 B2.1 — matchup-aware counter bias. When the enemy (player) has a leaned
+// AUTHORED play with a measured matchup (play.measured), the AI softly tilts its
+// own pick toward the option that best counters it: each option's base weight is
+// multiplied by 1 + bias·(aiWinVsPlay − 50)/50 (clamped ≥ floor). SOFT by design
+// (a tilt, not an argmax) per the read-under-uncertainty meta — measure the tilt
+// and keep only if it's bounded. Inert when the player has no measured custom
+// lean ⇒ existing AI behavior + determinism unchanged. No new RNG draws.
+export const STRATEGY_COUNTER = {
+  enabled: true,
+  bias: 0.6,
+  floor: 0.05,
+} as const;
+export let STRATEGY_COUNTER_OVERRIDE: boolean | null = null;
+export function setStrategyCounterOverride(v: boolean | null): void {
+  STRATEGY_COUNTER_OVERRIDE = v;
+}
+
+// AI competence ramp (0–1) — how well a campaign opponent uses its smart tools
+// (the B2 counter to the player's signature + how reliably it commits its own
+// read/signature). Early-season opponents are "dumber" so a new manager can
+// learn; it scales to full over the opening matches. `competence(idx)` =
+// clamp(start + perMatch·idx + difficultyBase, min, 1). `difficultyBase` is the
+// hook for a future campaign-difficulty picker (Easy < 0, Hard > 0); 0 today.
+// Absent on a GameState ⇒ full strength, so standard/non-season play is untouched.
+export const AI_COMPETENCE = {
+  start: 0.2,        // match 1 (idx 0), before difficulty
+  perMatch: 0.16,    // +per match index → ~full by match 6
+  difficultyBase: 0, // future campaign-difficulty offset
+  min: 0,
+} as const;
+export let AI_COMPETENCE_OVERRIDE: number | null = null;
+export function setAiCompetenceOverride(v: number | null): void {
+  AI_COMPETENCE_OVERRIDE = v;
+}
+
+// Visual-play system (Stage 1) — the follow_route directive (authored flank/lurk
+// routes). `priority` sits above commit_site (70) so a route drives movement while
+// the unit complies; `reachRadius` is how close (hexes) the unit must get to the
+// current waypoint before advancing to the next. The route is gated by the normal
+// compliance roll, so discipline decides adherence; engage/retreat override it.
+export const FOLLOW_ROUTE = {
+  priority: 80,
+  reachRadius: 2,
+} as const;
+
+// Part 6 (season meta-loop) — playbook gating. The editor gates read GAME SENSE
+// (tactical understanding): the team average gates how many plays a squad can
+// keep; each unit's own Game Sense gates how elaborate a route it can be handed.
+// (Whether a unit then RUNS the play faithfully under fire is a separate axis —
+// Discipline, via the in-match compliance roll — which these don't touch.)
+// Thresholds are on the 0-100 attribute scale (draft baseline ~50, so a fresh
+// squad starts capped at one play + holds-only).
+export const PLAYBOOK_GATING = {
+  // team-average Game Sense ≥ minAvg → may keep `plays` saved plays.
+  capacity: [
+    { minAvg: 75, plays: 4 },
+    { minAvg: 65, plays: 3 },
+    { minAvg: 55, plays: 2 },
+    { minAvg: 0,  plays: 1 },
+  ],
+  // per-unit Game Sense → route allowance. Below `oneWaypoint` the unit holds
+  // only (no route); [oneWaypoint, multi) → 1 stop; [multi, full) → up to
+  // `multiMax`; ≥ full → unlimited stops + per-waypoint wait/watch (lurks/baits).
+  route: { oneWaypoint: 55, multi: 65, multiMax: 3, full: 75 },
+} as const;
+
+// Part 6 (season meta-loop) — training. Each weekly session drills ONE track,
+// adding `perSession` to every sub-attribute in that track across the squad
+// (the visible aggregate rises by the same amount, since aggregate weights sum
+// to 1). Tuned so consistently drilling one area clears the playbook breakpoints
+// (55/65/75) across an 8-week season without letting a squad max everything.
+// Improvisation has no track — it's earned in matches (MATCH_XP below).
+//
+// `focus` — the optional "focus one player" call: the chosen unit's gain is
+// multiplied by (1 + bonus·freshness) [2× at full freshness], the rest by
+// `othersMult` [half]. Repeating on the SAME player drains their freshness by
+// `decay`, so the bonus shrinks toward nothing; resting them (focusing someone
+// else, or a whole-squad session) recovers it by `recover`. So spamming one
+// player is strictly worse over time — spread the focus.
+export const TRAINING = {
+  perSession: 3,
+  focus: { bonus: 1.0, othersMult: 0.5, decay: 0.34, recover: 0.34 },
+  // R3 — extra whole-squad sessions bought with League Points on top of the free
+  // weekly session. The Nth extra of the SAME track this week costs
+  // `extraBaseCost + extraStepCost*(n-1)` (cross-track stays at base), so spreading
+  // across the four tracks is cheaper than stacking one — and a big stack is a
+  // valid-but-costly call vs saving. The escalation IS the soft cap (no hard limit);
+  // resets each week.
+  extraBaseCost: 12,
+  extraStepCost: 8,
+} as const;
+
+// Match experience — Improvisation is NOT trainable; the squad banks it by
+// playing matches under real pressure. Each completed match adds these to every
+// unit (Composure feeds the under-fire compliance roll, so a drilled-but-green
+// team firms up as the season goes). Applied in the match-end flow.
+export const MATCH_XP = {
+  composure: 2,
+  adaptability: 1,
+} as const;
+
+// Per-play mastery (3c) — drilling a specific authored play in Set-Pieces makes
+// THAT play execute more reliably: a flat bonus to its compliance roll. `maxBonusPp`
+// is the add at full mastery, deliberately modest so a fully-drilled rookie play
+// approaches but never beats a veteran squad's across-the-board reliability (their
+// breadth still wins). `perSession` = mastery gained per Set-Pieces drill (5 to max).
+export const MASTERY = {
+  perSession: 0.2,
+  maxBonusPp: 18,
+} as const;
+
+// In-game leader (Match Prep) — the chosen leader is a shotcaller: THEIR
+// Leadership lifts the whole squad's comms (trade coordination). Bonus per point
+// of the leader's Leadership above 50, applied to every unit, clamped — so a great
+// communicator clearly helps and a poor one is a mild drag (don't hand the call to
+// your worst). Ties the pick to the attribute (pick your best communicator).
+export const LEADER = {
+  teamCommsPerPoint: 0.25,
+  maxBonus: 10,
+  minBonus: -3,
+} as const;
+
+// Attribute breakpoints (3e) — when a team-average aggregate crosses one of these
+// tiers (from training or match XP), a one-time milestone beat announces it and
+// the capability it represents (Game Sense ⇒ more/bolder plays; Discipline ⇒
+// truer execution; the rest are flavor). Mirrors the playbook-gating tiers.
+export const BREAKPOINTS = {
+  tiers: [55, 65, 75],
+} as const;
+
 // --- Pass B: spike-plant mechanic + peeker's advantage -------------------
 // Plant: an alive attacker must remain on a plant hex (a_plant / b_plant)
 // for PLANT_TICKS contiguous ticks with no alive defender on the same site's
@@ -968,7 +1110,16 @@ export const POST_PLANT_PREFERRED_RANGE = { min: 4, max: 10 } as const;
 // LOADOUT_POOL + RANDOMIZE_ATTRIBUTES kept under their original names so
 // Standard mode + the draft generator both reuse them.
 export const LOADOUT_POOL: readonly Weapon[] = ['shotgun', 'rifle', 'sniper'];
-export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
+// Generation window for a fresh (rookie) unit's sub-attributes. Centered BELOW
+// the neutral 50 so a newly-drafted squad reads as scrappy amateurs, not pros —
+// this leaves real headroom for multi-season training growth (8 sessions/season
+// at TRAINING.perSession, plus match XP + upgrades + breakpoints). Combat math is
+// centered at 50 (aim etc. contribute only ±small pp around neutral) and BOTH the
+// player pool and the generated opponents draw from this same window, so lowering
+// it is balance-neutral by construction — it changes the absolute numbers + the
+// growth arc, not the per-match odds. Opponents regenerate at this baseline each
+// season, so a trained squad genuinely outgrows the circuit over the campaign.
+export const RANDOMIZE_ATTRIBUTES = { min: 32, max: 48 } as const;
 
 // --- Pass G: draft phase --------------------------------------------------
 // Pool of N units shared between player and AI; snake-pick 3 each, 2 leftovers
@@ -978,16 +1129,92 @@ export const RANDOMIZE_ATTRIBUTES = { min: 40, max: 60 } as const;
 // before accepting whatever the pool ended up with.
 export const DRAFT = {
   poolSize: 14,
-  // Season (campaign) draft is player-only — a smaller pool the player picks
-  // their whole squad from (5 of 8), no AI co-draft. Kept deliberately small so
-  // a new manager isn't overwhelmed at the start of the campaign.
-  seasonPoolSize: 8,
+  // Season (campaign) draft is player-only — a pool the player picks their whole
+  // squad from (5 of 12), no AI co-draft. Sized so there's a real choice (and a
+  // few left behind) without overwhelming a new manager. POOL_BIAS keeps it
+  // rifle-weighted; minPerWeapon guarantees ≥2 sniper/shotgun for variety.
+  seasonPoolSize: 12,
   picksPerTeam: 5,
   // 'P' = player, 'A' = AI. Resolved to actual team identities by startDraft
   // using the player team. 10-pick snake (5 each): P-A-A-P-P-A-A-P-P-A.
   snakeOrder: ['P', 'A', 'A', 'P', 'P', 'A', 'A', 'P', 'P', 'A'] as readonly ('P' | 'A')[],
   minPerWeapon: 2,
   maxComposeRetries: 32,
+} as const;
+
+// --- Season economy (v1 management layer) ---------------------------------
+// TWO currencies that never touch (grounded in real amateur-FPS-league economics
+// — no per-match cash; prize money only at season's end for final placement):
+//   • League Points (LP) — the IN-SEASON currency. Earned by match results,
+//     spent on training/development (R3). The currency that drives weekly
+//     decisions.
+//   • Club Funds ($) — a season-END placement prize only (R2 makes it
+//     standings-based); reinvested in real-world club upgrades between seasons.
+// Neither LP nor money ever touches the sim/RNG, so determinism is unaffected.
+export const ECONOMY = {
+  // League Points earned per match (round games are first-to-4, so the winner
+  // always has 4). Win = base + margin×(your rounds − their rounds); loss = a
+  // small consolation (base + per round you won) so a rough patch still feeds
+  // the management layer. 4-0 win = 28, 4-3 win = 22; 3-4 loss = 9, 0-4 loss = 3.
+  leaguePoints: {
+    winBase: 20,
+    winMarginPerRound: 2,
+    lossBase: 3,
+    lossPerRound: 2,
+  },
+  // Club Funds — end-of-season prize by PLAYOFF outcome (R2d). Reaching the final
+  // (finalist or champion) saves the shop. `missed` = didn't make the top-4 bracket.
+  playoffPrize: { champion: 6000, finalist: 3500, semifinalist: 1500, missed: 0 },
+} as const;
+
+// --- Morale (Phase 4) -----------------------------------------------------
+// A small per-player morale (0–100, neutral 50). It's the currency events trade
+// in AND the match-result ripple (win lifts the room, a loss stings). At the
+// extremes it nudges Composure a little — so a confident squad holds the plan and
+// a rattled one wobbles — bounded small so it textures, not dominates. Neutral 50
+// → 0 nudge, so a fresh season is unchanged until morale actually moves.
+export const MORALE = {
+  start: 50,
+  winDelta: 6,
+  lossDelta: -5,
+  composurePerPoint: 0.1, // composure delta = (morale − 50) × this …
+  composureMax: 5,        // … clamped to ±this
+} as const;
+
+// Morale consequences — a player whose morale falls far enough becomes a FLIGHT
+// RISK: mid-season a story beat surfaces it (a fight you can win — a successful
+// intervention lifts their morale clear of it), and at season's end anyone still
+// below `leave` walks (an epilogue beat; narrative for now, a hook for the future
+// roster-lifecycle layer). Thresholds are personality-shaded so departures read as
+// character, not RNG. No raw numbers ever reach the player.
+export const FLIGHT_RISK = {
+  trigger: 30,        // base morale below which a player is at risk mid-season
+  leave: 22,          // still below this at season end → they leave
+  retentionLift: 22,  // morale a successful intervention restores
+  // Additive threshold offset by personality (higher ⇒ wobbles more readily; the
+  // Stabilizer is the loyal glue and needs to fall much further before it bites).
+  persona: { Firebrand: 4, Catalyst: 2, Analyst: 0, Stabilizer: -12 } as Record<string, number>,
+  losingBump: 5,      // Firebrand: extra readiness to walk when the team is losing
+  lowRoomBump: 4,     // Catalyst: extra readiness when the whole room's morale is low
+  lowRoomBelow: 40,   // … "low room" = team morale under this
+  maxLeavers: 2,      // cap end-of-season departures so a bad run can't wipe the roster
+} as const;
+
+// --- League (v1 economy R2) -----------------------------------------------
+// A 9-team single round-robin: you + your 8 scheduled rivals. Everyone plays
+// everyone once over 9 rounds, byeing once; the player's bye is the mid-season
+// break. The fixture math is CONSTANT (the player sits at the index whose bye is
+// the middle round), so standings are fully derived from existing SeasonState —
+// no new stored fields. Top `playoffTeams` qualify for the playoff bracket (R2d).
+export const LEAGUE = {
+  teams: 9,                 // you + 8 rivals
+  playerTeamIndex: 2,       // chosen so the player byes round 4 (the middle of 0..8)
+  byeRound: 4,              // = the mid-season break
+  playoffTeams: 4,          // top 4 make the playoffs
+  // Rival-vs-rival LIGHT sim (a seeded coin-flip, NOT a real match): P(A beats B)
+  // = 0.5 + k·(ratingA − ratingB), clamped — keeps upsets possible.
+  ratingToWinProbK: 0.06,
+  winProbClamp: { min: 0.15, max: 0.85 },
 } as const;
 
 // --- Pass 8: cards (spec §15) --------------------------------------------
@@ -1187,3 +1414,18 @@ export const REGION_LABEL = {
 
 // 'r' / 'R' toggles the region-name overlay (Pass D).
 export const REGION_LABEL_KEY = 'r';
+
+// Low-opacity "A SITE" / "B SITE" labels drawn on the bomb sites. Shown during
+// the tutorial match so a new manager can map the lettered sites to the map (the
+// walkthrough's "two sites" step refers to them). Bigger + fainter than the
+// region-name overlay so it reads as a backdrop, not clutter.
+export const SITE_LABEL = {
+  font: '600 17px ui-sans-serif, system-ui, sans-serif',
+  color: 'rgba(255, 255, 255, 0.20)',
+  outlineColor: 'rgba(0, 0, 0, 0.28)',
+  outlineWidth: 3,
+  sites: [
+    { region: 'a_site', text: 'A SITE' },
+    { region: 'b_site', text: 'B SITE' },
+  ] as readonly { region: string; text: string }[],
+} as const;

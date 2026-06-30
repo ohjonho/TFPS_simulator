@@ -16,6 +16,7 @@
 
 import type { Attributes, Unit, VisibleAttributes } from '../game/types.ts';
 import { aggregateVisible } from '../game/attributes.ts';
+import { ATTRIBUTES } from '../game/config.ts';
 
 // HTML-escape strings stuffed into title="..." tooltips.
 function esc(s: string): string {
@@ -76,17 +77,17 @@ const SUB_ROWS: readonly SubRow[] = [
     desc: 'Widens the vision cone (±20°) and adjusts team ghost duration.' },
   { key: 'mapIQ',          label: 'Map IQ',          group: 'Game Sense',    active: true,
     desc: 'Cover-seek search radius when settling into hold (0–2 hex).' },
-  // Discipline
-  { key: 'tenacity',       label: 'Tenacity',        group: 'Discipline',    active: true,
-    desc: 'Drives the per-tick strategy-compliance roll (high Tenacity = unit stays on plan under fire).' },
+  // Discipline (single sub — the aggregate is this attribute 1:1)
+  { key: 'tenacity',       label: 'Discipline',      group: 'Discipline',    active: true,
+    desc: 'Drives the per-tick strategy-compliance roll (high Discipline = unit stays on plan under fire).' },
   // Improvisation
   { key: 'composure',      label: 'Composure',       group: 'Improvisation', active: true,
     desc: 'Scales last-alive HR/HS bonus (with or without Clutch trait).' },
   { key: 'adaptability',   label: 'Adaptability',    group: 'Improvisation', active: false,
     desc: 'Quality of off-plan fallback decisions — planned, not yet wired.' },
-  // Leadership
-  { key: 'comms',          label: 'Comms',           group: 'Leadership',    active: true,
-    desc: 'Team-trade hit-rate bonus when a teammate fired recently (±12pp at the tails); high Leadership converts trades.' },
+  // Leadership (single sub — the aggregate is this attribute 1:1)
+  { key: 'comms',          label: 'Leadership',      group: 'Leadership',    active: true,
+    desc: 'Team-trade hit-rate bonus when a teammate fired recently (±12pp at the tails); converts trades.' },
 ];
 
 // --- HTML helpers --------------------------------------------------------
@@ -108,19 +109,33 @@ function visibleBarsHtml(attrs: VisibleAttributes): string {
   }).join('');
 }
 
+// Map a sub-row's display group → its aggregation key, so we can show each sub's
+// weight in its parent aggregate (makes the sub→aggregate linkage explicit).
+const GROUP_KEY: Record<SubRow['group'], keyof typeof ATTRIBUTES.aggregation> = {
+  'Mechanics': 'mechanics', 'Game Sense': 'gameSense', 'Discipline': 'discipline',
+  'Improvisation': 'improvisation', 'Leadership': 'leadership',
+};
+const GROUP_ORDER: readonly SubRow['group'][] = ['Mechanics', 'Game Sense', 'Discipline', 'Improvisation', 'Leadership'];
+
 function subBarsHtml(attrs: Attributes): string {
-  return SUB_ROWS.map(({ key, label, desc, active }) => {
-    const val = attrs[key];
-    const cls = active ? 'attr-row v0 sub' : 'attr-row v1 sub';
-    const badge = active ? '' : '<span class="v1-tag">planned</span>';
-    const pct = Math.max(0, Math.min(100, val));
-    return `
-      <div class="${cls}" title="${esc(desc)}">
-        <span class="attr-label">${label}${badge}</span>
-        <span class="attr-bar"><span class="attr-fill" style="width:${pct}%"></span></span>
-        <span class="attr-val">${val}</span>
-      </div>
-    `;
+  return GROUP_ORDER.map((group) => {
+    const weights = ATTRIBUTES.aggregation[GROUP_KEY[group]] as Record<string, number>;
+    const rows = SUB_ROWS.filter((r) => r.group === group).map(({ key, label, desc, active }) => {
+      const val = attrs[key];
+      const cls = active ? 'attr-row v0 sub' : 'attr-row v1 sub';
+      const badge = active ? '' : '<span class="v1-tag">planned</span>';
+      const w = weights[key as string];
+      const wpct = w != null ? `<span class="attr-weight">${Math.round(w * 100)}%</span>` : '';
+      const pct = Math.max(0, Math.min(100, val));
+      return `
+        <div class="${cls}" title="${esc(desc)}">
+          <span class="attr-label">${label}${badge}${wpct}</span>
+          <span class="attr-bar"><span class="attr-fill" style="width:${pct}%"></span></span>
+          <span class="attr-val">${val}</span>
+        </div>`;
+    }).join('');
+    // Header names the parent aggregate; the weights show how its subs roll up.
+    return `<div class="attr-subgroup">${esc(group)}</div>${rows}`;
   }).join('');
 }
 

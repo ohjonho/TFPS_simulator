@@ -60,20 +60,27 @@ function strategyMenuHtml(state: GameState, side: Side): string {
   // H3 — show baseline + roster-unlocked strategies only.
   const teamUnits = state.units.filter((u) => u.team === state.playerTeam);
   let options = availableStrategies(teamUnits, side, state.map);
-  // Campaign progressive unlock: the season opens on the basics and unlocks the
-  // advanced reads over its first matches (season.unlockedStrategiesForMatch).
+  // Campaign: the player's menu is the basics + their own authored plays
+  // (playerStrategyIds). Falls back to unlockedStrategyIds for non-season callers;
   // null/absent = no restriction (standard / draft / fully-unlocked season).
-  const unlocked = state.unlockedStrategyIds;
+  const unlocked = state.playerStrategyIds !== undefined ? state.playerStrategyIds : state.unlockedStrategyIds;
   if (unlocked) {
     const allow = new Set(unlocked);
-    const filtered = options.filter((s) => allow.has(s.id));
+    // B1 — player-authored plays are always offered (the manager built them on
+    // purpose); the unlock ramp only gates the built-in advanced reads.
+    const filtered = options.filter((s) => allow.has(s.id) || s.authored);
     if (filtered.length > 0) options = filtered;
   }
   const sel = state.playerStrategy;
   const variantChoice = state.playerVariantChoice;
+  // Onboarding — strategies that unlocked this match get a NEW flag + a note.
+  const newly = new Set(state.newlyUnlockedStrategyIds ?? []);
+  const anyNew = options.some((s) => newly.has(s.id));
   const items = options.map((s) => {
     const isSelected = sel === s.id;
-    const cls = isSelected ? 'strategy selected' : 'strategy';
+    const isNew = newly.has(s.id);
+    const cls = `${isSelected ? 'strategy selected' : 'strategy'}${isNew ? ' is-new' : ''}`;
+    const newBadge = isNew ? '<span class="s-new">NEW</span>' : '';
     let variantRow = '';
     if (isSelected && s.variants.length > 1) {
       const buttons = s.variants.map((_v, idx) => {
@@ -86,9 +93,13 @@ function strategyMenuHtml(state: GameState, side: Side): string {
       variantRow = `<div class="variant-row">${hint}${buttons}</div>`;
     }
     return `<button class="${cls}" data-strategy="${s.id}">
-      <div class="s-name">${s.name}</div>
+      <div class="s-name">${s.name}${newBadge}</div>
       <div class="s-desc">${s.description}</div>
     </button>${variantRow}`;
   }).join('');
-  return `<h3>Strategy (${side}) — required</h3><div class="strategy-menu">${items}</div>`;
+  // "Why unlocked" note when the squad's experience opened new plays this match.
+  const newNote = anyNew
+    ? '<div class="strategy-newnote">Your squad\'s more experienced — <strong>new plays</strong> are available. Read what each is good for below.</div>'
+    : '';
+  return `<h3>Strategy (${side}) — required</h3>${newNote}<div class="strategy-menu">${items}</div>`;
 }

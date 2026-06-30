@@ -19,7 +19,9 @@ import {
 } from './match.ts';
 import { pickAiStrategy } from './aiOpponent.ts';
 import { ROUND_TICK_LIMIT, MATCH_ROUND_COUNT, MATCH_WIN_SCORE } from './config.ts';
-import { regionCentroid } from './strategies.ts';
+import {
+  regionCentroid, strategiesFor, setCustomStrategies, customStrategies, type Strategy,
+} from './strategies.ts';
 
 export type SkirmishOpts = {
   // Per-unit attribute overrides, or a blanket override per team (A/B tests).
@@ -558,4 +560,77 @@ export function runStrategyFingerprint(
     avgTicks: Math.round((totalTicks / Math.max(1, rounds)) * 10) / 10,
     deathZonePct,
   };
+}
+
+// ---- Custom-play fingerprint (Part 5 B0 — the Playbook spine) ---------------
+//
+// Score a player-authored / adapted Strategy against the live opposing pool so it
+// enters the game with a MEASURED matchup the counter-web / Scout / AI can price
+// — never as an unmeasured balance hole. Registers the play (+ any sibling
+// authored plays it may reference via ally-slot directives) into the resolver,
+// runs the existing per-round fingerprint for the rich aggregate, ALSO emits an
+// explicit per-opponent defender-win row (the matchup matrix), then RESTORES the
+// prior registry so global state never leaks. Deterministic (fixed seeds; the
+// registry is set before any resolution).
+
+export type CustomFingerprint = {
+  fingerprint: StrategyFingerprint;
+  // opponent strategy id → defender win% (runStrategyMatrix's convention). If the
+  // play is a DEFENSE, higher = the play winning; if an ATTACK, higher = it losing.
+  matchups: Record<string, number>;
+};
+
+// Lean scorer: per-opponent DEFENDER-win% for a play vs the live opposing pool,
+// over N seeds. Registers the play (+ siblings) so it resolves, restores the
+// registry after. This is the cheap single-loop path the Playbook's background
+// "assistant coach" review runs in a Web Worker (no plant/death aggregates) and
+// the data B2 prices custom plays from. Deterministic (fixed seeds).
+export function measureMatchups(
+  strat: Strategy,
+  mapName: MapDefinition['name'] = 'Foundryv2',
+  seeds = 12,
+  siblings: readonly Strategy[] = [],
+): Record<string, number> {
+  const prev = customStrategies().map((s) => s);
+  setCustomStrategies([...siblings.filter((s) => s.id !== strat.id), strat]);
+  try {
+    const map = buildInitialState(mapName, 'standard').map;
+    const oppSide: Side = strat.side === 'defender' ? 'attacker' : 'defender';
+    const opponents = strategiesFor(oppSide, map).map((s) => s.id);
+    const matchups: Record<string, number> = {};
+    for (const opp of opponents) {
+      let defWins = 0;
+      for (let i = 0; i < seeds; i++) {
+        const r = runStrategyRound(7000 + i, {
+          defenderStrategy: strat.side === 'defender' ? strat.id : opp,
+          attackerStrategy: strat.side === 'attacker' ? strat.id : opp,
+          mapName,
+        });
+        if (r.winner === 'defenders') defWins++;
+      }
+      matchups[opp] = Math.round((defWins / seeds) * 1000) / 10;
+    }
+    return matchups;
+  } finally {
+    setCustomStrategies(prev); // never leak registry state across calls
+  }
+}
+
+export function fingerprintStrategy(
+  strat: Strategy,
+  mapName: MapDefinition['name'] = 'Foundryv2',
+  seeds = 20,
+  siblings: readonly Strategy[] = [],
+): CustomFingerprint {
+  const prev = customStrategies().map((s) => s); // snapshot to restore
+  setCustomStrategies([...siblings.filter((s) => s.id !== strat.id), strat]);
+  try {
+    const map = buildInitialState(mapName, 'standard').map;
+    const oppSide: Side = strat.side === 'defender' ? 'attacker' : 'defender';
+    const opponents = strategiesFor(oppSide, map).map((s) => s.id);
+    const fingerprint = runStrategyFingerprint(strat.side, strat.id, opponents, seeds, mapName);
+    return { fingerprint, matchups: measureMatchups(strat, mapName, seeds, siblings) };
+  } finally {
+    setCustomStrategies(prev); // never leak registry state across calls
+  }
 }

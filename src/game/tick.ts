@@ -65,6 +65,8 @@ import {
   DEFENSIVE_COLLAPSE,
   FACING,
   FACING_WALL_AWARE_OVERRIDE,
+  FACING_OBJECTIVE_OVERRIDE,
+  FOLLOW_ROUTE,
   DEFUSE_TICKS,
   DETONATION_TICKS,
   FIRE_RATE,
@@ -136,6 +138,7 @@ export function stepTick(state: GameState): GameState {
   // the cone into an adjacent wall) when enabled; else the raw nearest snap.
   // NOT used for the turn-on-hit snap (that faces a known shooter directly).
   const wallAwareFacing = FACING_WALL_AWARE_OVERRIDE ?? FACING.wallAware;
+  const objectiveFallbackFacing = FACING_OBJECTIVE_OVERRIDE ?? FACING.objectiveFallback;
   const faceToward = (from: HexCoord, to: HexCoord): Facing =>
     wallAwareFacing ? bestFacingToward(from, to, state.map) : nearestFacing(from, to);
 
@@ -685,7 +688,13 @@ export function stepTick(state: GameState): GameState {
           // Using the belief beats the coarse spawn-CENTRE, which points an
           // off-centre unit at the wrong lane (the "faces NE not NW" case).
           const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
-          const fallback = susp ?? approach ?? midCentroid(state);
+          // 2a — zero enemy info: an attacker watches its committed-site depth
+          // (the back of the site, where defenders anchor) before the generic
+          // enemy-spawn bearing, so an arrived attacker faces into the site it
+          // took rather than back across the map. Defenders → null (spawn-watch
+          // already faces the entry they defend).
+          const objective = objectiveFallbackFacing ? objectiveDepthFacing(u, state) : null;
+          const fallback = susp ?? objective ?? approach ?? midCentroid(state);
           if (fallback && !sameHex(fallback, u.pos)) {
             u.facing = faceToward(u.pos, fallback);
           }
@@ -723,9 +732,13 @@ export function stepTick(state: GameState): GameState {
         && !isWallHex(state.map, directiveFacing)
         && !(approach && holdAngleBehindApproach(u.pos, directiveFacing, approach));
       const susp = wallAwareFacing ? nearestHex(u.pos, suspectedByTeam[u.team]) : null;
+      // 2a — see the movement-block note: objective-depth watch for an attacker
+      // with zero enemy info, between the suspected-enemy read and the spawn watch.
+      const objective = objectiveFallbackFacing ? objectiveDepthFacing(u, state) : null;
       const threat = (useDirective ? directiveFacing : undefined)
         ?? state.tracking[u.id]?.lastKnownHex
         ?? susp
+        ?? objective
         ?? approach
         ?? midCentroid(state);
       if (threat && !sameHex(threat, u.pos)) {
@@ -748,6 +761,26 @@ export function stepTick(state: GameState): GameState {
       mode === 'engaged'
         ? (engage.engage ? 0 : prevAi.engageStickyTicks + 1)
         : 0;
+    // Visual-play — advance the route waypoint once the unit reaches the current
+    // one AND has held it for the step's wait (position-based ⇒ deterministic;
+    // independent of whether the directive fired this tick, so a compliance-skipped
+    // tick doesn't stall it).
+    let routeIdx = prevAi.routeIdx ?? 0;
+    let routeWaitTicks = prevAi.routeWaitTicks ?? 0;
+    for (const d of u.directives ?? []) {
+      if (d.kind !== 'follow_route') continue;
+      if (routeIdx < d.route.length) {
+        const step = d.route[routeIdx];
+        if (hexDistance(u.pos, step.hex) <= FOLLOW_ROUTE.reachRadius) {
+          routeWaitTicks += 1;
+          if (routeWaitTicks > (step.waitTicks ?? 0)) { routeIdx += 1; routeWaitTicks = 0; }
+        } else {
+          routeWaitTicks = 0;
+        }
+      }
+      break;
+    }
+
     newAi[u.id] = {
       mode,
       firingTarget,
@@ -764,6 +797,8 @@ export function stepTick(state: GameState): GameState {
       // stale value inert, so no explicit clear is needed.
       shotReactUntil: prevAi.shotReactUntil,
       shooterHex: prevAi.shooterHex,
+      routeIdx,
+      routeWaitTicks,
     };
   }
 
@@ -1452,6 +1487,44 @@ function enemySpawnForSide(unit: Unit, state: GameState): HexCoord | null {
   const spawns = state.map.spawns[oppositeSpawnKey];
   if (spawns.length === 0) return null;
   return spawns[Math.floor(spawns.length / 2)];
+}
+
+// 2a — committed-site-depth facing. An attacker that has arrived with zero enemy
+// info should watch its objective (the back of the site it's taking, where
+// defenders anchor) rather than the enemy spawn across the map (the "faces NE not
+// its NW objective" case). Returns the deepest non-wall cell of the nearest plant
+// site relative to the attacker's OWN spawn (= the angle it must clear); null for
+// defenders (their enemy-spawn watch already faces the entry they defend) or when
+// undeterminable. Pure / deterministic (ties → lower row, then col).
+function objectiveDepthFacing(unit: Unit, state: GameState): HexCoord | null {
+  if (state.teamSide[unit.team] !== 'attacker') return null;
+  // Committed site = the plant site whose centroid is nearest the unit (where it
+  // pushed to). Mirrors nearestPlantTarget, but we keep the site key for its region.
+  let siteKey: 'A' | 'B' | null = null;
+  let bestD = Infinity;
+  for (const site of ['A', 'B'] as const) {
+    const hexes = state.map.sites[site].plantHexes;
+    if (hexes.length === 0) continue;
+    const c = hexes[Math.floor(hexes.length / 2)];
+    const d = hexDistance(unit.pos, c);
+    if (d < bestD) { bestD = d; siteKey = site; }
+  }
+  if (!siteKey) return null;
+  const region = state.map.regions[siteKey === 'A' ? 'a_site' : 'b_site'];
+  if (!region || region.length === 0) return null;
+  const ownSpawns = state.map.spawns.attackers; // unit is attacker-side here
+  if (ownSpawns.length === 0) return null;
+  const home = ownSpawns[Math.floor(ownSpawns.length / 2)];
+  let best: HexCoord | null = null;
+  let far = -Infinity;
+  for (const h of region) {
+    if (h.row < 0 || h.row >= state.map.height || h.col < 0 || h.col >= state.map.width) continue;
+    if (state.map.grid[h.row][h.col] === 'wall') continue;
+    const d = hexDistance(home, h);
+    if (best === null || d > far) { far = d; best = h; }
+    else if (d === far && (h.row < best.row || (h.row === best.row && h.col < best.col))) best = h;
+  }
+  return best;
 }
 
 // A hold-angle that sits BEHIND the unit relative to the enemy-approach axis

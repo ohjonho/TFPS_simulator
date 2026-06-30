@@ -226,7 +226,19 @@ export type Directive =
   // bite through: showing strength at one site routes the reader into the
   // other. Used only by the "reading" attacks (Control, attacker Mind Games);
   // direct attacks (Rush/Execute) ignore it.
-  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number };
+  | { kind: 'read_and_commit'; priority: number; plantAHex: HexCoord; plantBHex: HexCoord; siteARegions: string[]; siteBRegions: string[]; margin: number }
+  // Visual-play system — move through an authored sequence of waypoints (the
+  // flank/lurk/trick-play route). The unit pathfinds BETWEEN waypoints and is
+  // gated by the compliance roll (so discipline decides how faithfully the route
+  // is run); engage/retreat still override it, so units keep reacting — it's a
+  // suggestion, not puppeteering. Each step can carry its own watch angle (faced
+  // on arrival/while waiting) and a wait timer (ticks to hold before advancing) —
+  // the lurk/bait lever. Progress is AiState.routeIdx + routeWaitTicks.
+  | { kind: 'follow_route'; priority: number; route: RouteStep[] };
+
+// One authored waypoint: a hex to reach, an optional watch angle to face on
+// arrival, and an optional hold (ticks to wait there before advancing).
+export type RouteStep = { hex: HexCoord; watchHex?: HexCoord; waitTicks?: number };
 
 // What a directive evaluator returns when it applies this tick. tick.ts
 // merges these with the legacy default-behavior tree (directive wins on each
@@ -396,6 +408,14 @@ export type AiState = {
   // can fire) instead of walking on. Absent until first shot at. Deterministic.
   shotReactUntil?: number;
   shooterHex?: HexCoord | null;
+  // Visual-play system (Stage 1) — index of the next unreached waypoint on the
+  // unit's follow_route directive. Advances when the unit gets within
+  // FOLLOW_ROUTE.reachRadius of the current waypoint; ≥ route length ⇒ route done
+  // (the unit holds at its pin). Absent ⇒ 0 (start of the route).
+  routeIdx?: number;
+  // Ticks waited at the current route waypoint (per-waypoint holds); resets on
+  // advance or when the unit isn't at the waypoint. Absent ⇒ 0.
+  routeWaitTicks?: number;
 };
 
 // Range band by hex distance (spec §4.3). Thresholds live in config.RANGE.
@@ -544,6 +564,13 @@ export type GameState = {
   // null = no restriction (standard / draft / fully-unlocked season). Set by
   // season.buildSeasonMatch; carries across rounds via the startRound spread.
   unlockedStrategyIds?: readonly string[] | null;
+  // The strategies offered in the PLAYER's menu — separate from the AI restriction
+  // above so the campaign can hold the player to the basics + their own authored
+  // plays while the AI keeps its full toolkit. When set (non-null), the menu shows
+  // only these ids (authored plays are always offered on top). Absent = fall back
+  // to unlockedStrategyIds (non-season / standard = no restriction). Set by
+  // season.buildSeasonMatch; read by cardPanel.
+  playerStrategyIds?: readonly string[] | null;
   // Scripted tutorial opponent. When set, the AI plays this fixed strategy for
   // the given side instead of the weighted pick — the campaign's first match
   // faces a telegraphed opponent so the player learns read → counter cleanly.
@@ -556,4 +583,21 @@ export type GameState = {
   // match.variantWeights, and ui/scoutPanel. Absent outside a season.
   opponentName?: string;
   opponentLean?: Partial<Record<Side, { strategy: string; site: 'A' | 'B' | null }>>;
+  // AI "competence" 0–1 — how well the opponent uses its smart tools (the B2
+  // counter to your signature + how reliably it commits its own read/signature).
+  // Stamped by season.buildSeasonMatch from a match-index ramp (early opponents
+  // dumber, scaling to full) + a future campaign-difficulty term. Absent ⇒ full
+  // strength (1.0), so standard/non-season matches are unaffected. Consumed by
+  // aiOpponent.pickAiStrategy. Carries across rounds via the startRound spread.
+  aiCompetence?: number;
+  // Strategy ids that became available THIS match (onboarding) — the menu badges
+  // them "NEW" and explains the unlock. Set by season.buildSeasonMatch; absent ⇒
+  // none flagged. Carries across rounds via the startRound spread.
+  newlyUnlockedStrategyIds?: readonly string[];
+  // Per-play mastery (3c) — strategy id → mastery (0–1). Stamped by
+  // season.buildSeasonMatch from the season's drilled plays; the compliance roll
+  // adds MASTERY.maxBonusPp·mastery for a PLAYER unit running that play. Absent ⇒
+  // no bonus, so standard/non-season matches are byte-identical. Carries across
+  // rounds via the startRound spread.
+  playMastery?: Record<string, number>;
 };
