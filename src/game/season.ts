@@ -18,6 +18,10 @@ import { buildSignaturePlays, signatureMeta } from './signaturePlays.ts';
 import { generateTeamName } from './names.ts';
 import { teamRating } from './ratings.ts';
 import { applyMoraleComposure, type MoraleMap } from './morale.ts';
+import { grownOpponentRoster } from './standings.ts';
+import type { ArcRuntime } from './story/arcTypes.ts';
+import { initArcs, type MatchSummary } from './story/arcRuntime.ts';
+import type { PendingDeparture, PendingObligation } from './events/types.ts';
 
 // A scouted tendency: a strategy the opponent leans, and (for site-committing
 // strategies) the site they favor. `site` is null for whole-map / reading
@@ -206,6 +210,22 @@ export type SeasonState = {
   // resolver via setCustomStrategies in buildSeasonMatch. Empty until B1 lets the
   // player author one ⇒ matches stay byte-identical.
   customStrategies: Strategy[];
+  // Phase 3 — per-arc runtime state for the drafted characters' story arcs
+  // (game/story). One entry per drafted unit with a registered arc. JSON-clean.
+  arcs: ArcRuntime[];
+  // 3d/3e — the just-played match's summary (last-alive / negative-K/D player
+  // units), stamped at match-end for the post-event slot's onMatchEvent arc
+  // triggers. Persisted so a mid-post-event reload still fires the beat.
+  lastMatchSummary?: MatchSummary;
+  // 4b — arc-triggered departures awaiting resolution (mid-season goodbye + redraft)
+  // + the characters who've already left (their reserve slot won't be re-offered).
+  pendingDepartures?: PendingDeparture[];
+  departed?: string[];
+  // Phase 5 — bonus custom-play capacity (Potter), active recurring ambient-event
+  // groups (Reina/Jok3r/Won), and pending training-day promises (Cardo).
+  bonusPlaybookSlots?: number;
+  enabledEventGroups?: string[];
+  obligations?: PendingObligation[];
 };
 
 // Re-place a roster of persisted identities at a team's spawns, resetting every
@@ -317,7 +337,7 @@ export function startSeason(
   }
   return {
     playerRoster: [...playerRoster], schedule, opponents, results: [], roundScores: [], idx: 0, K, goal, seed, mapName,
-    clubLean: null, upgrades: [], customStrategies: [],
+    clubLean: null, upgrades: [], customStrategies: [], arcs: initArcs(playerRoster),
     phase: 'training', weekEventMode: buildWeekEventModes(seed, K),
     authoringUnlocked: false, focusFreshness: {}, playMastery: {},
     leaguePoints: 0, morale: {}, storyFlags: {},
@@ -409,7 +429,9 @@ export function buildSeasonMatch(season: SeasonState, map: MapDefinition, prep?:
   const moraleAdj = applyMoraleComposure(season.playerRoster, season.morale ?? {});
   let player = applyUpgrades(applyClubLean(placeRoster(moraleAdj, 'defenders', map), season.clubLean), season.upgrades);
   if (prep) player = applyMatchPrep(player, prep);
-  const opp = placeRoster(season.schedule[season.idx], 'attackers', map);
+  // Living league: the opponent grows to its strength as of the round we play it
+  // (same growth used for the standings table, so they stay consistent).
+  const opp = placeRoster(grownOpponentRoster(season, season.idx), 'attackers', map);
   const matchSeed = (season.seed ^ ((season.idx + 1) * 0x9e3779b1)) >>> 0;
   const base = buildStateFromUnits([...player, ...opp], map, matchSeed, 'season');
   // Stamp the opponent's identity + scoutable lean (per side) so pickAiStrategy

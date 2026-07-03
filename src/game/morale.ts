@@ -6,10 +6,17 @@
 
 import type { Unit } from './types.ts';
 import { MORALE } from './config.ts';
+import {
+  storyTagMoraleDeltaMult,
+  storyTagMoraleFloor,
+  storyTagWeeklyMoraleDrift,
+} from './storyTags.ts';
 
 export type MoraleMap = Record<string, number>;
 
 const clamp100 = (n: number): number => Math.max(0, Math.min(100, n));
+// Clamp with a per-unit floor (Found Family raises the minimum morale can sink to).
+const clampFloor = (n: number, floor: number): number => Math.max(floor, Math.min(100, n));
 
 export function moraleOf(morale: MoraleMap, unitId: string): number {
   return morale[unitId] ?? MORALE.start;
@@ -50,17 +57,42 @@ export function applyMoraleComposure(roster: readonly Unit[], morale: MoraleMap)
 export function applyMatchMorale(morale: MoraleMap, roster: readonly Unit[], playerWon: boolean): MoraleMap {
   const delta = playerWon ? MORALE.winDelta : MORALE.lossDelta;
   const next: MoraleMap = { ...morale };
-  for (const u of roster) next[u.id] = clamp100(moraleOf(morale, u.id) + delta);
+  for (const u of roster) {
+    // Story tags scale the swing (Short Fuse doubles a loss, Even Keel softens it)
+    // and can raise the floor (Found Family). ×1 / floor 0 for untagged units.
+    const d = Math.round(delta * storyTagMoraleDeltaMult(u, delta));
+    next[u.id] = clampFloor(moraleOf(morale, u.id) + d, storyTagMoraleFloor(u));
+  }
   return next;
 }
 
 // Adjust morale by an event effect (team or a single subject). Pure.
 export function adjustMorale(morale: MoraleMap, roster: readonly Unit[], scope: 'team' | 'self', subjectId: string | null, amount: number): MoraleMap {
   const next: MoraleMap = { ...morale };
+  const apply = (u: Unit): void => {
+    const d = Math.round(amount * storyTagMoraleDeltaMult(u, amount));
+    next[u.id] = clampFloor(moraleOf(morale, u.id) + d, storyTagMoraleFloor(u));
+  };
   if (scope === 'self') {
-    if (subjectId) next[subjectId] = clamp100(moraleOf(morale, subjectId) + amount);
+    if (!subjectId) return next;
+    const u = roster.find((x) => x.id === subjectId);
+    if (u) apply(u);
+    // Subject not on the roster (shouldn't happen for event subjects): legacy path.
+    else next[subjectId] = clamp100(moraleOf(morale, subjectId) + amount);
   } else {
-    for (const u of roster) next[u.id] = clamp100(moraleOf(morale, u.id) + amount);
+    for (const u of roster) apply(u);
+  }
+  return next;
+}
+
+// Standing-condition weekly drift (Homesick bleeds a little morale each week
+// until resolved). Called from the week loop; inert (no change) without such
+// tags, so it never touches a fresh/tagless season.
+export function applyWeeklyMoraleDrift(morale: MoraleMap, roster: readonly Unit[]): MoraleMap {
+  const next: MoraleMap = { ...morale };
+  for (const u of roster) {
+    const d = storyTagWeeklyMoraleDrift(u);
+    if (d !== 0) next[u.id] = clampFloor(moraleOf(morale, u.id) + d, storyTagMoraleFloor(u));
   }
   return next;
 }

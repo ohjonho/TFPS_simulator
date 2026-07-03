@@ -389,6 +389,81 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.107.0 — The whole cast has a story now</h3>
+    <ul>
+      <li><strong>Six more arcs — every regular now has one.</strong> The tilting prodigy you either
+        reform or cut loose. The jokester deciding whether he's a real competitor. The restless
+        all-rounder itching to switch roles. The lurker learning to trust a team again. The reformed
+        rager facing his temper. The analyst whose reads, if you back them, blow the playbook wide open.
+        Who you invest in — and who you let walk — shapes the season and the send-off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.106.0 — Three more join the story</h3>
+    <ul>
+      <li><strong>New arcs.</strong> The reformed cheater whose past the press digs up — back him or cut
+        him loose (and if you cut him, a fresh face fills his seat mid-season). The bank-manager mum
+        weighing whether she still belongs. The banker with a big promotion on the table and one last
+        season to give. Each turns on the calls you make between matches.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.105.0 — The kid brother's turn</h3>
+    <ul>
+      <li><strong>A new arc.</strong> Draft the young shotgunner living in his big-league sister's
+        shadow, and her visit to the café will tie him in knots — he'll press, and it shows on the
+        server. Steady him and he shakes the nerves for good; leave it and he plays the season chasing
+        a shadow he never catches.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.104.0 — How their stories ended</h3>
+    <ul>
+      <li><strong>Season-end reflections.</strong> The epilogue now looks back on each player whose arc
+        you touched — the curse you helped break, the newcomer who found a home (or the one who slipped
+        back to her small town because no one gave her a reason to stay). What you invested in over the
+        season gets its last word.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.103.0 — Your players have stories now</h3>
+    <ul>
+      <li><strong>Character arcs.</strong> The regulars you draft carry personal storylines that surface
+        between matches and resolve over the season. Draft the ex-pro haunted by a "clutch curse" and
+        he'll choke the rounds that matter — until you draw him out and help him break it (or bury the
+        problem the cold way). The homesick newcomer may drift back to her small town — unless the team
+        becomes her reason to stay. Who you invest in shapes who they become.</li>
+      <li><strong>You can't be everywhere.</strong> When two players need you the same week, Sam offers
+        to hold one while you sit with the other — but only for so long. Attention is the scarce
+        resource; the ones you keep putting off carry on alone.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.102.0 — A league that grows with you</h3>
+    <ul>
+      <li><strong>Rivals level up too.</strong> Every training day the other clubs put in their own
+        work and gain a little ground. Early opponents are beatable; the teams you meet late have grown
+        teeth — and the table shifts around as different clubs climb at different rates, so no two
+        seasons rank out the same. You grow <em>into</em> the league, you don't outrun it.</li>
+      <li><strong>Steadier progress.</strong> Training and one-off events give a touch less, and stacking
+        extra coaching sessions costs more — so your squad improves at a believable pace instead of
+        spiking into monsters by mid-season.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.101.0 — Meet the regulars: a real cast to draft from</h3>
+    <ul>
+      <li><strong>Twelve authored players, pick five.</strong> The season draft is no longer a random
+        pool — it's a fixed cast of twelve hand-made regulars, each with a name, a backstory, and a
+        deliberately <em>spiky</em> profile: a glass-cannon prodigy, a cerebral ex-analyst with shaky
+        aim, a steady leader, a ranked-demon loner, and more. Who you pick — and who you leave on the
+        bench — is now a character decision, not dice. You're building a team of <em>people</em>.</li>
+      <li><strong>Everyone brings an edge and a flaw.</strong> Some carry quirks that show up in how
+        they play — a veteran who tightens up when it's all on his shoulders, a part-timer who trains
+        slower than the kids. The squad starts a shade below the field and has to grow into it.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.100.0 — Morale has teeth, and a clearer draft</h3>
     <ul>
       <li><strong>Morale consequences.</strong> Let a player's morale bottom out and they become a

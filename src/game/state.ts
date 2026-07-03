@@ -75,10 +75,10 @@ export function buildInitialState(
     // Pass G — pre-planning draft phase: generate a pool, return a state with no
     // spawned units. The draft UI runs the picks and calls finalizeDraft →
     // buildStateFromUnits to start the match. Season opens with a player-only
-    // draft (build your own squad, 5 of 8); main.ts captures the roster →
-    // startSeason on confirm and generates the opponents.
+    // draft (build your own squad, 5 of 12 authored Origins); main.ts captures
+    // the roster → startSeason on confirm and generates the opponents.
     return mode === 'season'
-      ? startDraft(map, seed, { playerOnly: true, poolSize: DRAFT.seasonPoolSize, picks: DRAFT.picksPerTeam })
+      ? startDraft(map, seed, { playerOnly: true, authored: true, picks: DRAFT.picksPerTeam })
       : startDraft(map, seed);
   }
 

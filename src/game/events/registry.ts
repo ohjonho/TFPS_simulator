@@ -12,7 +12,7 @@ export const AMBIENT_EVENTS: readonly SeasonEvent[] = [
     kicker: 'Locker room',
     headline: 'A scrim against the big boys',
     body: 'You book a late-night scrim against a higher-ranked team. The squad gets run over — but they pick apart the VODs afterward and come away sharper readers of the game.',
-    effects: [{ op: 'attr', scope: 'team', agg: 'gameSense', amount: 2 }],
+    effects: [{ op: 'attr', scope: 'team', agg: 'gameSense', amount: 1 }],
     record: {
       strong: 'Even riding a good run, nobody coasted — they wanted to measure up against the best.',
       struggling: 'They needed the reminder that they belong on the same server as names like that.',
@@ -26,7 +26,7 @@ export const AMBIENT_EVENTS: readonly SeasonEvent[] = [
     headline: '{player} has been putting in the hours',
     body: '{player} has been first in and last out all week, grinding aim trainers and deathmatch. It is starting to show on the server.',
     subject: 'random',
-    effects: [{ op: 'attr', scope: 'self', agg: 'mechanics', amount: 3 }],
+    effects: [{ op: 'attr', scope: 'self', agg: 'mechanics', amount: 2 }],
     persona: {
       Firebrand: '"If I\'m not the best mechanic in this room, what am I even doing here?" {player} says. Only half joking.',
       Catalyst: '{player} keeps roping the others into the late sessions too — half of it is just wanting the company.',
@@ -49,9 +49,9 @@ export const AMBIENT_EVENTS: readonly SeasonEvent[] = [
       struggling: 'A fresh voice might be just what shakes the squad out of its rut.',
     },
     choices: [
-      { label: 'Aim & mechanics', note: 'A day on crosshair placement and duels.', effects: [{ op: 'attr', scope: 'team', agg: 'mechanics', amount: 2 }] },
-      { label: 'Reads & rotations', note: 'A day in the film room on positioning.', effects: [{ op: 'attr', scope: 'team', agg: 'gameSense', amount: 2 }] },
-      { label: 'Composure under fire', note: 'A day on nerves and clutch situations.', effects: [{ op: 'attr', scope: 'team', agg: 'improvisation', amount: 2 }] },
+      { label: 'Aim & mechanics', note: 'A day on crosshair placement and duels.', effects: [{ op: 'attr', scope: 'team', agg: 'mechanics', amount: 1 }] },
+      { label: 'Reads & rotations', note: 'A day in the film room on positioning.', effects: [{ op: 'attr', scope: 'team', agg: 'gameSense', amount: 1 }] },
+      { label: 'Composure under fire', note: 'A day on nerves and clutch situations.', effects: [{ op: 'attr', scope: 'team', agg: 'improvisation', amount: 1 }] },
     ],
   },
   {
@@ -78,7 +78,7 @@ export const AMBIENT_EVENTS: readonly SeasonEvent[] = [
     },
     choices: [
       { label: 'Clear the air', note: 'Sit them down — costs time, but the squad comes out closer.', effects: [{ op: 'morale', scope: 'team', amount: 8 }] },
-      { label: 'Let them stew, just grind', note: 'Skip the talk and drill — sharper hands, sourer mood.', effects: [{ op: 'morale', scope: 'team', amount: -6 }, { op: 'attr', scope: 'team', agg: 'mechanics', amount: 2 }] },
+      { label: 'Let them stew, just grind', note: 'Skip the talk and drill — sharper hands, sourer mood.', effects: [{ op: 'morale', scope: 'team', amount: -6 }, { op: 'attr', scope: 'team', agg: 'mechanics', amount: 1 }] },
     ],
   },
   {
@@ -99,8 +99,28 @@ export const AMBIENT_EVENTS: readonly SeasonEvent[] = [
       struggling: 'The losing skid isn\'t helping; you can feel the whole room tightening up.',
     },
     choices: [
-      { label: 'Ease off, steady them', note: 'A calmer week builds their nerve.', effects: [{ op: 'attr', scope: 'self', agg: 'improvisation', amount: 3 }] },
-      { label: 'Drill it out of them', note: 'Bury the doubt under reps.', effects: [{ op: 'attr', scope: 'self', agg: 'mechanics', amount: 3 }] },
+      { label: 'Ease off, steady them', note: 'A calmer week builds their nerve.', effects: [{ op: 'attr', scope: 'self', agg: 'improvisation', amount: 2 }] },
+      { label: 'Drill it out of them', note: 'Bury the doubt under reps.', effects: [{ op: 'attr', scope: 'self', agg: 'mechanics', amount: 2 }] },
     ],
+  },
+  // --- Grouped events: dormant until an arc turns their group on (enableEventGroup) ---
+  {
+    id: 'bonding-night', group: 'bonding', weight: 2, kicker: 'Team night',
+    headline: 'The squad keeps hanging out',
+    body: 'What started as one player refusing to let the team just clock out has become a ritual — food, banter, VODs. Whatever it is, the room is tighter for it.',
+    effects: [{ op: 'morale', scope: 'team', amount: 4 }],
+    record: { struggling: 'On a rough run, the nights are the glue keeping everyone showing up.' },
+  },
+  {
+    id: 'community-night', group: 'community', weight: 2, kicker: 'Pixel Perfect',
+    headline: 'Community night at the café',
+    body: "Won throws open the doors for one of his old-school meetups. The place is packed, the squad's buzzing, and for a night the café is the centre of the scene again.",
+    effects: [{ op: 'morale', scope: 'team', amount: 4 }],
+  },
+  {
+    id: 'community-fundraiser', group: 'community', weight: 1, kicker: 'Pixel Perfect',
+    headline: 'The community chips in',
+    body: 'Won rallies his following behind the underdog run — and they put their money where their mouths are.',
+    effects: [{ op: 'leaguePoints', amount: 12 }, { op: 'morale', scope: 'team', amount: 2 }],
   },
 ];

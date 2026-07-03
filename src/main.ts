@@ -82,8 +82,14 @@ import { runWalkthrough, type WalkStep } from './ui/walkthrough.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
 import { showEventScreen } from './ui/eventScreen.ts';
 import { rollEvent, applyEvent, applyEffects, eventFlavor } from './game/events/runtime.ts';
+import { readyBeats, advanceArc, holdBeat, type SlotContext } from './game/story/arcRuntime.ts';
+import { ARCS } from './game/story/arcs.ts';
+import { matchSummary } from './game/story/matchSummary.ts';
+import { showArcBeat, arcFlavor } from './ui/arcBeatScreen.ts';
+import { dueDepartures, departPlayer, signReplacement, reserveOrigins, cancelDeparture } from './game/story/redraft.ts';
+import { showRedraft } from './ui/redraftPicker.ts';
 import { effectChipsHtml } from './ui/effectChips.ts';
-import { applyMatchMorale, teamMorale, moraleLabel } from './game/morale.ts';
+import { applyMatchMorale, teamMorale, moraleLabel, applyWeeklyMoraleDrift } from './game/morale.ts';
 import { showPostMatch1Beat } from './ui/postMatch1Beat.ts';
 import { showScoutIntroBeat } from './ui/scoutIntroBeat.ts';
 import { showWeek4Beat } from './ui/week4Beat.ts';
@@ -446,7 +452,7 @@ let seasonStoryFlags: Record<string, string> = {};
 function runEpilogueThen(after: () => void): void {
   if (!season || seasonEpilogueDone) { after(); return; }
   seasonEpilogueDone = true;
-  showSeasonEpilogue(seasonLeavers(season), after);
+  showSeasonEpilogue(season, seasonLeavers(season), after);
 }
 function maybeTutorialContactPause(): void {
   if (matchMode !== 'season' || !season || season.idx !== 0) return;
@@ -469,7 +475,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.100.0', {
+    renderMainMenu(menuHost, 'v0.107.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -572,7 +578,7 @@ function openSeasonPlaybook(onClose: () => void, tutorial = false): void {
     onClose,
   }, {
     authoringUnlocked: season?.authoringUnlocked ?? false,
-    capacity: playbookCapacity(season?.playerRoster ?? []),
+    capacity: playbookCapacity(season?.playerRoster ?? []) + (season?.bonusPlaybookSlots ?? 0),
     playMastery: season?.playMastery ?? {},
     tutorial,
   });
@@ -595,6 +601,80 @@ function runWeekEvent(slotKey: string, onDone: () => void): void {
   });
 }
 
+// Phase 3e — after a slot's ambient content, surface any READY character-arc beat.
+// ONE beat resolves per slot: if two+ are ready, Sam frames a choice (engage one;
+// the rest are held, and after two holds a beat defaults to its neglect path).
+function runArcBeats(slot: 'pre-match' | 'post-match', onDone: () => void): void {
+  if (!season) { onDone(); return; }
+  const ctx: SlotContext = {
+    slot, idx: season.idx, week: currentWeek(season), wins: seasonWins(season),
+    matchSummary: slot === 'post-match' ? (season.lastMatchSummary ?? null) : null,
+  };
+  const ready = readyBeats(season, ctx);
+  // After the beat (or if none), resolve any arc departures that have come due.
+  const done = (): void => runDepartures(onDone);
+  if (ready.length === 0) { done(); return; }
+
+  const play = (arcId: string, held: string[]): void => {
+    for (const a of held) season = holdBeat(season!, a);
+    const arc = ARCS[arcId];
+    const rt = season!.arcs.find((r) => r.arcId === arcId)!;
+    const beat = arc.beats[rt.stage];
+    const subject = season!.playerRoster.find((u) => u.characterId === arc.characterId) ?? null;
+    const extra = arcFlavor(beat, subject, season!.results);
+    showArcBeat(beat, subject?.name ?? null, extra, season!.storyFlags ?? {},
+      (choiceIdx) => {                        // apply the beat, return what changed for the chips
+        const res = advanceArc(season!, arcId, choiceIdx, ctx);
+        season = res.season;
+        saveSeason(season);
+        return res.effects;
+      },
+      done,
+    );
+  };
+
+  if (ready.length === 1) { play(ready[0].arcId, []); return; }
+  // Collision — Sam holds one arc while you take the other (a held beat can wait
+  // two slots before it defaults). One beat per slot keeps the triage real.
+  const opts = ready.map((r) => {
+    const arc = ARCS[r.arcId];
+    const u = season!.playerRoster.find((x) => x.characterId === arc.characterId);
+    return { arcId: r.arcId, name: u?.name ?? arc.characterId };
+  });
+  const rest = opts.length > 2 ? ' and the others' : '';
+  const body = `<p class="me-headline">Sam catches you in the doorway. &ldquo;${opts[0].name} and ${opts[1].name}${rest} both wanted a word. Take one — I'll keep the rest company for now.&rdquo;</p>`;
+  showModal('A word before you go', body, opts.map((o, i) => ({
+    label: `Sit with ${o.name}`, primary: i === 0,
+    onClick: () => play(o.arcId, opts.filter((x) => x.arcId !== o.arcId).map((x) => x.arcId)),
+  })));
+}
+
+// Phase 4b — resolve any arc-triggered departures now due: the player says goodbye,
+// the room takes a morale hit, and you sign a replacement from the reserve (the
+// Origins you passed on). Runs after each slot's arc beat. None due ⇒ straight
+// through. If the reserve is somehow empty, the departure is cancelled (the player
+// stays) so the roster never drops below five.
+function runDepartures(onDone: () => void): void {
+  if (!season) { onDone(); return; }
+  const due = dueDepartures(season);
+  if (due.length === 0) { onDone(); return; }
+  const handle = (i: number): void => {
+    if (!season || i >= due.length) { if (season) saveSeason(season); onDone(); return; }
+    const dep = due[i];
+    if (reserveOrigins(season).length === 0) { season = cancelDeparture(season, dep.characterId); handle(i + 1); return; }
+    const res = departPlayer(season, dep.characterId);
+    season = res.season;
+    if (!res.slotId) { saveSeason(season); handle(i + 1); return; }
+    saveSeason(season);
+    showRedraft(res.unit, reserveOrigins(season), dep.reason, (pickedId) => {
+      season = signReplacement(season!, pickedId, res.slotId!);
+      saveSeason(season);
+      handle(i + 1);
+    });
+  };
+  handle(0);
+}
+
 // Part 6 — the season week loop. Drives the meta-loop one phase at a time off
 // season.phase: training → preEvent → match → postEvent, with a one-off
 // mid-season break between the halves. Re-entrant (each screen's Continue calls
@@ -613,6 +693,13 @@ function runSeasonWeek(onFirstBack?: () => void): void {
   };
   switch (s.phase) {
     case 'training': {
+      // 3e — standing-condition weekly morale drift (e.g. imissu's Homesick), once
+      // per week (driftWeek guard so a resume doesn't re-apply).
+      const driftWk = String(currentWeek(s));
+      if (s.storyFlags?.driftWeek !== driftWk) {
+        season = { ...season!, morale: applyWeeklyMoraleDrift(season!.morale ?? {}, season!.playerRoster), storyFlags: { ...(season!.storyFlags ?? {}), driftWeek: driftWk } };
+        saveSeason(season);
+      }
       const openTraining = (): void => {
       const cur = season!; // live read — a flight-risk beat may have moved morale first
       showTrainingDay(currentWeek(cur), cur.playerRoster, cur.focusFreshness ?? {}, cur.morale ?? {}, cur.customStrategies, cur.playMastery ?? {}, cur.leaguePoints, (choice) => {
@@ -635,6 +722,17 @@ function runSeasonWeek(onFirstBack?: () => void): void {
           : season!.playMastery ?? {};
         season = { ...season!, playerRoster: roster, focusFreshness: freshness, playMastery, leaguePoints: season!.leaguePoints - choice.lpSpent };
         saveSeason(season);
+        // Phase 5 — resolve any training-day obligations (e.g. Cardo's promise to be focus-trained).
+        if ((season!.obligations ?? []).length > 0) {
+          const focusedChar = choice.focusId ? season!.playerRoster.find((u) => u.id === choice.focusId)?.characterId : undefined;
+          let sfx = season!;
+          for (const ob of season!.obligations ?? []) {
+            const kept = ob.require === 'focused-self' && focusedChar === ob.characterId;
+            if (!kept) { const sid = sfx.playerRoster.find((u) => u.characterId === ob.characterId)?.id ?? null; sfx = applyEffects(sfx, ob.onBreak, sid); }
+          }
+          season = { ...sfx, obligations: [] };
+          saveSeason(season);
+        }
         // 3e — announce any attribute tier the session(s) pushed the squad across, then advance.
         showBreakpoints(crossedBreakpoints(before, roster), roster, advance);
       }, cur.idx === 0 ? onFirstBack : undefined, cur.idx === Math.floor(cur.K / 2));
@@ -679,10 +777,10 @@ function runSeasonWeek(onFirstBack?: () => void): void {
           saveSeason(season);
           // The playbook just opened — drop the player straight into the editor with
           // a guided tour the week it's introduced, then carry on to the match.
-          openSeasonPlaybook(advance, true);
+          openSeasonPlaybook(() => runArcBeats('pre-match', advance), true);
         });
       } else {
-        runWeekEvent(`pre-${s.idx}`, advance);
+        runWeekEvent(`pre-${s.idx}`, () => runArcBeats('pre-match', advance));
       }
       break;
     }
@@ -696,27 +794,27 @@ function runSeasonWeek(onFirstBack?: () => void): void {
       // (tone branches on win/loss) — planting the idea of deeper scouting + their
       // own playbook (both unlock at the week-2 pre-match scout-kid beat).
       if (s.idx === 1) {
-        showPostMatch1Beat(s.results[0] === 'W', s.playerRoster, advance);
+        showPostMatch1Beat(s.results[0] === 'W', s.playerRoster, () => runArcBeats('post-match', advance));
         break;
       }
       // After match 3 (idx === 3): the assistant coach explains the league format
       // on the standings screen — round-robin, and your next match is the last
       // before the bye (the mid-season break, when the league plays on without you).
       if (s.idx === 3) {
-        showStandings(s, () => {
+        showStandings(s, () => runArcBeats('post-match', () => {
           if (seasonOver(season!)) { endRegularSeason(); return; }
           advance();
-        }, {
+        }), {
           kicker: 'Assistant coach',
           title: 'How the league works',
           sub: `It's a round-robin — you'll face all eight rivals once, and the top ${LEAGUE.playoffTeams} make the playoffs. Heads up: after your next match it's your <strong>bye week</strong> — the mid-season break. The league plays on without you, so the table will shift while you rest. Reach the final to save the shop.`,
         });
         break;
       }
-      runWeekEvent(`post-${s.idx}`, () => {
+      runWeekEvent(`post-${s.idx}`, () => runArcBeats('post-match', () => {
         if (seasonOver(season!)) { endRegularSeason(); return; }
         advance();
-      });
+      }));
       break;
     case 'break': {
       // Week-5 bye: lock in the off-week focus (anchored to the week-4 lean), the
@@ -1148,6 +1246,9 @@ function showMatchEndModal(): void {
     const afterRoster = season.playerRoster;
     // Phase 4 — morale ripple: a win lifts the room, a loss stings.
     season = { ...season, morale: applyMatchMorale(season.morale ?? {}, season.playerRoster, playerWon) };
+    // 3e — stamp the finished match's summary (last-alive / negative-K/D) for the
+    // post-event slot's onMatchEvent arc triggers (e.g. Moony's curse).
+    season = { ...season, lastMatchSummary: matchSummary(state) };
     season = advanceSeasonPhase(season);            // match → postEvent
     saveSeason(season);
     const wins = seasonWins(season);

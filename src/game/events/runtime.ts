@@ -6,12 +6,25 @@
 // and re-applies nothing.
 
 import type { SeasonState } from '../season.ts';
-import type { Attributes, Unit } from '../types.ts';
+import type { Attributes, Hero, Role, Unit } from '../types.ts';
 import type { AggKey, Effect, PersonalityId, RecordForm, SeasonEvent, Subject } from './types.ts';
 import { AMBIENT_EVENTS } from './registry.ts';
 import { createRng, type Rng } from '../rng.ts';
 import { aggregateVisible } from '../attributes.ts';
 import { adjustMorale } from '../morale.ts';
+import { ROLE_AGGRESSION } from '../config.ts';
+
+// Change a unit's role (and role-derived aggression) and/or hero. Pure.
+function swapUnitLoadout(u: Unit, role?: string, hero?: string): Unit {
+  const next: Unit = { ...u };
+  if (role) {
+    next.role = role as Role;
+    next.preferredRole = role as Role;
+    next.modifiers = { ...u.modifiers, aggression: ROLE_AGGRESSION[role as Role], baseAggression: ROLE_AGGRESSION[role as Role] };
+  }
+  if (hero) next.hero = hero as Hero;
+  return next;
+}
 
 // Which hidden subs feed each visible aggregate (bumping all of them raises the
 // aggregate by the same amount, since the aggregate weights sum to 1).
@@ -58,7 +71,11 @@ function resolveSubject(season: SeasonState, sel: Subject, rng: Rng): string | n
 // (e.g. `pre-3` / `post-3`) so resume re-rolls identically.
 export function rollEvent(season: SeasonState, slotKey: string): { event: SeasonEvent; subjectId: string | null } {
   const rng = createRng((season.seed ^ hashSlot(slotKey)) >>> 0);
-  const event = weightedPick(AMBIENT_EVENTS, rng);
+  // Grouped events only join the pool once an arc has enabled their group; with no
+  // groups enabled the pool == the ungrouped base set, so a fresh season is unchanged.
+  const groups = season.enabledEventGroups ?? [];
+  const pool = AMBIENT_EVENTS.filter((e) => !e.group || groups.includes(e.group));
+  const event = weightedPick(pool, rng);
   const subjectId = event.subject ? resolveSubject(season, event.subject, rng) : null;
   return { event, subjectId };
 }
@@ -97,19 +114,65 @@ function applyAttr(roster: readonly Unit[], scope: 'team' | 'self', subjectId: s
   });
 }
 
+// Transform the subject unit's storyTags (grant/remove/evolve). Other units and a
+// null subject pass through unchanged.
+function mapSubjectTags(roster: readonly Unit[], subjectId: string | null, fn: (tags: string[]) => string[]): Unit[] {
+  if (!subjectId) return roster.map((u) => u);
+  return roster.map((u) => (u.id === subjectId ? { ...u, storyTags: fn([...(u.storyTags ?? [])]) } : u));
+}
+
 // Apply a list of effects to the season. Pure — returns a new SeasonState. Shared
-// by the event runtime and other systems (e.g. the off-week focus) that trade in
-// the same Effect vocab. `subjectId` targets `self`-scoped attr/morale effects.
+// by the event runtime and the arc runtime (same Effect vocab). `subjectId` targets
+// `self`-scoped attr/morale + all tag ops (the arc's subject / the event's player).
 export function applyEffects(season: SeasonState, effects: readonly Effect[], subjectId: string | null): SeasonState {
   let roster = season.playerRoster;
   let leaguePoints = season.leaguePoints;
   let morale = season.morale ?? {};
+  let storyFlags = season.storyFlags ?? {};
+  let pendingDepartures = season.pendingDepartures ?? [];
+  let bonusPlaybookSlots = season.bonusPlaybookSlots ?? 0;
+  let enabledEventGroups = season.enabledEventGroups ?? [];
+  let obligations = season.obligations ?? [];
+  const charOf = (uid: string | null): string | undefined => roster.find((x) => x.id === uid)?.characterId;
   for (const e of effects) {
-    if (e.op === 'leaguePoints') leaguePoints += e.amount;
-    else if (e.op === 'morale') morale = adjustMorale(morale, roster, e.scope, subjectId, e.amount);
-    else roster = applyAttr(roster, e.scope, subjectId, e.agg, e.amount);
+    switch (e.op) {
+      case 'leaguePoints': leaguePoints += e.amount; break;
+      case 'morale': morale = adjustMorale(morale, roster, e.scope, subjectId, e.amount); break;
+      case 'attr': roster = applyAttr(roster, e.scope, subjectId, e.agg, e.amount); break;
+      case 'grantTag': roster = mapSubjectTags(roster, subjectId, (t) => (t.includes(e.tagId) ? t : [...t, e.tagId])); break;
+      case 'removeTag': roster = mapSubjectTags(roster, subjectId, (t) => t.filter((x) => x !== e.tagId)); break;
+      case 'evolveTag': roster = mapSubjectTags(roster, subjectId, (t) => (t.includes(e.from) ? [...t.filter((x) => x !== e.from), e.to] : t)); break;
+      case 'setFlag': storyFlags = { ...storyFlags, [e.flag]: e.value ?? 'true' }; break;
+      case 'depart': {
+        const cid = charOf(subjectId);
+        if (cid) {
+          const resolveAtIdx = e.when === 'immediate' ? season.idx : e.when === 'after-next-match' ? season.idx + 1 : 9999;
+          pendingDepartures = [...pendingDepartures, { characterId: cid, when: e.when, resolveAtIdx, reason: e.reason }];
+        }
+        break;
+      }
+      case 'swapLoadout': roster = roster.map((u) => (u.id === subjectId ? swapUnitLoadout(u, e.role, e.hero) : u)); break;
+      case 'grantPlaybookSlots': bonusPlaybookSlots += e.amount; break;
+      case 'enableEventGroup': enabledEventGroups = enabledEventGroups.includes(e.groupId) ? enabledEventGroups : [...enabledEventGroups, e.groupId]; break;
+      case 'grantDuo': {
+        // A mutual bond: the tag + an attribute bump on both the subject and partner.
+        const partnerUid = roster.find((u) => u.characterId === e.partner)?.id ?? null;
+        roster = mapSubjectTags(roster, subjectId, (t) => (t.includes(e.tagId) ? t : [...t, e.tagId]));
+        roster = applyAttr(roster, 'self', subjectId, e.agg, e.amount);
+        if (partnerUid) {
+          roster = mapSubjectTags(roster, partnerUid, (t) => (t.includes(e.tagId) ? t : [...t, e.tagId]));
+          roster = applyAttr(roster, 'self', partnerUid, e.agg, e.amount);
+        }
+        break;
+      }
+      case 'obligation': {
+        const cid = charOf(subjectId);
+        if (cid) obligations = [...obligations, { id: e.id, characterId: cid, require: e.require, onBreak: e.onBreak }];
+        break;
+      }
+    }
   }
-  return { ...season, playerRoster: roster, leaguePoints, morale };
+  return { ...season, playerRoster: roster, leaguePoints, morale, storyFlags, pendingDepartures, bonusPlaybookSlots, enabledEventGroups, obligations };
 }
 
 // Apply an event's effects (or the chosen choice's) to the season. Pure — returns

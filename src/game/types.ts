@@ -152,6 +152,16 @@ export type Unit = {
   // from the 8-pool) + one PERSONALITY (4-quadrant). Combat/engage/compliance
   // hooks iterate `[...tacticalTraits, personality]`.
   tacticalTraits: TacticalTrait[];
+  // Story-arc tags (authored characters + arc payoffs), distinct from the 8
+  // draftable tacticalTraits. Absent on drafted/generated units ⇒ every story
+  // hook is inert ⇒ a tagless roster is byte-identical (the determinism gate).
+  // Id vocabulary + effects live in game/storyTags.ts (typed loosely as string[]
+  // here to avoid a types↔storyTags import cycle).
+  storyTags?: string[];
+  // Authored-character id (game/story/characters.ts) for the season roster;
+  // rides through finalizeDraft so the arc runtime can find this unit. Absent on
+  // procedural/generated units.
+  characterId?: string;
   personality: Personality | null;
   role: Role;
   preferredRole: Role;

@@ -1,11 +1,13 @@
-// Season epilogue — the morale reckoning. Players whose morale never recovered
-// (game/flightRisk.seasonLeavers) walk at season's end: a short beat where they
-// say their goodbyes, in character. Narrative for now — it colours the ending and
-// is the hook for the future roster-lifecycle layer (their slot reopens next
-// season). If nobody's leaving, it's skipped (the caller goes straight to the
-// result), so a well-managed squad never sees it.
+// Season epilogue — where the season left everyone. Two strands, played as one
+// scene: (1) ARC REFLECTIONS — for each drafted character with a story arc, a line
+// keyed to how their arc landed (resolved / frozen / neglected / unstarted), so the
+// curse you lifted or the newcomer you kept actually pays off at season's end;
+// (2) the MORALE GOODBYES — players whose morale never recovered (flightRisk.
+// seasonLeavers) walk, in character. If there's nothing to say, it's skipped.
 
 import type { Unit } from '../game/types.ts';
+import type { SeasonState } from '../game/season.ts';
+import { ARCS } from '../game/story/arcs.ts';
 import { playStory, type StoryBeat, type StoryLine } from './storyScene.ts';
 
 type P = 'Firebrand' | 'Catalyst' | 'Analyst' | 'Stabilizer';
@@ -20,10 +22,25 @@ const GOODBYE: Record<P, string> = {
 };
 const FALLBACK_GOODBYE = 'I think it\'s time. It hasn\'t been working for a while, and we both know it. Thanks for the run.';
 
-function buildBeats(leavers: readonly Unit[]): StoryBeat[] {
-  const beats: StoryBeat[] = [
-    { art: 'The café after the season — a couple of the squad lingering by the door, bags packed', who: 'narrator', text: 'The season\'s over. But not everyone\'s staying. A few of them have been quiet all week, and now you know why.' },
-  ];
+// PURE — the arc-outcome reflection lines for a season's drafted arcs, keyed by how
+// each landed (resolvedOutcome first, then status). Skips units in `skipIds` (a
+// leaver says their own goodbye instead of getting a reflection). Testable.
+export function arcEpilogueLines(season: SeasonState, skipIds: ReadonlySet<string> = new Set()): { characterId: string; name: string; line: string }[] {
+  const out: { characterId: string; name: string; line: string }[] = [];
+  for (const rt of season.arcs ?? []) {
+    const arc = ARCS[rt.arcId];
+    if (!arc?.epilogue) continue;
+    const u = season.playerRoster.find((x) => x.characterId === arc.characterId);
+    if (!u || skipIds.has(u.id)) continue;
+    const line = (rt.resolvedOutcome && arc.epilogue[rt.resolvedOutcome]) || arc.epilogue[rt.status];
+    if (!line) continue;
+    out.push({ characterId: arc.characterId, name: u.name, line });
+  }
+  return out;
+}
+
+function leaverGoodbyeBeats(leavers: readonly Unit[]): StoryBeat[] {
+  const beats: StoryBeat[] = [];
   for (const u of leavers) {
     const p = isP(u.personality) ? u.personality : null;
     beats.push({ who: 'player', name: u.name, text: p ? GOODBYE[p] : FALLBACK_GOODBYE } as StoryLine);
@@ -31,15 +48,26 @@ function buildBeats(leavers: readonly Unit[]): StoryBeat[] {
   const names = leavers.map((u) => u.name);
   const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   beats.push(
-    { who: 'sam', text: `${who}... gone. We let their morale rot, and this is the bill. Lesson learned the hard way.` },
-    { art: 'You, looking at the empty chairs', who: 'narrator', text: 'A roster spot — maybe two — sits empty now. Next season, you\'ll have to rebuild. Look after your people, and it doesn\'t come to this.' },
+    { who: 'sam', text: `${who}... gone. We let their morale rot, and this is the bill. Lesson learned the hard way.` } as StoryLine,
+    { art: 'You, looking at the empty chairs', who: 'narrator', text: 'A roster spot — maybe two — sits empty now. Next season, you\'ll have to rebuild.' } as StoryLine,
   );
   return beats;
 }
 
-// Plays the goodbye beat for any season-end leavers, then continues. No leavers ⇒
-// calls onDone immediately (no empty scene).
-export function showSeasonEpilogue(leavers: readonly Unit[], onDone: () => void): void {
-  if (leavers.length === 0) { onDone(); return; }
-  playStory(buildBeats(leavers), () => onDone());
+// Plays the season-end epilogue: arc reflections + morale goodbyes. Nothing to say
+// (a squad with no arcs and no leavers) ⇒ onDone immediately.
+export function showSeasonEpilogue(season: SeasonState, leavers: readonly Unit[], onDone: () => void): void {
+  const skip = new Set(leavers.map((u) => u.id));
+  const reflections = arcEpilogueLines(season, skip);
+  if (reflections.length === 0 && leavers.length === 0) { onDone(); return; }
+
+  const beats: StoryBeat[] = [
+    { art: "The café at season's end — chairs up on tables, monitors cooling", who: 'narrator',
+      text: leavers.length
+        ? "The season's over — and not everyone's staying. Here's where it left them."
+        : "The season's over. Before the lights go down, here's where it left everyone." } as StoryLine,
+  ];
+  for (const r of reflections) beats.push({ who: 'narrator', text: r.line } as StoryLine);
+  if (leavers.length) beats.push(...leaverGoodbyeBeats(leavers));
+  playStory(beats, () => onDone());
 }

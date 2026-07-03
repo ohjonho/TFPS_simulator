@@ -11,6 +11,7 @@
 // bump, and it never touches the match RNG, so determinism is unaffected.
 
 import type { SeasonState } from './season.ts';
+import type { Attributes, Unit } from './types.ts';
 import { teamRating } from './ratings.ts';
 import { createRng } from './rng.ts';
 import { LEAGUE, MATCH_WIN_SCORE } from './config.ts';
@@ -46,11 +47,54 @@ function matchForRival(ti: number): number {
   return -1;
 }
 
+// --- Rival growth (living league) -----------------------------------------
+// Each rival gains a seeded LEAGUE.rivalGrowth (1–3) "overall" points per player
+// training day (= per round), keyed on the ROUND so a round's ratings are fixed
+// regardless of when the table is recomputed (history stays coherent). Pure + off
+// the season stream — never the match RNG. The SAME growth is applied to the
+// roster the player actually faces (season.buildSeasonMatch) so table strength
+// and match strength always agree (teamRating moves 1:1 with an attribute bump).
+const clampAttr = (v: number): number => Math.max(0, Math.min(100, v));
+
+function rivalWeeklyGrowth(seed: number, ti: number, week: number): number {
+  const rng = createRng((seed ^ (ti * 0x9e3779b1) ^ (week * 0x85ebca6b) ^ 0x6ea70000) >>> 0);
+  const { min, max } = LEAGUE.rivalGrowth;
+  return min + Math.floor(rng.next() * (max - min + 1));
+}
+
+// Cumulative growth for rival `ti` by `round` (sum of weekly rolls 1..round).
+// Round 0 ⇒ 0, so the first opponent is at base strength.
+export function rivalCumGrowth(seed: number, ti: number, round: number): number {
+  let g = 0;
+  for (let w = 1; w <= round; w++) g += rivalWeeklyGrowth(seed, ti, w);
+  return g;
+}
+
+// A roster with `g` added to every attribute (clamped). Pure; g ≤ 0 ⇒ unchanged.
+function grownRoster(roster: readonly Unit[], g: number): Unit[] {
+  if (g <= 0) return roster.map((u) => u);
+  return roster.map((u) => {
+    const a = { ...u.attributes };
+    for (const k of Object.keys(a) as (keyof Attributes)[]) a[k] = clampAttr(a[k] + g);
+    return { ...u, attributes: a };
+  });
+}
+
+// The opponent roster the player faces at `matchIdx`, grown to its strength as of
+// the round that match is played. Consumed by season.buildSeasonMatch.
+export function grownOpponentRoster(season: SeasonState, matchIdx: number): Unit[] {
+  const round = roundOfMatch(matchIdx);
+  const ti = playerOppIndex(round);
+  return grownRoster(season.schedule[matchIdx] ?? [], rivalCumGrowth(season.seed, ti, round));
+}
+
 // Identity + rating per team index. P = the player; every other index is the
 // rival the player faces in matchForRival(ti), so names/rosters come from there.
-function ratingOf(season: SeasonState, ti: number): number {
+// `atRound` grows the rival to its strength as of that round (0 = base).
+function ratingOf(season: SeasonState, ti: number, atRound = 0): number {
   if (ti === P) return teamRating(season.playerRoster);
-  return teamRating(season.schedule[matchForRival(ti)] ?? []);
+  const base = season.schedule[matchForRival(ti)] ?? [];
+  return teamRating(grownRoster(base, rivalCumGrowth(season.seed, ti, atRound)));
 }
 function nameOf(season: SeasonState, ti: number): string {
   if (ti === P) return PLAYER_TEAM_NAME;
@@ -60,11 +104,11 @@ function nameOf(season: SeasonState, ti: number): string {
 // Light match sim — seeded coin-flip weighted by rating gap, deterministic per
 // (seed, salt, a, b). Returns the winning team index. Used for rival-vs-rival
 // league fixtures (salt = round) and playoff matches the player isn't in.
-function simMatchWinner(season: SeasonState, salt: number, a: number, b: number): number {
+function simMatchWinner(season: SeasonState, salt: number, a: number, b: number, atRound = 0): number {
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
-  const ra = ratingOf(season, lo);
-  const rb = ratingOf(season, hi);
+  const ra = ratingOf(season, lo, atRound);
+  const rb = ratingOf(season, hi, atRound);
   let p = 0.5 + LEAGUE.ratingToWinProbK * (ra - rb); // chance lo beats hi
   p = Math.max(LEAGUE.winProbClamp.min, Math.min(LEAGUE.winProbClamp.max, p));
   const rng = createRng((season.seed ^ (salt * 0x9e3779b1) ^ (lo * 0x85ebca6b) ^ (hi * 0x27d4eb2f)) >>> 0);
@@ -75,8 +119,8 @@ function simMatchWinner(season: SeasonState, salt: number, a: number, b: number)
 // rounds, the loser a deterministic 0..(MATCH_WIN_SCORE−1) — fewer the more the
 // winner outrates them. Gives every league fixture a scoreline so round-diff is
 // defined table-wide (the player's own matches use their REAL round tallies).
-function simLoserRounds(season: SeasonState, salt: number, winner: number, loser: number): number {
-  const gap = ratingOf(season, winner) - ratingOf(season, loser); // >0 = winner stronger
+function simLoserRounds(season: SeasonState, salt: number, winner: number, loser: number, atRound = 0): number {
+  const gap = ratingOf(season, winner, atRound) - ratingOf(season, loser, atRound); // >0 = winner stronger
   const rng = createRng((season.seed ^ (salt * 0x9e3779b1) ^ (winner * 0x85ebca6b) ^ (loser * 0x27d4eb2f) ^ 0x5c04e5) >>> 0);
   const lr = Math.round(1.7 - gap * 0.08 + (rng.next() * 1.6 - 0.8));
   return Math.max(0, Math.min(MATCH_WIN_SCORE - 1, lr));
@@ -129,11 +173,11 @@ export function computeStandings(season: SeasonState): StandingRow[] {
           wRounds = winner === P ? pf : pa;
           lRounds = winner === P ? pa : pf;
         } else {
-          lRounds = simLoserRounds(season, r, winner, loser); // pre-v9 save: synthesize
+          lRounds = simLoserRounds(season, r, winner, loser, r); // pre-v9 save: synthesize
         }
       } else {
-        winner = simMatchWinner(season, r, i, j);
-        lRounds = simLoserRounds(season, r, winner, winner === i ? j : i);
+        winner = simMatchWinner(season, r, i, j, r);
+        lRounds = simLoserRounds(season, r, winner, winner === i ? j : i, r);
       }
       const loser = winner === i ? j : i;
       wins[winner]++; losses[loser]++; played[winner]++; played[loser]++;
@@ -143,10 +187,11 @@ export function computeStandings(season: SeasonState): StandingRow[] {
   }
 
   const rows: StandingRow[] = [];
+  const displayRound = Math.min(N, season.idx); // rivals' grown strength as of now, for the shown rating
   for (let ti = 0; ti < N; ti++) {
     rows.push({
       teamIndex: ti, name: nameOf(season, ti), wins: wins[ti], losses: losses[ti],
-      played: played[ti], rd: rf[ti] - ra[ti], rating: ratingOf(season, ti), isPlayer: ti === P, rank: 0,
+      played: played[ti], rd: rf[ti] - ra[ti], rating: ratingOf(season, ti, displayRound), isPlayer: ti === P, rank: 0,
     });
   }
   rows.sort((x, y) => y.wins - x.wins || y.rd - x.rd || y.rating - x.rating || x.name.localeCompare(y.name));
@@ -187,5 +232,5 @@ export function playoffSeeds(season: SeasonState): StandingRow[] {
 export function rivalMatchIndexFor(ti: number): number { return matchForRival(ti); }
 export function teamNameForIndex(season: SeasonState, ti: number): string { return nameOf(season, ti); }
 export function simPlayoffWinner(season: SeasonState, slot: number, a: number, b: number): number {
-  return simMatchWinner(season, 0x50000 + slot, a, b);
+  return simMatchWinner(season, 0x50000 + slot, a, b, N); // playoff rivals at full-season strength
 }

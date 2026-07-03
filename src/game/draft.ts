@@ -22,6 +22,7 @@ import { assignNames } from './names.ts';
 import { createRng, type Rng } from './rng.ts';
 import { buildStateFromUnits } from './state.ts';
 import { placeSpawns } from './units.ts';
+import { authoredSeasonPool } from './story/characters.ts';
 
 // Pointy-top facing index. Defenders look down-right, attackers look up-right —
 // the spawn-frame cones point toward the enemy half. Movement overrides this
@@ -110,6 +111,9 @@ export type DraftOptions = {
   playerOnly?: boolean;
   poolSize?: number;
   picks?: number;
+  // Season draft: draw the pool from the 12 authored Origin characters
+  // (game/story/characters.ts) instead of the procedural generatePool.
+  authored?: boolean;
 };
 
 // Build the initial draft GameState (phase: 'draft', no spawned units). Lives
@@ -117,7 +121,7 @@ export type DraftOptions = {
 export function startDraft(map: MapDefinition, seed: number, opts: DraftOptions = {}): GameState {
   const poolSize = opts.poolSize ?? DRAFT.poolSize;
   const poolRng = createRng((seed ^ 0xd7af7000) >>> 0);
-  const pool = generatePool(poolRng, poolSize);
+  const pool = opts.authored ? authoredSeasonPool(poolRng) : generatePool(poolRng, poolSize);
   // Pass G — player team defaults to 'defenders' at match start (matches the
   // standard mode default). The snake order resolves against this.
   const playerTeam: Team = 'defenders';

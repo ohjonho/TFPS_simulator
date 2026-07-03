@@ -31,6 +31,7 @@ import {
   RANGE,
   SNIPER_SETTLED_TICKS,
   TRAITS,
+  STORY_TAGS,
   HERO_ABILITIES,
 } from './config.ts';
 
@@ -179,6 +180,30 @@ function traitHeadshotPp(unit: Unit, ctx: ShotContext): number {
   return pp;
 }
 
+// Story-arc conditional tags (Unit.storyTags — see game/storyTags.ts). Additive
+// on top of the tacticalTrait hooks; returns 0 for any unit with no story tags,
+// so a tagless roster is byte-identical (the determinism guarantee). Cross-unit
+// tags (Duo/Sisterhood) are wired in a later phase (need the arc link state).
+function storyTagHitPp(unit: Unit, ctx: ShotContext): number {
+  const tags = unit.storyTags;
+  if (!tags || tags.length === 0) return 0;
+  let pp = 0;
+  // anti-Clutch — the "curse": a heavy HR penalty when last alive (mirror of Clutch).
+  if (tags.includes('anti-Clutch') && ctx.lastAlive) pp += STORY_TAGS.antiClutch.hitPp;
+  // Drained / Nervous — temporary flat HR debuffs (cleared after the next match).
+  if (tags.includes('Drained')) pp += STORY_TAGS.drained.hitPp;
+  if (tags.includes('Nervous')) pp += STORY_TAGS.nervous.hitPp;
+  return pp;
+}
+
+function storyTagHeadshotPp(unit: Unit, ctx: ShotContext): number {
+  const tags = unit.storyTags;
+  if (!tags || tags.length === 0) return 0;
+  let pp = 0;
+  if (tags.includes('anti-Clutch') && ctx.lastAlive) pp += STORY_TAGS.antiClutch.hsPp;
+  return pp;
+}
+
 // Pass 8 — card-derived hit-rate contribution. Reads shooter.cardFlags + ctx
 // flags. Independent of the trait/modifier sums above (additive on top).
 function cardHitPp(unit: Unit, ctx: ShotContext): number {
@@ -304,6 +329,7 @@ function attributeHitPp(unit: Unit): number {
 export function effectiveHitPct(shooter: Unit, ctx: ShotContext, buffs: readonly Buff[]): number {
   let pct = baseHitPct(shooter.weapon, ctx.band, ctx.stationary, ctx.stationaryTicks);
   pct += traitHitPp(shooter, ctx)
+       + storyTagHitPp(shooter, ctx)
        + modifierHitPp(shooter, ctx)
        + cardHitPp(shooter, ctx)
        + attributeHitPp(shooter)
@@ -329,6 +355,7 @@ export function headshotPct(shooter: Unit, ctx: ShotContext, buffs: readonly Buf
     pct += HEADSHOT.sniperLongBonusPp;
   }
   pct += traitHeadshotPp(shooter, ctx)
+       + storyTagHeadshotPp(shooter, ctx)
        + modifierHeadshotPp(shooter, ctx)
        + cardHeadshotPp(shooter, ctx)
        + attributeHeadshotPp(shooter)
