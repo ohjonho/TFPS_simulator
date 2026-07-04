@@ -1,6 +1,6 @@
 // Pre-draft story beat — the tryouts. You address the room of hopefuls, lay out
 // the stakes (win the circuit, save Pixel Perfect), and explain how tryouts work,
-// then hand off to the card tutorial → the draft. No choices; pure scene-setting.
+// then hand off to the draft board. No choices; pure scene-setting.
 
 import { playStory, type StoryBeat } from './storyScene.ts';
 

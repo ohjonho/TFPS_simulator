@@ -155,7 +155,7 @@ const HOW_TO_PLAY = `
     <h3>Modes</h3>
     <ul>
       <li><strong>Season</strong> (campaign): the headline mode — a story intro,
-        a build-your-squad draft (pick 5 from a pool of 8), then a gauntlet of
+        a build-your-squad draft (pick 5 of the 12 regulars), then a gauntlet of
         matches toward a goal, carrying one roster the whole way. Strategies unlock
         as you go. See "The campaign" in the Glossary.</li>
       <li><strong>Draft</strong>: a single match — you and the AI snake-pick 5
@@ -178,8 +178,8 @@ const GLOSSARY = `
       carrying one drafted roster the whole way. Win enough to clear the goal and
       you take the prize — and save the shop. A few things ramp up as you go:</p>
     <ul class="glossary">
-      <li><strong>Build-your-squad draft</strong> — pick 5 players from a pool of
-        8. No co-drafting opponent; rivals are their own teams.</li>
+      <li><strong>Build-your-squad draft</strong> — pick 5 of the 12 regulars.
+        No co-drafting opponent; rivals are their own teams.</li>
       <li><strong>A teaching first match</strong> — your opening opponent is
         telegraphed (Rushes on attack, even Hold on defense) so you can practise
         reading and countering safely.</li>
@@ -388,6 +388,54 @@ const GLOSSARY = `
 // happened, not just what.
 
 const PATCH_NOTES = `
+  <section>
+    <h3>v0.122.0 — Heroes explained, tidier reference</h3>
+    <ul>
+      <li><strong>Heroes get their due.</strong> The draft walkthrough now has a dedicated step for the
+        Hero ability, and the "how to read a recruit" reference has a full Hero section — a plain-language
+        write-up of all four (Angelic, Techy, Cursed, Bulwark), not just a one-liner.</li>
+      <li><strong>Reference is two columns now</strong> — it was too tall as a single list.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.121.0 — A proper draft walkthrough (and a fix)</h3>
+    <ul>
+      <li><strong>Guided draft tour.</strong> The first time you draft, a spotlight walkthrough now steps
+        through the board one piece at a time — the recruit list, the detail panel, their kit and stats,
+        your pick tray, and Confirm — just like the first-match tour. The "how to read a recruit" guide is
+        still there as a reference (now collapsed by default; open it any time).</li>
+      <li><strong>Fixed: the draft board could linger over the match.</strong> After confirming your squad,
+        the draft screen is now properly cleared, so the map shows through instead of a leftover draft menu.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.120.0 — The draft board teaches itself</h3>
+    <ul>
+      <li><strong>"How to read a recruit" guide.</strong> The draft board now has a collapsible guide (open
+        the first time) explaining weapon, role, personality, and the five stat bars — and every chip and
+        stat on a recruit has a hover tooltip with the same note. No more guessing what "Warden" or
+        "Improvisation" means mid-draft.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.119.0 — No more spoilers on the draft board</h3>
+    <ul>
+      <li><strong>Recruit intros keep their secrets.</strong> Moony's draft blurb no longer hands you his
+        real name up front — that's his to reveal. And the mid-season signing screen now shows the same
+        spoiler-free intros as the draft, so a player's arc unfolds in play instead of being printed on
+        their card.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.118.0 — Intro polish: Remi gets a face, and the briefings line up</h3>
+    <ul>
+      <li><strong>Remi introduces himself properly.</strong> The scout kid now appears on the story stage
+        as "???" until he blurts his name — then his nameplate flips to Remi, like meeting anyone new.</li>
+      <li><strong>Consistent onboarding copy.</strong> Fixed stale briefings that still said "pick 5 from a
+        pool of 8" (it's the 12 regulars now) and that the goal was "top two" (it's top four into the
+        playoffs) — the welcome screen, help, and the team meeting now all agree.</li>
+    </ul>
+  </section>
   <section>
     <h3>v0.117.0 — Every arc plays out as scenes now</h3>
     <ul>

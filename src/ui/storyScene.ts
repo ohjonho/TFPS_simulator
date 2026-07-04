@@ -14,7 +14,9 @@ export type Speaker = 'sam' | 'you' | 'caster' | 'narrator' | 'player' | 'npc';
 // + registry name. `who`/`name` remain for portrait-less lines (backward-compatible).
 // `clearStage` drops the current cast before this speaker enters — a solo spotlight
 // (a big-cast scene like the team meeting can't hold everyone under the ≤3 cap).
-export type StoryLine = { art?: string; who: Speaker; speakerId?: string; name?: string; text: string; clearStage?: boolean };
+// `set` applies story flags as the line shows — used for a name reveal (e.g. Remi
+// flips from "???" to his name the moment he introduces himself).
+export type StoryLine = { art?: string; who: Speaker; speakerId?: string; name?: string; text: string; clearStage?: boolean; set?: Record<string, string> };
 export type StoryChoiceOption = { label: string; reply?: StoryLine[]; set?: Record<string, string> };
 export type StoryChoice = { art?: string; prompt?: string; options: StoryChoiceOption[] };
 export type StoryHubTopic = { label: string; lines: StoryLine[]; set?: Record<string, string> };
@@ -106,6 +108,7 @@ export function playStory(beats: readonly StoryBeat[], onDone: (flags: StoryFlag
     if (item.art) art = item.art;
 
     if (!isChoice(item)) {
+      if (item.set) Object.assign(flags, item.set); // apply flag changes (e.g. name reveal) as the line shows
       if (item.clearStage) stage.length = 0; // solo spotlight — drop the current cast
       const pid = portraitIdOf(item);
       if (pid) { addToStage(pid); lastSpeaker = pid; }

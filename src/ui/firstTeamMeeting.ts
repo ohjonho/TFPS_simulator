@@ -55,7 +55,7 @@ function buildMeeting(roster: readonly Unit[], leader: Unit): StoryBeat[] {
   const others = roster.filter((u) => u.id !== leader.id);
   const beats: StoryBeat[] = [
     { art: 'The team room — five new faces around a table', who: 'you', text: 'Congrats, all of you. Out of everyone who tried out, you five are the team.' },
-    { who: 'you', text: 'Real talk on the goal: making the qualifier isn\'t enough. We finish top two to reach the main tournament — and then we win that. That prize is what keeps Pixel Perfect\'s doors open.' },
+    { who: 'you', text: 'Real talk on the goal: just making up the numbers isn\'t enough. We finish top four in the league to reach the playoffs — and then we win it all. That prize is what keeps Pixel Perfect\'s doors open.' },
     { art: 'Sam, dropping a tray of energy drinks on the table', who: 'sam', text: 'So, you know. Easy. ...I\'ll be in the back if anyone needs me to panic with them.' },
     { art: `${leader.name} leaning into the table`, who: 'player', speakerId: leader.characterId, name: leader.name, text: 'speaks up first — of course they do. "Before we grind a single rep... what are we? What\'s this team\'s identity?"' },
     {

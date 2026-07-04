@@ -2,7 +2,7 @@
 // Replaces the old season-intro modal. Watching the Worlds Grand Finals at the
 // café "Pixel Perfect" with the owner Sam, who reveals the shop is in trouble
 // ($500k developer offer) just as an ad announces the Amateur TFPS circuit with a
-// $500k prize. You and Sam decide to enter, form a team ("Pixel Pursuit"), and go.
+// $500k prize. You and Sam decide to enter, form a team ("Pixel Perfect"), and go.
 //
 // Built on the generic dialogue runner (storyScene.playStory). Choices colour the
 // player's personality + relationship with Sam and record hooks for future events;

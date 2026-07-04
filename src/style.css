@@ -1035,6 +1035,19 @@ button.ss-box:hover { border-color: var(--accent); }
 .ds-slot-name { font-size: 9px; padding: 1px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .ds-confirm { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #0b0e14; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .ds-confirm:disabled { opacity: 0.4; cursor: default; background: transparent; color: var(--text-dim); border-color: var(--panel-border); }
+/* "How to read a recruit" — collapsible onboarding strip under the pick tray. */
+.ds-legend { border-bottom: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.15); flex-shrink: 0; }
+.ds-legend > summary { cursor: pointer; list-style: none; padding: 8px 16px; font-size: 12px; letter-spacing: 0.03em;
+  color: var(--text-dim); user-select: none; display: flex; align-items: center; gap: 7px; }
+.ds-legend > summary::-webkit-details-marker { display: none; }
+.ds-legend > summary::before { content: '▸'; font-size: 10px; transition: transform 0.15s ease; }
+.ds-legend[open] > summary::before { transform: rotate(90deg); }
+.ds-legend[open] > summary { color: var(--text); }
+.ds-legend .draft-help { padding: 2px 16px 14px; max-height: 32vh; overflow-y: auto; }
+/* Two columns so the reference isn't a tall single column. Each section stays whole. */
+.ds-legend .dh-legend { column-count: 2; column-gap: 30px; }
+.ds-legend .dh-sec { break-inside: avoid; margin: 0 0 14px; }
+.ds-legend .dh-sec dt { margin-top: 0; }
 .ds-body { flex: 1; display: grid; grid-template-columns: 236px 1fr 300px; min-height: 0; }
 .ds-list { overflow-y: auto; border-right: 1px solid var(--panel-border); padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .ds-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--text); cursor: pointer; text-align: left; }

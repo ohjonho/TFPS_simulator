@@ -10,7 +10,7 @@ const HOST_ID = 'welcome-screen';
 type Card = { title: string; body: string };
 
 const SYSTEMS: Card[] = [
-  { title: 'Draft your squad', body: 'Pick 5 players from a pool of 8. Weapon, role, traits and stats all shape how they play — there\'s no wrong start.' },
+  { title: 'Draft your squad', body: 'Pick 5 players from a pool of 12 hopefuls. Weapon, role, traits and stats all shape how they play — there\'s no wrong start.' },
   { title: 'Read the opponent', body: 'Your Scout reads each rival\'s tendency — "leans Rush A" — before the round. The read is your edge.' },
   { title: 'Pick the counter', body: 'Each round, choose an attack or defense. Some commit a site; reading theirs and answering it is the whole game.' },
   { title: 'Run the season', body: 'A gauntlet of matches against the local circuit. Win enough to take the prize — and keep the shop\'s lights on.' },

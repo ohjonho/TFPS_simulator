@@ -151,7 +151,7 @@ export function characterById(id: string): CharacterDef | undefined {
 // Spoiler-free 2-sentence intros for the draft screen — who they are + a hook, no
 // thorns or arcs given away. The player picks on vibe + stats, not foreknowledge.
 const DRAFT_INTROS: Record<string, string> = {
-  moony: "Real name Shiro Toshiyuki — known for reliable, techy play and a good eye. New in town and new to the game, he says, though Sam smiles like there's more to it.",
+  moony: "Reliable, techy play and a good eye for the game — steady hands you could build a team around. New in town and new to competition, he says... though Sam just smiles, like there's a longer story there than he's letting on.",
   mommamay: 'A bank manager and mum of three, and the undisputed champion of family game night. A sharp shot-caller, warm as they come, trying out because her kids dared her to.',
   ronin: "A soft-spoken library assistant with frighteningly clean mechanics. Keeps to himself, and doesn't much talk about where he learned to aim like that.",
   potter: 'Ex-professional analyst who called TFPS on the live broadcast for years. Always itched to actually play — and reckons this scrappy café side might be his (pixel) perfect shot.',

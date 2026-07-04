@@ -2,7 +2,7 @@
 // goodbye, then you sign a replacement from the reserve (the Origin characters you
 // passed on at the draft). Two full-page steps; calls back with the picked id.
 
-import type { CharacterDef } from '../game/story/characters.ts';
+import { draftIntro, type CharacterDef } from '../game/story/characters.ts';
 import type { Unit } from '../game/types.ts';
 
 function esc(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
@@ -34,7 +34,7 @@ export function showRedraft(
     <button class="ev-choice redraft-card" data-pick="${esc(c.id)}" type="button">
       <b>${esc(c.username)}</b>
       <span>${esc(c.role)} · ${esc(c.hero)} · ${esc(c.weapon)}</span>
-      <span>${esc(c.bio)}</span>
+      <span>${esc(draftIntro(c.id) || c.bio)}</span>
     </button>`;
   const board = `
     <div class="dash-card">

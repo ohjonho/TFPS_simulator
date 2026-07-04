@@ -402,9 +402,13 @@ function rerenderAll() {
 // (coachmark.ts owns the localStorage dedupe); the guidebook carries the rest.
 function maybeShowSeasonCoaching(): void {
   if (matchMode !== 'season') return;
-  // The draft now carries an in-screen "how to read a card" legend (draftPanel),
-  // so no pop-up here; the in-match tips below still apply.
-  if (state.phase === 'draft') return;
+  // The draft board gets its own guided spotlight tour (once) — walks the recruit
+  // list, the detail panel, the pick tray and Confirm, one element at a time. Only
+  // the authored season draft (its pool carries characterIds); season isn't set yet.
+  if (state.phase === 'draft') {
+    if (state.draft?.pool.some((u) => u.characterId)) runWalkthrough('draft-tour', draftTour());
+    return;
+  }
   // In-match tips fire only in the tutorial match (the telegraphed opponent).
   if (!season || season.idx !== 0) return;
   if (state.phase === 'planning' && state.round === 1) {
@@ -416,6 +420,26 @@ function maybeShowSeasonCoaching(): void {
       'Sides swapped — you\'re <strong>attacking</strong> now. They sit back in an even <strong>Hold</strong>. <strong>Execute</strong> or <strong>Control</strong> pries that open.',
     );
   }
+}
+
+// Draft-board guided tour — walks the roster browser element by element, shown
+// once. Targets resolve lazily against the live #draft-panel DOM (a recruit is
+// always pre-selected, so the detail panel exists). Mirrors firstMatchTour.
+function draftTour(): WalkStep[] {
+  const q = (sel: string) => (): HTMLElement | null => document.querySelector<HTMLElement>(sel);
+  return [
+    { title: 'Build your squad', body: 'Draft five players from these twelve hopefuls — this is the team you\'ll carry all season, so choose the mix you like.' },
+    { target: q('.ds-list'), title: 'The recruits', body: 'Everyone who tried out. <strong>Click any name</strong> to size them up on the right.' },
+    { target: q('.ds-center'), title: 'Who you\'re weighing up', body: 'The recruit you\'ve selected. (The portraits are placeholders for now — real art\'s on the way.)' },
+    { target: q('.ds-chips'), title: 'Their kit', body: 'Role, hero, weapon and personality at a glance. <strong>Hover any chip</strong> for what it means.' },
+    { target: q('.ds-intro'), title: 'A first read', body: 'A short sketch of who they are, and how they play. Their full story unfolds as you play together…' },
+    { target: q('.ds-stats'), title: 'Their stats', body: 'The five core stats. The bars are <strong>zoomed</strong> so specialists stand out — hover a label for what each one means.' },
+    { target: q('.ds-hero'), title: 'Their Hero ability', body: 'Every recruit brings a <strong>Hero</strong> — a once-a-round signature that fires when its moment comes. The four play very differently: a medic, a scout, a hunter, a wall. This line spells out theirs, and the reference breaks down all four.' },
+    { target: q('.ds-draftbtn'), title: 'Sign them', body: 'Like what you see? Draft them here. Changed your mind? Click a picked player up top to release them.' },
+    { target: q('.ds-picktray'), title: 'Your squad', body: 'Your five picks fill in up here as you go. You need all five before you can start.' },
+    { target: q('.ds-confirm'), title: 'Lock it in', body: 'Once you\'ve got five, <strong>Confirm</strong> to meet the team and kick off the season.' },
+    { target: q('.ds-legend'), title: 'A reference, any time', body: 'And this guide explains every chip and stat whenever you want it — just open it up.' },
+  ];
 }
 
 // First-match guided tour — anchored to real chrome (shell.*), shown once.
@@ -474,7 +498,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.117.0', {
+    renderMainMenu(menuHost, 'v0.122.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -771,7 +795,7 @@ function runSeasonWeek(onFirstBack?: () => void): void {
           season = {
             ...season!,
             authoringUnlocked: true,
-            storyFlags: { ...(season!.storyFlags ?? {}), scoutingUnlocked: 'true', scoutFocus: focus },
+            storyFlags: { ...(season!.storyFlags ?? {}), scoutingUnlocked: 'true', scoutFocus: focus, 'remi-met': 'true' },
           };
           saveSeason(season);
           // The playbook just opened — drop the player straight into the editor with
