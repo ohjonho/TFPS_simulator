@@ -44,6 +44,11 @@ export interface ArcChoice {
   roll?: RollSpec;         // this choice resolves via a weighted roll
 }
 
+// A VN dialogue line for a beat's `scene`: a character (speakerId) or narration
+// (who: narrator/you) or Sam. Played on the story stage before the choice. Text may
+// contain {player}. Kept DOM-free (game layer) — the UI maps it to a StoryLine.
+export interface SceneLine { speakerId?: string; who?: 'narrator' | 'you' | 'sam'; text: string; clearStage?: boolean; }
+
 export interface ArcBeat {
   id: string;
   trigger: BeatTrigger;
@@ -52,6 +57,7 @@ export interface ArcBeat {
   kicker: string;
   headline: string;                                // may contain {player}
   body: string;                                    // may contain {player}
+  scene?: SceneLine[];                             // optional VN dialogue played before the choice (else `body` = one narrator line)
   persona?: Partial<Record<PersonalityId, string>>; // aside by subject personality
   record?: Partial<Record<RecordForm, string>>;     // aside by team form
   effects?: Effect[];                              // unconditional, on trigger (e.g. a morale dip)

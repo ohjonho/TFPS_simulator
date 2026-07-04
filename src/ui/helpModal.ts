@@ -389,6 +389,96 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.117.0 — Every arc plays out as scenes now</h3>
+    <ul>
+      <li><strong>Yahyo and WonManArmy get their scenes — completing the set.</strong> Yahyo guarding her
+        heart over old Girlaxy tape and the tryout offer from her past; Won facing the rage clip that
+        resurfaced, then the real reason he walked away. With these, <em>all twelve</em> character arcs
+        now play out as story-stage dialogue rather than summary cards.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.116.0 — Three more arcs get their scenes</h3>
+    <ul>
+      <li><strong>MommaMay, Jok3r and Potter now play out as dialogue.</strong> MommaMay quietly asking
+        where she really stands; Jok3r's cameras chilling the room, then the night his own chat gets under
+        his skin; Potter facing the team he trashed on-air, then dropping his dossier on the table. Same
+        choices and outcomes — they just land as scenes now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.115.0 — Cardo's story, in scenes</h3>
+    <ul>
+      <li><strong>Cardo's arc plays out as dialogue.</strong> The restless tinkerer pitching you on a new
+        seat, then reporting back on how the experiment felt — both beats now play on the story stage
+        instead of a summary card. Same choices and outcomes.</li>
+      <li><strong>Role swaps now show what changed.</strong> When you move a player to a new role and hero,
+        the "what changed" summary spells out the new seat (e.g. "→ Tactician · Techy") instead of coming
+        up blank.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.114.0 — Three more arcs get their scenes</h3>
+    <ul>
+      <li><strong>R0nin, t0ph and Reina now play out as dialogue.</strong> R0nin's confession and the on-air
+        segment that outs him (a caster puts a face to the pile-on); t0ph's deadpan burnout and the quiet
+        night he weighs the promotion; Reina's post-loss meltdown and Sam pulling you aside about her. Same
+        choices and outcomes — they just land as scenes now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.113.0 — imissu's story, in scenes</h3>
+    <ul>
+      <li><strong>imissu's arc plays out as dialogue.</strong> Both her beats — the late night alone in the
+        café after a call home, and the day her mum lines up a safe job back on the farm — now play on the
+        story stage, quiet and one-on-one, instead of a summary card. Same choices and outcomes.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.112.0 — Meet the team, face to face</h3>
+    <ul>
+      <li><strong>The first team meeting has faces now.</strong> Your five draftees introduce themselves
+        on the story stage — Sam and your in-game leader anchor the identity talk, then the camera cuts to
+        each teammate in turn as they say their piece. Same meeting, same choice; now you can put a face to
+        every voice.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.111.0 — Moony's story, in scenes</h3>
+    <ul>
+      <li><strong>Moony's arc plays out as dialogue.</strong> His three beats — Sam quietly flagging him
+        after a lost clutch, the night he finally says who he really is, and the day he decides who to
+        lean on — now play on the story stage with faces and back-and-forth, instead of a summary card.
+        Same choices and outcomes; it just lands like a conversation now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.110.0 — A proper draft board</h3>
+    <ul>
+      <li><strong>New draft screen.</strong> Building your squad is now a browsable roster of the twelve
+        regulars — click a face to read a short intro and see their strengths at a glance (a zoomed stat
+        readout, so the specialists actually look like specialists), then draft your five along the top.
+        Portraits are placeholders for now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.109.0 — Arc moments play out as scenes</h3>
+    <ul>
+      <li><strong>Dialogue, not summaries.</strong> Character-arc beats can now play as full visual-novel
+        scenes — the people involved on stage, talking it through — before you make your call. Echo's arc
+        is the first to get it (his big-league sister Nova turns up to watch); more roll out from here.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.108.0 — Story scenes get faces</h3>
+    <ul>
+      <li><strong>Visual-novel scenes.</strong> Story moments now play out on a proper stage —
+        characters appear as portraits (one centered, or two facing off left and right), the speaker lit
+        and the rest dimmed, over a soft backdrop. Faces are placeholders for now, but the conversations
+        finally look like conversations. More of the cast step into their own scenes as we go.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.107.0 — The whole cast has a story now</h3>
     <ul>
       <li><strong>Six more arcs — every regular now has one.</strong> The tilting prodigy you either

@@ -148,6 +148,27 @@ export function characterById(id: string): CharacterDef | undefined {
   return AUTHORED_ORIGINS.find((c) => c.id === id);
 }
 
+// Spoiler-free 2-sentence intros for the draft screen — who they are + a hook, no
+// thorns or arcs given away. The player picks on vibe + stats, not foreknowledge.
+const DRAFT_INTROS: Record<string, string> = {
+  moony: "Real name Shiro Toshiyuki — known for reliable, techy play and a good eye. New in town and new to the game, he says, though Sam smiles like there's more to it.",
+  mommamay: 'A bank manager and mum of three, and the undisputed champion of family game night. A sharp shot-caller, warm as they come, trying out because her kids dared her to.',
+  ronin: "A soft-spoken library assistant with frighteningly clean mechanics. Keeps to himself, and doesn't much talk about where he learned to aim like that.",
+  potter: 'Ex-professional analyst who called TFPS on the live broadcast for years. Always itched to actually play — and reckons this scrappy café side might be his (pixel) perfect shot.',
+  echo: "Eighteen, fearless, and carrying a famous last name. His big-league sister casts a long shadow, and he is desperate to step out of it.",
+  reina: "A seventeen-year-old mechanical phenom who's never met a duel she didn't take. Absurdly gifted, absolutely certain of it, and not big on the word 'we.'",
+  cardo: 'A polished all-rounder with no obvious holes in his game. Solid everywhere, restless everywhere — like he is still hunting for the seat that fits.',
+  jok3r: 'A chaos-goblin sniper and full-time content creator who plays every round like a highlight reel. Wildly entertaining, wildly inconsistent, having the time of his life.',
+  topf: 'A thirty-year-old banker moonlighting as a ranked demon. Immaculate aim, dry as a bone, and thoroughly done carrying strangers up the ladder.',
+  yahyo: 'A shotgun specialist who made her name setting nasty traps for an all-girls squad that did real damage last season. Sharp, self-reliant, and playing it close to the chest.',
+  wonmanarmy: 'A semi-retired streaming legend once as famous for his temper as his aim. Mellowed and generous now, back for the love of the game — and the community around it.',
+  imissu: 'A small-town software engineer new to the big city — all bubbly smiles until the round starts. Then the cold, calculated aggression comes out, and the noodles go cold.',
+};
+
+export function draftIntro(id: string): string {
+  return DRAFT_INTROS[id] ?? '';
+}
+
 // Build the season draft pool: the 12 authored characters as pool Units (ids
 // P1..P12). Uses rollUnitMeta's full-override path to pin every field — the
 // authored `attributes` land LAST so they're the exact final values (no random

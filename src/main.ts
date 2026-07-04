@@ -71,7 +71,6 @@ import { renderMainMenu } from './ui/mainMenu.ts';
 import { showSeasonOpening } from './ui/seasonOpening.ts';
 import { showWelcome } from './ui/welcome.ts';
 import { showPreDraftBeat } from './ui/preDraftBeat.ts';
-import { showCardTutorial } from './ui/cardTutorial.ts';
 import { showFirstTeamMeeting } from './ui/firstTeamMeeting.ts';
 import { showTeamStats } from './ui/teamStats.ts';
 import { showMatchPrep } from './ui/matchPrep.ts';
@@ -475,7 +474,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.107.0', {
+    renderMainMenu(menuHost, 'v0.117.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -513,7 +512,7 @@ function startMode(mode: MatchMode): void {
       flowPreDraft();
     }, goToMenu);
     const flowPreDraft = (): void => showPreDraftBeat(
-      () => showCardTutorial(launchSeasonDraft, flowPreDraft),
+      () => launchSeasonDraft(), // (card tutorial dropped — the new draft screen gets its own onboarding later)
       flowOpening,
     );
     flowOpening();

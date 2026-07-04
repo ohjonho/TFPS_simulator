@@ -36,15 +36,18 @@ const THIRD: Record<P, string> = {
 };
 const FALLBACK = { solo: 'gives a small nod. "Ready to work."', echo: (f: string) => `nods. "What ${f} said."`, third: 'just nods along.' };
 
-// Distinct lines for a group of players who share a personality (names in order).
-function meetingLinesForGroup(personality: string | null, names: string[]): StoryLine[] {
+// Distinct lines for a group of players who share a personality (in roster order).
+// Each gets a solo spotlight (clearStage) — the round-table introduces the squad one
+// face at a time, which also sidesteps the stage's ≤3-portrait cap.
+function meetingLinesForGroup(personality: string | null, members: { name: string; id?: string }[]): StoryLine[] {
   const p = personality && personality in SOLO ? (personality as P) : null;
-  return names.map((name, i) => {
+  const names = members.map((m) => m.name);
+  return members.map((m, i) => {
     let text: string;
     if (i === 0) text = p ? SOLO[p] : FALLBACK.solo;
     else if (i === 1) text = p ? ECHO[p](names[0]) : FALLBACK.echo(names[0]);
     else text = p ? THIRD[p] : FALLBACK.third;
-    return { who: 'player', name, text };
+    return { who: 'player', speakerId: m.id, name: m.name, clearStage: true, text };
   });
 }
 
@@ -54,28 +57,28 @@ function buildMeeting(roster: readonly Unit[], leader: Unit): StoryBeat[] {
     { art: 'The team room — five new faces around a table', who: 'you', text: 'Congrats, all of you. Out of everyone who tried out, you five are the team.' },
     { who: 'you', text: 'Real talk on the goal: making the qualifier isn\'t enough. We finish top two to reach the main tournament — and then we win that. That prize is what keeps Pixel Perfect\'s doors open.' },
     { art: 'Sam, dropping a tray of energy drinks on the table', who: 'sam', text: 'So, you know. Easy. ...I\'ll be in the back if anyone needs me to panic with them.' },
-    { art: `${leader.name} leaning into the table`, who: 'player', name: leader.name, text: 'speaks up first — of course they do. "Before we grind a single rep... what are we? What\'s this team\'s identity?"' },
+    { art: `${leader.name} leaning into the table`, who: 'player', speakerId: leader.characterId, name: leader.name, text: 'speaks up first — of course they do. "Before we grind a single rep... what are we? What\'s this team\'s identity?"' },
     {
       art: 'The room, waiting on your call',
       prompt: 'Set the team\'s identity:',
       options: [
-        { label: 'Fast and fearless — we take our fights.', set: { lean: 'aggressive' }, reply: [{ who: 'player', name: leader.name, text: 'grins. "Now we\'re talking. Aggression it is."' }] },
-        { label: 'Disciplined — we run the plan, every round.', set: { lean: 'disciplined' }, reply: [{ who: 'player', name: leader.name, text: 'nods. "Structure. I can lead that."' }] },
-        { label: 'Cool heads — we win the rounds that matter.', set: { lean: 'composed' }, reply: [{ who: 'player', name: leader.name, text: 'leans back. "Steady. Win the ones that count. I like it."' }] },
+        { label: 'Fast and fearless — we take our fights.', set: { lean: 'aggressive' }, reply: [{ who: 'player', speakerId: leader.characterId, name: leader.name, text: 'grins. "Now we\'re talking. Aggression it is."' }] },
+        { label: 'Disciplined — we run the plan, every round.', set: { lean: 'disciplined' }, reply: [{ who: 'player', speakerId: leader.characterId, name: leader.name, text: 'nods. "Structure. I can lead that."' }] },
+        { label: 'Cool heads — we win the rounds that matter.', set: { lean: 'composed' }, reply: [{ who: 'player', speakerId: leader.characterId, name: leader.name, text: 'leans back. "Steady. Win the ones that count. I like it."' }] },
       ],
     },
   ];
   // Each player chimes in once — the leader's already spoken via the choice. Group
   // by personality (preserving roster order) so shared personalities interact
   // instead of repeating the same line.
-  const groups: { p: string | null; names: string[] }[] = [];
+  const groups: { p: string | null; members: { name: string; id?: string }[] }[] = [];
   for (const u of others) {
     const p = u.personality ?? null;
     let g = groups.find((x) => x.p === p);
-    if (!g) { g = { p, names: [] }; groups.push(g); }
-    g.names.push(u.name);
+    if (!g) { g = { p, members: [] }; groups.push(g); }
+    g.members.push({ name: u.name, id: u.characterId });
   }
-  for (const g of groups) for (const ln of meetingLinesForGroup(g.p, g.names)) beats.push(ln);
+  for (const g of groups) for (const ln of meetingLinesForGroup(g.p, g.members)) beats.push(ln);
   beats.push({ art: 'The team, fired up', who: 'you', text: 'Good. That\'s who we are. Now let\'s go earn it — first training day starts now.' });
   return beats;
 }

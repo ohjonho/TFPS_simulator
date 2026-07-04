@@ -12,6 +12,7 @@ import type { DraftState, GameState, Team, Unit, Weapon } from '../game/types.ts
 import { visibleAttributeBlockHtml } from './attributesPanel.ts';
 import { traitSpan } from './traitChip.ts';
 import { roleChip, heroChip } from './unitMetaChip.ts';
+import { renderDraftScreen } from './draftScreen.ts';
 import { draftCardLegendHtml } from './draftHelpModal.ts';
 
 // H3.fix3 — full weapon name for the draft scouting view (single-letter
@@ -44,6 +45,10 @@ export function renderDraftPanel(
   if (existing) existing.remove();
 
   if (state.phase !== 'draft' || !state.draft) return;
+
+  // Authored season draft (its pool carries characterIds) → the BG3-style roster
+  // browser. The procedural standalone draft keeps the classic card grid below.
+  if (state.draft.pool.some((u) => u.characterId)) { renderDraftScreen(host, state, cb); return; }
 
   const panel = document.createElement('div');
   panel.id = PANEL_ID;

@@ -10,10 +10,28 @@ import type { Effect, PersonalityId } from '../game/events/types.ts';
 import type { Unit } from '../game/types.ts';
 import { recordForm } from '../game/events/runtime.ts';
 import { effectChipsHtml } from './effectChips.ts';
+import { playStory, type StoryBeat, type Speaker } from './storyScene.ts';
 
 function esc(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 function fill(text: string, subjectName: string | null): string {
   return text.replace(/\{player\}/g, subjectName ? `<strong>${esc(subjectName)}</strong>` : 'a player');
+}
+// Plain {player} fill for the VN runner (which escapes its own text).
+function fillPlain(text: string, subjectName: string | null): string {
+  return text.replace(/\{player\}/g, subjectName ?? 'a player');
+}
+
+// The "what changed" chips after a scened beat resolves (skipped if nothing changed).
+function showArcChips(subjectName: string | null, effects: readonly Effect[], done: () => void): void {
+  if (!effects || effects.length === 0) { done(); return; }
+  document.getElementById('arc-beat-screen')?.remove();
+  const host = document.createElement('div');
+  host.id = 'arc-beat-screen';
+  host.className = 'dashboard';
+  document.body.appendChild(host);
+  host.innerHTML = `<div class="dash-card"><div class="dash-header"><div class="dash-kicker">What changed</div></div>${effectChipsHtml(effects, subjectName)}
+    <div class="dash-actions"><button class="btn-primary" data-continue type="button">Continue &rarr;</button></div></div>`;
+  host.querySelector<HTMLButtonElement>('[data-continue]')?.addEventListener('click', () => { host.remove(); done(); });
 }
 
 // Persona aside (by the subject's personality) then a form aside — same shape as
@@ -34,6 +52,26 @@ export function showArcBeat(
   onResolve: (choiceIdx: number | null) => readonly Effect[],
   onDone: (choiceIdx: number | null) => void,
 ): void {
+  // VN scene path — dialogue on the story stage, the choice inline, then the chips.
+  // A beat with no `scene` falls through to the classic summary-card below.
+  if (beat.scene && beat.scene.length) {
+    const sceneBeats: StoryBeat[] = beat.scene.map((l, idx) => ({
+      who: (l.who ?? (l.speakerId ? 'player' : 'narrator')) as Speaker,
+      speakerId: l.speakerId,
+      clearStage: l.clearStage,
+      art: idx === 0 ? beat.kicker : undefined,
+      text: fillPlain(l.text, subjectName),
+    }));
+    const shown = (beat.choices ?? []).map((c, i) => ({ c, i })).filter(({ c }) => !c.requiresFlag || !!flags[c.requiresFlag]);
+    if (shown.length) sceneBeats.push({ prompt: fillPlain(beat.headline, subjectName), options: shown.map(({ c, i }) => ({ label: c.label, set: { __arcpick: String(i) } })) });
+    playStory(sceneBeats, (sflags) => {
+      const idx = sflags.__arcpick != null ? parseInt(sflags.__arcpick, 10) : null;
+      const effects = onResolve(idx);
+      showArcChips(subjectName, effects, () => onDone(idx));
+    }, undefined, flags);
+    return;
+  }
+
   document.getElementById('arc-beat-screen')?.remove();
   const host = document.createElement('div');
   host.id = 'arc-beat-screen';

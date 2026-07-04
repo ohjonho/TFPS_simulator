@@ -18,7 +18,10 @@ function chip(e: Effect, subjectName: string | null): string {
   switch (e.op) {
     case 'setFlag': return '';  // invisible bookkeeping — no chip
     case 'depart': return '';   // handled by the redraft screen, not a chip
-    case 'swapLoadout': return '';
+    case 'swapLoadout': {
+      const parts = [e.role, e.hero].filter((s): s is string => !!s).map(esc);
+      return parts.length ? `<span class="ev-fx up">→ ${parts.join(' · ')}</span>` : '';
+    }
     case 'enableEventGroup': return '';
     case 'obligation': return '';
     case 'grantPlaybookSlots': return `<span class="ev-fx up">+${e.amount} playbook slot${e.amount > 1 ? 's' : ''}</span>`;
