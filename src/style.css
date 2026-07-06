@@ -1150,6 +1150,16 @@ button.ss-box:hover { border-color: var(--accent); }
 .mp-header { text-align: center; margin-bottom: 18px; }
 .mp-kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
 .mp-header h1 { margin: 6px 0 0; font-size: 26px; color: var(--text); }
+/* Run-in stakes banner — the late-season playoff-race crescendo. Tier = colour. */
+.mp-stakes { margin: 12px auto 0; max-width: 560px; padding: 9px 14px; border-radius: 8px; text-align: left;
+  border-left: 3px solid var(--panel-border); background: rgba(255, 255, 255, 0.035); font-size: 13px; line-height: 1.45; color: var(--text-dim); }
+.mp-stakes-kicker { display: block; font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase; font-weight: 800; margin-bottom: 2px; }
+.mp-stakes-line strong { color: var(--text); font-weight: 700; }
+.mp-stakes-in { border-left-color: #34d399; } .mp-stakes-in .mp-stakes-kicker { color: #34d399; }
+.mp-stakes-bubble { border-left-color: #fbbf24; } .mp-stakes-bubble .mp-stakes-kicker { color: #fbbf24; }
+.mp-stakes-chase { border-left-color: #60a5fa; } .mp-stakes-chase .mp-stakes-kicker { color: #60a5fa; }
+.mp-stakes-mustwin { border-left-color: #f87171; background: rgba(248, 113, 113, 0.09); } .mp-stakes-mustwin .mp-stakes-kicker { color: #f87171; }
+.mp-stakes-faded { border-left-color: var(--text-dim); } .mp-stakes-faded .mp-stakes-kicker { color: var(--text-dim); }
 .mp-body { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
 .mp-h2h {
   display: flex; align-items: center; justify-content: space-between;

@@ -11,6 +11,12 @@ import { moraleOf, teamMorale } from './morale.ts';
 
 const personaOffset = (u: Unit): number => FLIGHT_RISK.persona[u.personality ?? ''] ?? 0;
 
+// A character whose personal arc is currently unfolding — the arc owns their
+// emotional state this stretch, so the generic flight-risk beat stays out of its
+// way (avoids two overlapping "this player's struggling" threads on one person).
+const inActiveArc = (season: SeasonState, u: Unit): boolean =>
+  (season.arcs ?? []).some((rt) => rt.characterId === u.characterId && rt.status === 'active');
+
 // The morale threshold below which THIS player is at risk this week — base, shaded
 // by personality, plus situational pressure (a Firebrand frays when the team's
 // losing; a Catalyst when the whole room is low).
@@ -30,7 +36,7 @@ export function flightRiskCandidate(season: SeasonState, handledIds: readonly st
   const handled = new Set(handledIds);
   const morale = season.morale ?? {};
   const atRisk = season.playerRoster
-    .filter((u) => !handled.has(u.id) && moraleOf(morale, u.id) < triggerFor(season, u))
+    .filter((u) => !handled.has(u.id) && !inActiveArc(season, u) && moraleOf(morale, u.id) < triggerFor(season, u))
     .sort((a, b) => moraleOf(morale, a.id) - moraleOf(morale, b.id));
   return atRisk[0] ?? null;
 }

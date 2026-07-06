@@ -16,7 +16,9 @@ export type Speaker = 'sam' | 'you' | 'caster' | 'narrator' | 'player' | 'npc';
 // (a big-cast scene like the team meeting can't hold everyone under the ≤3 cap).
 // `set` applies story flags as the line shows — used for a name reveal (e.g. Remi
 // flips from "???" to his name the moment he introduces himself).
-export type StoryLine = { art?: string; who: Speaker; speakerId?: string; name?: string; text: string; clearStage?: boolean; set?: Record<string, string> };
+// `portraitId` shows + lights a character's portrait WITHOUT a speaker nameplate —
+// for narration over a face (e.g. the season epilogue reflecting on each player).
+export type StoryLine = { art?: string; who: Speaker; speakerId?: string; portraitId?: string; name?: string; text: string; clearStage?: boolean; set?: Record<string, string> };
 export type StoryChoiceOption = { label: string; reply?: StoryLine[]; set?: Record<string, string> };
 export type StoryChoice = { art?: string; prompt?: string; options: StoryChoiceOption[] };
 export type StoryHubTopic = { label: string; lines: StoryLine[]; set?: Record<string, string> };
@@ -110,8 +112,9 @@ export function playStory(beats: readonly StoryBeat[], onDone: (flags: StoryFlag
     if (!isChoice(item)) {
       if (item.set) Object.assign(flags, item.set); // apply flag changes (e.g. name reveal) as the line shows
       if (item.clearStage) stage.length = 0; // solo spotlight — drop the current cast
-      const pid = portraitIdOf(item);
-      if (pid) { addToStage(pid); lastSpeaker = pid; }
+      const pid = portraitIdOf(item);                  // the SPEAKER's portrait (drives the nameplate)
+      const facePid = pid ?? item.portraitId ?? null;  // who to show + light on stage (portraitId = a face w/o a nameplate)
+      if (facePid) { addToStage(facePid); lastSpeaker = facePid; }
       let nameTag: string;
       if (pid) {
         const { tint } = castVisual(pid);
@@ -120,7 +123,7 @@ export function playStory(beats: readonly StoryBeat[], onDone: (flags: StoryFlag
         const who = item.name ?? SPEAKER_NAME[item.who];
         nameTag = who ? `<div class="ss-speaker">${esc(who)}</div>` : '';
       }
-      host.innerHTML = `<div class="ss-stage">${topHtml()}${sceneHtml(pid)}
+      host.innerHTML = `<div class="ss-stage">${topHtml()}${sceneHtml(facePid)}
         <button class="ss-box ss-line ss-${item.who}" data-next type="button">
           ${nameTag}<div class="ss-text">${esc(item.text)}</div><div class="ss-cue">▸</div>
         </button></div>`;

@@ -12,7 +12,7 @@ import { AMBIENT_EVENTS } from './registry.ts';
 import { createRng, type Rng } from '../rng.ts';
 import { aggregateVisible } from '../attributes.ts';
 import { adjustMorale } from '../morale.ts';
-import { ROLE_AGGRESSION } from '../config.ts';
+import { EVENTS, ROLE_AGGRESSION } from '../config.ts';
 
 // Change a unit's role (and role-derived aggression) and/or hero. Pure.
 function swapUnitLoadout(u: Unit, role?: string, hero?: string): Unit {
@@ -78,6 +78,14 @@ export function rollEvent(season: SeasonState, slotKey: string): { event: Season
   const event = weightedPick(pool, rng);
   const subjectId = event.subject ? resolveSubject(season, event.subject, rng) : null;
   return { event, subjectId };
+}
+
+// Pacing gate: should this arc-free slot surface an ambient event at all? A separate
+// seeded roll off (season.seed, slotKey) so it's deterministic + stable on reload,
+// and independent of the event-pick roll above.
+export function ambientEventDue(season: SeasonState, slotKey: string): boolean {
+  const rng = createRng((season.seed ^ hashSlot(slotKey) ^ 0x9e5d) >>> 0);
+  return rng.chance(EVENTS.ambientChance);
 }
 
 // The team's current form, from its W/L record so far. A clear lead/deficit reads

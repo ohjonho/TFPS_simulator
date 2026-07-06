@@ -389,6 +389,55 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.127.0 — Your grand final</h3>
+    <ul>
+      <li><strong>The season comes full circle.</strong> You opened the game watching a grand-final clutch
+        on the café wall, Sam murmuring "ice in the veins". Now, before your own final, that wall shows
+        <em>your</em> team — and if you lift the trophy, the broadcast crowns Pixel Perfect and Sam's line
+        comes right back around. The ending it was all building toward.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.126.0 — Into the knockouts</h3>
+    <ul>
+      <li><strong>A moment before the bracket.</strong> When the regular season ends, you no longer jump
+        straight into the playoffs. Sam marks the shift — you made the top four, now it's win-or-go-home,
+        two matches from saving the shop — so the knockouts land as a climax, not just the next screen.
+        Fall short instead, and there's an honest word before the season closes.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.125.0 — The run-in bites</h3>
+    <ul>
+      <li><strong>The playoff race now builds.</strong> In the back third of the regular season, match prep
+        shows a stakes banner that reads the live table — "playoff places", "clinging on", "the chase is
+        on", and on the final day a red "must-win" or "win to lock it". Late matches finally feel like they
+        matter, instead of being framed like week two.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.124.0 — Fewer, better-timed between-match moments</h3>
+    <ul>
+      <li><strong>The week no longer drowns you in flavour modals.</strong> Ambient events used to fire
+        before AND after every single match, on top of your players' story beats. Now a character-arc beat
+        owns its slot (no random event stacked on top), and quiet slots only sometimes surface an event —
+        so the between-match beats land when they matter instead of every time.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.123.0 — The season beats defer to the arcs</h3>
+    <ul>
+      <li><strong>No more double-ups.</strong> The generic "a player's pulling away" flight-risk beat now
+        stays quiet for anyone whose personal arc is actively unfolding — their story owns that moment
+        instead of two overlapping threads about the same person.</li>
+      <li><strong>Faces on the season beats.</strong> The at-risk player now speaks for themselves (not
+        just Sam about them), the standout who reacts to your bye-week call gets their portrait, and the
+        season epilogue plays as a roll call — each player reflected on over their own face.</li>
+      <li><strong>Leavers get their real send-off.</strong> If someone walks and they had an arc, the
+        epilogue uses that arc's own ending rather than a generic goodbye.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.122.0 — Heroes explained, tidier reference</h3>
     <ul>
       <li><strong>Heroes get their due.</strong> The draft walkthrough now has a dedicated step for the

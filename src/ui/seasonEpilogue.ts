@@ -39,11 +39,27 @@ export function arcEpilogueLines(season: SeasonState, skipIds: ReadonlySet<strin
   return out;
 }
 
-function leaverGoodbyeBeats(leavers: readonly Unit[]): StoryBeat[] {
+// A leaver's own arc line, keyed by how their story stood when they walked. Skips a
+// 'resolved' arc (a triumphant line would jar against them quitting); those — and any
+// arc-less leaver — fall back to the generic personality goodbye.
+function leaverArcLine(season: SeasonState, u: Unit): string | null {
+  const rt = (season.arcs ?? []).find((r) => r.characterId === u.characterId);
+  const arc = rt ? ARCS[rt.arcId] : undefined;
+  if (!rt || !arc?.epilogue || rt.status === 'resolved') return null;
+  return arc.epilogue[rt.status] ?? null;
+}
+
+function leaverBeats(season: SeasonState, leavers: readonly Unit[]): StoryBeat[] {
   const beats: StoryBeat[] = [];
   for (const u of leavers) {
-    const p = isP(u.personality) ? u.personality : null;
-    beats.push({ who: 'player', name: u.name, text: p ? GOODBYE[p] : FALLBACK_GOODBYE } as StoryLine);
+    const arcLine = leaverArcLine(season, u);
+    if (arcLine) {
+      // Their arc's own authored send-off (how they slipped away), played over their face.
+      beats.push({ who: 'narrator', portraitId: u.characterId, clearStage: true, text: arcLine } as StoryLine);
+    } else {
+      const p = isP(u.personality) ? u.personality : null;
+      beats.push({ who: 'player', speakerId: u.characterId, clearStage: true, name: u.name, text: p ? GOODBYE[p] : FALLBACK_GOODBYE } as StoryLine);
+    }
   }
   const names = leavers.map((u) => u.name);
   const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
@@ -54,8 +70,8 @@ function leaverGoodbyeBeats(leavers: readonly Unit[]): StoryBeat[] {
   return beats;
 }
 
-// Plays the season-end epilogue: arc reflections + morale goodbyes. Nothing to say
-// (a squad with no arcs and no leavers) ⇒ onDone immediately.
+// Plays the season-end epilogue: arc reflections (each over the player's face — a
+// roll call) + morale goodbyes. Nothing to say (no arcs, no leavers) ⇒ onDone now.
 export function showSeasonEpilogue(season: SeasonState, leavers: readonly Unit[], onDone: () => void): void {
   const skip = new Set(leavers.map((u) => u.id));
   const reflections = arcEpilogueLines(season, skip);
@@ -67,7 +83,8 @@ export function showSeasonEpilogue(season: SeasonState, leavers: readonly Unit[]
         ? "The season's over — and not everyone's staying. Here's where it left them."
         : "The season's over. Before the lights go down, here's where it left everyone." } as StoryLine,
   ];
-  for (const r of reflections) beats.push({ who: 'narrator', text: r.line } as StoryLine);
-  if (leavers.length) beats.push(...leaverGoodbyeBeats(leavers));
+  // The stayers, each reflected on over their own face.
+  for (const r of reflections) beats.push({ who: 'narrator', portraitId: r.characterId, clearStage: true, text: r.line } as StoryLine);
+  if (leavers.length) beats.push(...leaverBeats(season, leavers));
   playStory(beats, () => onDone());
 }

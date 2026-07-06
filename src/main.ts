@@ -80,7 +80,7 @@ import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { runWalkthrough, type WalkStep } from './ui/walkthrough.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
 import { showEventScreen } from './ui/eventScreen.ts';
-import { rollEvent, applyEvent, applyEffects, eventFlavor } from './game/events/runtime.ts';
+import { rollEvent, applyEvent, applyEffects, eventFlavor, ambientEventDue } from './game/events/runtime.ts';
 import { readyBeats, advanceArc, holdBeat, type SlotContext } from './game/story/arcRuntime.ts';
 import { ARCS } from './game/story/arcs.ts';
 import { matchSummary } from './game/story/matchSummary.ts';
@@ -97,6 +97,7 @@ import { offWeekEffects } from './game/offWeek.ts';
 import { flightRiskCandidate, seasonLeavers } from './game/flightRisk.ts';
 import { showFlightRiskBeat } from './ui/flightRiskBeat.ts';
 import { showSeasonEpilogue } from './ui/seasonEpilogue.ts';
+import { showPlayoffIntroBeat, showSeasonMissedBeat, showFinalIntroBeat, showChampionBeat } from './ui/playoffIntroBeat.ts';
 import { showStandings, standingsTableHtml } from './ui/standings.ts';
 import { showBracket, bracketHtml } from './ui/playoffBracket.ts';
 import { playerRank, madePlayoffs, playoffSeeds, rivalMatchIndexFor, simPlayoffWinner, teamNameForIndex } from './game/standings.ts';
@@ -329,6 +330,7 @@ function rerenderChrome() {
         const roster = finalized.units.filter((u) => u.team === finalized.playerTeam);
         const s = startSeason(roster, finalized.map.name, matchSeed, 8, 5);
         seasonEpilogueDone = false; // fresh season — re-arm the end-of-season epilogue
+        championBeatDone = false;   // and the grand-final bookend
         // Advance past draft phase so the canvas shows planning (not the draft
         // overlay) while the management screens run on top.
         initialUnitsById = snapshotUnits(finalized.units);
@@ -467,6 +469,7 @@ let playoffActive = false;
 // Guards the season-end morale epilogue (showSeasonEpilogue) so it plays at most
 // once even though the end screens can be re-reached on resume/re-entry.
 let seasonEpilogueDone = false;
+let championBeatDone = false; // grand-final bookend (close) — shown once per session
 // Phase 4 — story-flag hooks captured during the opening cutscene (Worlds winner,
 // the player's dialogue choices); threaded into the new season at draft confirm.
 let seasonStoryFlags: Record<string, string> = {};
@@ -498,7 +501,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.122.0', {
+    renderMainMenu(menuHost, 'v0.127.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -612,6 +615,25 @@ function openSeasonPlaybook(onClose: () => void, tutorial = false): void {
 // chosen effects to the live season, then hands off (onDone advances + saves).
 // Effects are applied here but NOT saved until onDone advances the phase, so a
 // reload mid-event re-rolls the same event and re-applies nothing.
+// The shared slot context for the arc runtime — who's ready, given week + record.
+function slotCtx(slot: 'pre-match' | 'post-match'): SlotContext {
+  return {
+    slot, idx: season!.idx, week: currentWeek(season!), wins: seasonWins(season!),
+    matchSummary: slot === 'post-match' ? (season!.lastMatchSummary ?? null) : null,
+  };
+}
+
+// A between-match slot's content, pacing-gated (v0.124). Arc beats OWN the slot — if
+// one is ready, it plays alone (no ambient event stacked on top). Only an arc-free
+// slot may surface an ambient event, and even then only sometimes (EVENTS.ambient
+// Chance) — so the week isn't a guaranteed drumbeat of "a thing happened" modals.
+function runSlotContent(slot: 'pre-match' | 'post-match', slotKey: string, onDone: () => void): void {
+  if (!season) { onDone(); return; }
+  if (readyBeats(season, slotCtx(slot)).length > 0) { runArcBeats(slot, onDone); return; }
+  if (ambientEventDue(season, slotKey)) runWeekEvent(slotKey, () => runArcBeats(slot, onDone));
+  else runArcBeats(slot, onDone); // quiet slot — still resolves any due departures, then continues
+}
+
 function runWeekEvent(slotKey: string, onDone: () => void): void {
   if (!season) return;
   const { event, subjectId } = rollEvent(season, slotKey);
@@ -629,10 +651,7 @@ function runWeekEvent(slotKey: string, onDone: () => void): void {
 // the rest are held, and after two holds a beat defaults to its neglect path).
 function runArcBeats(slot: 'pre-match' | 'post-match', onDone: () => void): void {
   if (!season) { onDone(); return; }
-  const ctx: SlotContext = {
-    slot, idx: season.idx, week: currentWeek(season), wins: seasonWins(season),
-    matchSummary: slot === 'post-match' ? (season.lastMatchSummary ?? null) : null,
-  };
+  const ctx = slotCtx(slot);
   const ready = readyBeats(season, ctx);
   // After the beat (or if none), resolve any arc departures that have come due.
   const done = (): void => runDepartures(onDone);
@@ -803,7 +822,7 @@ function runSeasonWeek(onFirstBack?: () => void): void {
           openSeasonPlaybook(() => runArcBeats('pre-match', advance), true);
         });
       } else {
-        runWeekEvent(`pre-${s.idx}`, () => runArcBeats('pre-match', advance));
+        runSlotContent('pre-match', `pre-${s.idx}`, advance);
       }
       break;
     }
@@ -834,10 +853,10 @@ function runSeasonWeek(onFirstBack?: () => void): void {
         });
         break;
       }
-      runWeekEvent(`post-${s.idx}`, () => runArcBeats('post-match', () => {
+      runSlotContent('post-match', `post-${s.idx}`, () => {
         if (seasonOver(season!)) { endRegularSeason(); return; }
         advance();
-      }));
+      });
       break;
     case 'break': {
       // Week-5 bye: lock in the off-week focus (anchored to the week-4 lean), the
@@ -966,13 +985,30 @@ function playerPlayoffOpponent(po: { seeds: number[]; semiA: number | null; semi
 // resume), everyone else gets the missed-playoffs ending.
 function endRegularSeason(): void {
   if (!season) return;
-  if (!madePlayoffs(season)) { showSeasonEndModal(); return; }
+  if (!madePlayoffs(season)) {
+    // Fell short — a brief "we came up short" beat (once), then the season-end ending.
+    if (!season.storyFlags?.seasonEndBeatShown) {
+      season = { ...season, storyFlags: { ...(season.storyFlags ?? {}), seasonEndBeatShown: 'true' } };
+      saveSeason(season);
+      showSeasonMissedBeat(season, showSeasonEndModal);
+      return;
+    }
+    showSeasonEndModal();
+    return;
+  }
   if (!season.playoffs) {
     const seeds = playoffSeeds(season).map((r) => r.teamIndex);
     season = { ...season, playoffs: { seeds, semiA: null, semiB: null, champion: null, stage: 'semi' } };
     saveSeason(season);
   }
   if (season.playoffs!.stage === 'done') { showPlayoffEnd(); return; }
+  // Made the top 4 — the pre-playoffs tentpole beat (once), then into the bracket.
+  if (!season.storyFlags?.playoffIntroShown) {
+    season = { ...season, storyFlags: { ...(season.storyFlags ?? {}), playoffIntroShown: 'true' } };
+    saveSeason(season);
+    showPlayoffIntroBeat(season, runPlayoffs);
+    return;
+  }
   runPlayoffs();
 }
 
@@ -1002,8 +1038,17 @@ function runPlayoffs(): void {
     });
     return;
   }
-  // final
-  showBracket(season, () => launchPlayoffMatch('Final', 1), {
+  // final — the grand-final bookend: before the match, the café-wall callback to the
+  // opening (once), then into the final. On resume mid-final, the flag skips it.
+  showBracket(season, () => {
+    if (!season!.storyFlags?.finalIntroShown) {
+      season = { ...season!, storyFlags: { ...(season!.storyFlags ?? {}), finalIntroShown: 'true' } };
+      saveSeason(season);
+      showFinalIntroBeat(season!, () => launchPlayoffMatch('Final', 1));
+    } else {
+      launchPlayoffMatch('Final', 1);
+    }
+  }, {
     title: 'The Final',
     sub: 'One match for the title — and to save the shop.',
     cta: 'To the final →',
@@ -1088,7 +1133,14 @@ function showPlayoffResult(): void {
 function showPlayoffEnd(): void {
   if (!season?.playoffs) return;
   setSeasonHeader(false);
-  // Morale reckoning first — even champions can lose a disillusioned player.
+  // Grand-final bookend (close) — if you WON it, the triumph plays first: the
+  // broadcast crowns you and Sam's "ice in the veins" comes back around (once).
+  if (season.playoffs.champion === LEAGUE.playerTeamIndex && !championBeatDone) {
+    championBeatDone = true;
+    showChampionBeat(showPlayoffEnd);
+    return;
+  }
+  // Morale reckoning next — even champions can lose a disillusioned player.
   if (!seasonEpilogueDone) { runEpilogueThen(showPlayoffEnd); return; }
   clearSavedSeason();
   const po = season.playoffs;

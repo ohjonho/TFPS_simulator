@@ -1242,6 +1242,13 @@ export const LEAGUE = {
   winProbClamp: { min: 0.15, max: 0.85 },
 } as const;
 
+// Ambient (between-match) events — pacing. Arc beats own a slot: an ambient event
+// only fires when NO arc beat is ready there (never stack two story screens), and
+// even then only sometimes, so weeks aren't a guaranteed drumbeat of flavour modals.
+export const EVENTS = {
+  ambientChance: 0.5,       // chance an arc-free slot surfaces an ambient event (else the slot stays quiet)
+} as const;
+
 // --- Pass 8: cards (spec §15) --------------------------------------------
 // Every per-card tunable. Card handlers read these — no magic numbers in the
 // handler bodies. Hit-pp values are additive to the effective-stat sum in
