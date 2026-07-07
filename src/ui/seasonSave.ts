@@ -19,7 +19,8 @@ const SAVE_KEY = 'tfps-season-save';
 // SeasonState.morale (Phase 4) — a v6 save lacks it, so discard. v8 adds
 // SeasonState.storyFlags (opening-cutscene hooks). v9 adds SeasonState.roundScores
 // (per-match round tallies for standings round-differential) — a v8 save lacks it.
-const SAVE_VERSION = 9;
+// v10 adds SeasonState.arcs (Phase 3 story-arc runtime) — a v9 save has none.
+const SAVE_VERSION = 10;
 
 // Best-effort write; called on every phase advance. Storage failures (quota,
 // privacy mode) are swallowed — a missing autosave shouldn't break play.

@@ -155,7 +155,7 @@ const HOW_TO_PLAY = `
     <h3>Modes</h3>
     <ul>
       <li><strong>Season</strong> (campaign): the headline mode — a story intro,
-        a build-your-squad draft (pick 5 from a pool of 8), then a gauntlet of
+        a build-your-squad draft (pick 5 of the 12 regulars), then a gauntlet of
         matches toward a goal, carrying one roster the whole way. Strategies unlock
         as you go. See "The campaign" in the Glossary.</li>
       <li><strong>Draft</strong>: a single match — you and the AI snake-pick 5
@@ -178,8 +178,8 @@ const GLOSSARY = `
       carrying one drafted roster the whole way. Win enough to clear the goal and
       you take the prize — and save the shop. A few things ramp up as you go:</p>
     <ul class="glossary">
-      <li><strong>Build-your-squad draft</strong> — pick 5 players from a pool of
-        8. No co-drafting opponent; rivals are their own teams.</li>
+      <li><strong>Build-your-squad draft</strong> — pick 5 of the 12 regulars.
+        No co-drafting opponent; rivals are their own teams.</li>
       <li><strong>A teaching first match</strong> — your opening opponent is
         telegraphed (Rushes on attack, even Hold on defense) so you can practise
         reading and countering safely.</li>
@@ -388,6 +388,316 @@ const GLOSSARY = `
 // happened, not just what.
 
 const PATCH_NOTES = `
+  <section>
+    <h3>v0.131.0 — Sudden death + real defuses</h3>
+    <ul>
+      <li><strong>No more draws.</strong> A match level at the end of regulation now goes to sudden
+        death — decider rounds are played until someone takes the lead. Every match has a winner.</li>
+      <li><strong>The spike must be defused.</strong> Once the spike is planted, wiping the attackers is
+        no longer an automatic win — your defenders have to actually reach it and defuse before it
+        detonates. Kill the last attacker too far from the site and a late plant can still go off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.130.0 — Post-match polish + aKAST</h3>
+    <ul>
+      <li><strong>VICTORY / DEFEAT.</strong> The analysis screen now leads with a bold result, and its
+        rounds are numbered from 1 — hover any round to see the strategies both sides picked and the score
+        at the time.</li>
+      <li><strong>aKAST.</strong> KAST% is replaced by aKAST — a sharper measure of impact (how <em>often</em>
+        you contribute × how <em>much</em> per round). Every stat header now has a hover tooltip explaining
+        it.</li>
+      <li><strong>Back button.</strong> You can step back from the analysis to the Player of the Game screen.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.129.0 — A proper post-match</h3>
+    <ul>
+      <li><strong>Player of the Game.</strong> Every match now opens its wrap-up with the match's top
+        performer — either team, so a monster game on a loss still gets its moment — with their headline
+        stats.</li>
+      <li><strong>Match analysis screen.</strong> Then a full review: the result, a round-by-round strip,
+        the scoreboard, and a short read from your analyst — Remi once he's aboard, otherwise Sam — plus
+        your League Points, morale and standing.</li>
+      <li><strong>Remi, junior analyst.</strong> When Remi joins, Sam now spells out his role — he does the
+        reads, you make the calls — so it's clear who he is.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.128.0 — Faster start, tutorials on your terms</h3>
+    <ul>
+      <li><strong>Tutorials replay each campaign — or turn them off.</strong> The guided tours and tips now
+        re-arm for every new campaign (so a fresh run gets them fresh), and there's a <strong>Show
+        tutorials</strong> toggle in Settings if you'd rather skip them.</li>
+      <li><strong>Quicker to the first match.</strong> The welcome briefing is now a short orientation
+        (the tours + guidebook teach the rest), and there's no ambient event before match one — it's
+        draft → meet the team → first training day → straight into the match.</li>
+      <li><strong>The league grows, and you feel it.</strong> Later in the season, match prep flags when an
+        opponent has leveled up since week one — the living league is no longer invisible.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.127.0 — Your grand final</h3>
+    <ul>
+      <li><strong>The season comes full circle.</strong> You opened the game watching a grand-final clutch
+        on the café wall, Sam murmuring "ice in the veins". Now, before your own final, that wall shows
+        <em>your</em> team — and if you lift the trophy, the broadcast crowns Pixel Perfect and Sam's line
+        comes right back around. The ending it was all building toward.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.126.0 — Into the knockouts</h3>
+    <ul>
+      <li><strong>A moment before the bracket.</strong> When the regular season ends, you no longer jump
+        straight into the playoffs. Sam marks the shift — you made the top four, now it's win-or-go-home,
+        two matches from saving the shop — so the knockouts land as a climax, not just the next screen.
+        Fall short instead, and there's an honest word before the season closes.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.125.0 — The run-in bites</h3>
+    <ul>
+      <li><strong>The playoff race now builds.</strong> In the back third of the regular season, match prep
+        shows a stakes banner that reads the live table — "playoff places", "clinging on", "the chase is
+        on", and on the final day a red "must-win" or "win to lock it". Late matches finally feel like they
+        matter, instead of being framed like week two.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.124.0 — Fewer, better-timed between-match moments</h3>
+    <ul>
+      <li><strong>The week no longer drowns you in flavour modals.</strong> Ambient events used to fire
+        before AND after every single match, on top of your players' story beats. Now a character-arc beat
+        owns its slot (no random event stacked on top), and quiet slots only sometimes surface an event —
+        so the between-match beats land when they matter instead of every time.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.123.0 — The season beats defer to the arcs</h3>
+    <ul>
+      <li><strong>No more double-ups.</strong> The generic "a player's pulling away" flight-risk beat now
+        stays quiet for anyone whose personal arc is actively unfolding — their story owns that moment
+        instead of two overlapping threads about the same person.</li>
+      <li><strong>Faces on the season beats.</strong> The at-risk player now speaks for themselves (not
+        just Sam about them), the standout who reacts to your bye-week call gets their portrait, and the
+        season epilogue plays as a roll call — each player reflected on over their own face.</li>
+      <li><strong>Leavers get their real send-off.</strong> If someone walks and they had an arc, the
+        epilogue uses that arc's own ending rather than a generic goodbye.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.122.0 — Heroes explained, tidier reference</h3>
+    <ul>
+      <li><strong>Heroes get their due.</strong> The draft walkthrough now has a dedicated step for the
+        Hero ability, and the "how to read a recruit" reference has a full Hero section — a plain-language
+        write-up of all four (Angelic, Techy, Cursed, Bulwark), not just a one-liner.</li>
+      <li><strong>Reference is two columns now</strong> — it was too tall as a single list.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.121.0 — A proper draft walkthrough (and a fix)</h3>
+    <ul>
+      <li><strong>Guided draft tour.</strong> The first time you draft, a spotlight walkthrough now steps
+        through the board one piece at a time — the recruit list, the detail panel, their kit and stats,
+        your pick tray, and Confirm — just like the first-match tour. The "how to read a recruit" guide is
+        still there as a reference (now collapsed by default; open it any time).</li>
+      <li><strong>Fixed: the draft board could linger over the match.</strong> After confirming your squad,
+        the draft screen is now properly cleared, so the map shows through instead of a leftover draft menu.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.120.0 — The draft board teaches itself</h3>
+    <ul>
+      <li><strong>"How to read a recruit" guide.</strong> The draft board now has a collapsible guide (open
+        the first time) explaining weapon, role, personality, and the five stat bars — and every chip and
+        stat on a recruit has a hover tooltip with the same note. No more guessing what "Warden" or
+        "Improvisation" means mid-draft.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.119.0 — No more spoilers on the draft board</h3>
+    <ul>
+      <li><strong>Recruit intros keep their secrets.</strong> Moony's draft blurb no longer hands you his
+        real name up front — that's his to reveal. And the mid-season signing screen now shows the same
+        spoiler-free intros as the draft, so a player's arc unfolds in play instead of being printed on
+        their card.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.118.0 — Intro polish: Remi gets a face, and the briefings line up</h3>
+    <ul>
+      <li><strong>Remi introduces himself properly.</strong> The scout kid now appears on the story stage
+        as "???" until he blurts his name — then his nameplate flips to Remi, like meeting anyone new.</li>
+      <li><strong>Consistent onboarding copy.</strong> Fixed stale briefings that still said "pick 5 from a
+        pool of 8" (it's the 12 regulars now) and that the goal was "top two" (it's top four into the
+        playoffs) — the welcome screen, help, and the team meeting now all agree.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.117.0 — Every arc plays out as scenes now</h3>
+    <ul>
+      <li><strong>Yahyo and WonManArmy get their scenes — completing the set.</strong> Yahyo guarding her
+        heart over old Girlaxy tape and the tryout offer from her past; Won facing the rage clip that
+        resurfaced, then the real reason he walked away. With these, <em>all twelve</em> character arcs
+        now play out as story-stage dialogue rather than summary cards.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.116.0 — Three more arcs get their scenes</h3>
+    <ul>
+      <li><strong>MommaMay, Jok3r and Potter now play out as dialogue.</strong> MommaMay quietly asking
+        where she really stands; Jok3r's cameras chilling the room, then the night his own chat gets under
+        his skin; Potter facing the team he trashed on-air, then dropping his dossier on the table. Same
+        choices and outcomes — they just land as scenes now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.115.0 — Cardo's story, in scenes</h3>
+    <ul>
+      <li><strong>Cardo's arc plays out as dialogue.</strong> The restless tinkerer pitching you on a new
+        seat, then reporting back on how the experiment felt — both beats now play on the story stage
+        instead of a summary card. Same choices and outcomes.</li>
+      <li><strong>Role swaps now show what changed.</strong> When you move a player to a new role and hero,
+        the "what changed" summary spells out the new seat (e.g. "→ Tactician · Techy") instead of coming
+        up blank.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.114.0 — Three more arcs get their scenes</h3>
+    <ul>
+      <li><strong>R0nin, t0ph and Reina now play out as dialogue.</strong> R0nin's confession and the on-air
+        segment that outs him (a caster puts a face to the pile-on); t0ph's deadpan burnout and the quiet
+        night he weighs the promotion; Reina's post-loss meltdown and Sam pulling you aside about her. Same
+        choices and outcomes — they just land as scenes now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.113.0 — imissu's story, in scenes</h3>
+    <ul>
+      <li><strong>imissu's arc plays out as dialogue.</strong> Both her beats — the late night alone in the
+        café after a call home, and the day her mum lines up a safe job back on the farm — now play on the
+        story stage, quiet and one-on-one, instead of a summary card. Same choices and outcomes.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.112.0 — Meet the team, face to face</h3>
+    <ul>
+      <li><strong>The first team meeting has faces now.</strong> Your five draftees introduce themselves
+        on the story stage — Sam and your in-game leader anchor the identity talk, then the camera cuts to
+        each teammate in turn as they say their piece. Same meeting, same choice; now you can put a face to
+        every voice.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.111.0 — Moony's story, in scenes</h3>
+    <ul>
+      <li><strong>Moony's arc plays out as dialogue.</strong> His three beats — Sam quietly flagging him
+        after a lost clutch, the night he finally says who he really is, and the day he decides who to
+        lean on — now play on the story stage with faces and back-and-forth, instead of a summary card.
+        Same choices and outcomes; it just lands like a conversation now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.110.0 — A proper draft board</h3>
+    <ul>
+      <li><strong>New draft screen.</strong> Building your squad is now a browsable roster of the twelve
+        regulars — click a face to read a short intro and see their strengths at a glance (a zoomed stat
+        readout, so the specialists actually look like specialists), then draft your five along the top.
+        Portraits are placeholders for now.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.109.0 — Arc moments play out as scenes</h3>
+    <ul>
+      <li><strong>Dialogue, not summaries.</strong> Character-arc beats can now play as full visual-novel
+        scenes — the people involved on stage, talking it through — before you make your call. Echo's arc
+        is the first to get it (his big-league sister Nova turns up to watch); more roll out from here.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.108.0 — Story scenes get faces</h3>
+    <ul>
+      <li><strong>Visual-novel scenes.</strong> Story moments now play out on a proper stage —
+        characters appear as portraits (one centered, or two facing off left and right), the speaker lit
+        and the rest dimmed, over a soft backdrop. Faces are placeholders for now, but the conversations
+        finally look like conversations. More of the cast step into their own scenes as we go.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.107.0 — The whole cast has a story now</h3>
+    <ul>
+      <li><strong>Six more arcs — every regular now has one.</strong> The tilting prodigy you either
+        reform or cut loose. The jokester deciding whether he's a real competitor. The restless
+        all-rounder itching to switch roles. The lurker learning to trust a team again. The reformed
+        rager facing his temper. The analyst whose reads, if you back them, blow the playbook wide open.
+        Who you invest in — and who you let walk — shapes the season and the send-off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.106.0 — Three more join the story</h3>
+    <ul>
+      <li><strong>New arcs.</strong> The reformed cheater whose past the press digs up — back him or cut
+        him loose (and if you cut him, a fresh face fills his seat mid-season). The bank-manager mum
+        weighing whether she still belongs. The banker with a big promotion on the table and one last
+        season to give. Each turns on the calls you make between matches.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.105.0 — The kid brother's turn</h3>
+    <ul>
+      <li><strong>A new arc.</strong> Draft the young shotgunner living in his big-league sister's
+        shadow, and her visit to the café will tie him in knots — he'll press, and it shows on the
+        server. Steady him and he shakes the nerves for good; leave it and he plays the season chasing
+        a shadow he never catches.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.104.0 — How their stories ended</h3>
+    <ul>
+      <li><strong>Season-end reflections.</strong> The epilogue now looks back on each player whose arc
+        you touched — the curse you helped break, the newcomer who found a home (or the one who slipped
+        back to her small town because no one gave her a reason to stay). What you invested in over the
+        season gets its last word.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.103.0 — Your players have stories now</h3>
+    <ul>
+      <li><strong>Character arcs.</strong> The regulars you draft carry personal storylines that surface
+        between matches and resolve over the season. Draft the ex-pro haunted by a "clutch curse" and
+        he'll choke the rounds that matter — until you draw him out and help him break it (or bury the
+        problem the cold way). The homesick newcomer may drift back to her small town — unless the team
+        becomes her reason to stay. Who you invest in shapes who they become.</li>
+      <li><strong>You can't be everywhere.</strong> When two players need you the same week, Sam offers
+        to hold one while you sit with the other — but only for so long. Attention is the scarce
+        resource; the ones you keep putting off carry on alone.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.102.0 — A league that grows with you</h3>
+    <ul>
+      <li><strong>Rivals level up too.</strong> Every training day the other clubs put in their own
+        work and gain a little ground. Early opponents are beatable; the teams you meet late have grown
+        teeth — and the table shifts around as different clubs climb at different rates, so no two
+        seasons rank out the same. You grow <em>into</em> the league, you don't outrun it.</li>
+      <li><strong>Steadier progress.</strong> Training and one-off events give a touch less, and stacking
+        extra coaching sessions costs more — so your squad improves at a believable pace instead of
+        spiking into monsters by mid-season.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.101.0 — Meet the regulars: a real cast to draft from</h3>
+    <ul>
+      <li><strong>Twelve authored players, pick five.</strong> The season draft is no longer a random
+        pool — it's a fixed cast of twelve hand-made regulars, each with a name, a backstory, and a
+        deliberately <em>spiky</em> profile: a glass-cannon prodigy, a cerebral ex-analyst with shaky
+        aim, a steady leader, a ranked-demon loner, and more. Who you pick — and who you leave on the
+        bench — is now a character decision, not dice. You're building a team of <em>people</em>.</li>
+      <li><strong>Everyone brings an edge and a flaw.</strong> Some carry quirks that show up in how
+        they play — a veteran who tightens up when it's all on his shoulders, a part-timer who trains
+        slower than the kids. The squad starts a shade below the field and has to grow into it.</li>
+    </ul>
+  </section>
   <section>
     <h3>v0.100.0 — Morale has teeth, and a clearer draft</h3>
     <ul>

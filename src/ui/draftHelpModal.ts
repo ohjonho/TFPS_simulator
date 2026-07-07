@@ -5,6 +5,7 @@
 // cards read as one consistent language.
 
 import type { Hero, Role, Weapon } from '../game/types.ts';
+import { ROLE_DESCRIPTIONS, PERSONALITIES } from '../game/config.ts';
 import { roleChip, heroChip } from './unitMetaChip.ts';
 import { traitSpan } from './traitChip.ts';
 
@@ -60,6 +61,65 @@ export function draftCardLegendHtml(): string {
 
         <dt>Attributes</dt>
         <dd><strong>Mechanics</strong> (shooting), <strong>Game Sense</strong> (perception), <strong>Discipline</strong> (sticks to the plan under fire), <strong>Improvisation</strong> (clutch under stress), <strong>Leadership</strong> (converts team trades).</dd>
+      </dl>
+      <p class="dh-foot">There's no perfect pick — a couple of riflers, a sniper, and complementary roles is a fine start.</p>
+    </div>`;
+}
+
+// The five visible aggregate stats — one-line glosses. Shared by the season-draft
+// legend AND that board's hover tooltips so the two never drift.
+export const AGG_BLURB: Record<string, string> = {
+  mechanics: 'raw shooting — aim and headshots.',
+  gameSense: 'perception — reading the map and the enemy.',
+  discipline: 'sticking to the plan under fire.',
+  improvisation: 'staying clutch when it goes sideways.',
+  leadership: 'turning team play into trades and won rounds.',
+};
+
+// Weapon one-liners (the new board shows a weapon chip but no description).
+export const WEAPON_BLURB: Record<Weapon, string> = {
+  rifle: 'the all-rounder, strong at mid-range. Aim for about four.',
+  sniper: 'deadly at range once set, weak on the move. One is plenty.',
+  shotgun: 'lethal up close, useless at distance.',
+};
+
+// Fuller, plain-language hero write-ups for the reference (the board's inline line
+// + chip tooltip use the terser HERO_DESCRIPTIONS from config; this is the "tell me
+// properly" version — passive + the once-a-round active, in words a new manager reads).
+export const HERO_BLURB: Record<Hero, string> = {
+  Angelic: 'the medic. Once a round, when a teammate in sight is hurt but survives, the Angelic dashes over, heals a big chunk of their health, and sharpens their aim for a moment. Pure support — keeps your carries alive.',
+  Techy: 'the eyes. Always sees a touch wider; and once contact starts, briefly reveals enemies lurking around the near site — targeted intel for your hit or your hold.',
+  Cursed: 'the hunter. A small always-on aim edge; and it marks the first enemy your team spots, so everyone hits that target harder until you damage it or the mark fades. Turns a pick into a kill.',
+  Bulwark: 'the wall. A little extra health always; and the first time it takes a hit, the Bulwark and nearby allies harden up — enemies deal less to them for a few seconds. A defensive anchor.',
+};
+
+// A "how to read a recruit" legend for the BG3-style season draft board. Covers
+// weapon / role / hero / personality / the five stats. Each section is wrapped in a
+// .dh-sec so the board's CSS can flow them into two columns (it was too tall as one).
+// (Authored recruits carry no tactical trait, so that's still omitted.) Reuses the
+// shared .draft-help / .dh-* markup so it matches the other legend.
+export function recruitLegendHtml(): string {
+  const roles: Role[] = ['Vanguard', 'Tactician', 'Warden', 'Specialist'];
+  const heroes: Hero[] = ['Angelic', 'Techy', 'Cursed', 'Bulwark'];
+  const persons = ['Firebrand', 'Catalyst', 'Analyst', 'Stabilizer'];
+  const stats: [string, string][] = [
+    ['Mechanics', AGG_BLURB.mechanics], ['Game Sense', AGG_BLURB.gameSense],
+    ['Discipline', AGG_BLURB.discipline], ['Improvisation', AGG_BLURB.improvisation],
+    ['Leadership', AGG_BLURB.leadership],
+  ];
+  const item = (name: string, desc: string): string => `<li><b>${name}</b> <span class="dh-sub-desc">— ${desc}</span></li>`;
+  const sec = (title: string, vs: string, lis: string): string =>
+    `<div class="dh-sec"><dt>${title}${vs ? ` <span class="dh-vs">— ${vs}</span>` : ''}</dt><dd><ul class="dh-sub">${lis}</ul></dd></div>`;
+  const roleGloss = (r: Role): string => ROLE_DESCRIPTIONS[r].replace(/^Aggression \d+ — /, '');
+  return `
+    <div class="draft-help">
+      <p class="dh-intro">Every recruit is a scouting report. Here's what each part means — or just hover any chip or stat on a recruit for the same note.</p>
+      <dl class="dh-legend">
+        ${sec('Weapon', '', (['rifle', 'sniper', 'shotgun'] as Weapon[]).map((w) => item(WEAPON_NAME[w], WEAPON_BLURB[w])).join(''))}
+        ${sec('Role', 'how they play every round', roles.map((r) => item(r, roleGloss(r))).join(''))}
+        ${sec('Hero', 'a once-a-round signature ability', heroes.map((h) => item(h, HERO_BLURB[h])).join(''))}
+        ${sec('Personality', 'temperament; drives morale + how they take events', persons.map((p) => item(p, PERSONALITIES[p].description)).join(''))}
+        ${sec('The five stats', 'the bars are zoomed, so specialists stand out', stats.map(([l, d]) => item(l, d)).join(''))}
       </dl>
       <p class="dh-foot">There's no perfect pick — a couple of riflers, a sniper, and complementary roles is a fine start.</p>
     </div>`;

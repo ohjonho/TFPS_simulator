@@ -6,6 +6,21 @@ import type { GameState, Team, Unit } from '../game/types.ts';
 import type { MatchStats } from '../game/stats.ts';
 import { computeMatchStats, mvpUnit, sortByAcs } from '../game/stats.ts';
 
+// Shared stat tooltips — reused by the post-match review's MVP card so a header and
+// its card counterpart always explain the stat the same way.
+export const STAT_TIPS: Record<string, string> = {
+  acs: 'Average Combat Score — overall per-round impact from kills, assists and damage. Higher is better.',
+  kda: 'Kills / Deaths / Assists over the match.',
+  kills: 'Kills — enemies eliminated.',
+  deaths: 'Deaths — times you were eliminated.',
+  assists: 'Assists — you damaged an enemy a teammate finished off.',
+  adr: 'Average Damage per Round.',
+  akast: 'aKAST (advanced KAST) — KAST (how OFTEN you contribute: a kill, assist, survival or trade) times KAST2 (how MUCH you contribute per round). Scale 0–3; higher means more consistent, higher-impact rounds.',
+  hs: 'Headshot % — the share of your kills that were headshots.',
+  wpn: 'Weapon.',
+  role: 'Role — how they play every round.',
+};
+
 function sparkline(acsByRound: readonly number[], width = 80, height = 18): string {
   if (acsByRound.length === 0) {
     return `<svg class="spark" width="${width}" height="${height}"></svg>`;
@@ -38,14 +53,14 @@ function teamSection(
     const mvp = u.id === mvpId ? ' <span class="mvp-tag">MVP</span>' : '';
     return `
       <tr>
-        <td class="me-id"><strong>${u.id}</strong>${mvp}</td>
+        <td class="me-id"><strong>${u.name}</strong>${mvp}</td>
         <td>${u.weapon}</td>
         <td>${u.role}</td>
         <td class="num">${s.acs}</td>
         <td class="num">${s.kills}</td>
         <td class="num">${s.deaths}</td>
         <td class="num">${s.assists}</td>
-        <td class="num">${s.kastPct}%</td>
+        <td class="num">${s.akast.toFixed(2)}</td>
         <td class="num">${s.adr}</td>
         <td class="num">${s.hsPct}%</td>
         <td class="spark-cell">${sparkline(s.acsByRound)}</td>
@@ -58,9 +73,9 @@ function teamSection(
       <table class="me-table">
         <thead>
           <tr>
-            <th class="me-id">Unit</th><th>Wpn</th><th>Role</th>
-            <th class="num">ACS</th><th class="num">K</th><th class="num">D</th><th class="num">A</th>
-            <th class="num">KAST%</th><th class="num">ADR</th><th class="num">HS%</th>
+            <th class="me-id">Unit</th><th title="${STAT_TIPS.wpn}">Wpn</th><th title="${STAT_TIPS.role}">Role</th>
+            <th class="num" title="${STAT_TIPS.acs}">ACS</th><th class="num" title="${STAT_TIPS.kills}">K</th><th class="num" title="${STAT_TIPS.deaths}">D</th><th class="num" title="${STAT_TIPS.assists}">A</th>
+            <th class="num" title="${STAT_TIPS.akast}">aKAST</th><th class="num" title="${STAT_TIPS.adr}">ADR</th><th class="num" title="${STAT_TIPS.hs}">HS%</th>
             <th>ACS / round</th>
           </tr>
         </thead>
@@ -75,7 +90,6 @@ export function renderMatchEndScoreboard(state: GameState): string {
   const mvp = mvpUnit(state);
   const winner = state.matchWinner;
   const winnerLine =
-    winner === 'draw' ? `Match ended in a draw — ${state.scores.defenders} – ${state.scores.attackers}` :
     winner === state.playerTeam ? `You win the match (${state.scores[state.playerTeam]} – ${state.scores[state.playerTeam === 'defenders' ? 'attackers' : 'defenders']}).` :
     winner ? `Opponent wins the match (${state.scores[winner === 'defenders' ? 'defenders' : 'attackers']} – ${state.scores[winner === 'defenders' ? 'attackers' : 'defenders']}).` :
     'Match ended.';

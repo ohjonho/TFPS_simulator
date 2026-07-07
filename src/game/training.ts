@@ -6,6 +6,7 @@
 
 import { TRAINING, MATCH_XP, MASTERY } from './config.ts';
 import type { Attributes, Unit } from './types.ts';
+import { storyTagTrainingMult } from './storyTags.ts';
 
 export type TrainingTrack = 'aim' | 'tactics' | 'team' | 'setpieces';
 
@@ -45,9 +46,11 @@ export function applyTraining(
   const focusId = opts.focusId ?? null;
 
   const newRoster = roster.map((u) => {
-    const mult = !focusId ? 1
+    const baseMult = !focusId ? 1
       : u.id === focusId ? 1 + F.bonus * (fresh[u.id] ?? 1)
       : F.othersMult;
+    // Story tags scale a unit's gains (Busy 0.75 / Committed 1.25); ×1 untagged.
+    const mult = baseMult * storyTagTrainingMult(u);
     const add = Math.round(g * mult);
     const a = { ...u.attributes } as unknown as Record<string, number>;
     for (const s of def.subs) a[s] = clamp100(a[s] + add);

@@ -22,6 +22,16 @@ const FRAMING: Record<P, (n: string) => string> = {
 };
 const FALLBACK_FRAME = (n: string) => `${n}'s morale has bottomed out. You can feel them pulling away from the team — if you don't act, you might lose them.`;
 
+// The player's own withdrawn words, by personality — you catch them at their station
+// before you decide how to reach them (their face, not just Sam talking about them).
+const PLAYER_VOICE: Record<P, string> = {
+  Firebrand: "I didn't come here to lose, coach. And right now I don't see us winning. So what am I even doing here?",
+  Catalyst: "I'm fine. Honest. I just... I don't have it in me to be everyone's hype guy this week. Sorry.",
+  Analyst: "You don't need me. I ran the tape — the team's fine without my reads. Maybe that's my answer.",
+  Stabilizer: "I didn't want to make it a thing. It's just been heavy. I keep wondering if I'm still helping, or just... here.",
+};
+const FALLBACK_VOICE = "...You didn't have to make a thing of it. I'm fine. I'm just not sure I'm it anymore.";
+
 // The personality-tailored intervention (label + what it does + Sam's read on it).
 type Tailored = { label: string; effects: Effect[]; reply: string };
 const lift = FLIGHT_RISK.retentionLift;
@@ -62,7 +72,9 @@ function buildBeats(u: Unit, p: P | null): StoryBeat[] {
     { who: 'sam', text: p ? FRAMING[p](n) : FALLBACK_FRAME(n) },
     { who: 'you', text: 'How bad are we talking?' },
     { who: 'sam', text: 'Bad enough that I\'d do something about it. Your call — how do you want to handle it?' },
-    { art: `${n}, somewhere off to the side, not themselves`, prompt: `How do you reach ${n}?`, options },
+    { art: `${n} at their station — not really there`, who: 'narrator', clearStage: true, text: `You find ${n} at their station later, headset around their neck, staring at a menu they're not really seeing.` },
+    { who: 'player', speakerId: u.characterId, name: n, text: p ? PLAYER_VOICE[p] : FALLBACK_VOICE },
+    { prompt: `How do you reach ${n}?`, options },
     { who: 'sam', text: 'Right. Let\'s get back to it.' },
   ];
 }

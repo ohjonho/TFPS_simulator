@@ -3,6 +3,8 @@
 // above the bottom bar. Deliberately low-touch — the heavy teaching lives in the
 // in-game guidebook (helpModal). Pure DOM; no game state.
 
+import { tutorialsOn } from './tutorialPrefs.ts';
+
 const SEEN_PREFIX = 'tfps:coach:';
 const HOST_ID = 'coachmark-host';
 let activeKey: string | null = null;
@@ -17,7 +19,7 @@ function markSeen(key: string): void {
 // Show a coachmark once. No-op if this key was already dismissed, or if it's the
 // one already on screen (so repeated re-renders don't re-create the bubble).
 export function showCoachmark(key: string, html: string): void {
-  if (seen(key)) return;
+  if (!tutorialsOn() || seen(key)) return;
   if (activeKey === key && document.getElementById(HOST_ID)) return;
   dismiss();
   activeKey = key;

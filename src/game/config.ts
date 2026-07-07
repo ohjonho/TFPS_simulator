@@ -561,6 +561,25 @@ export const TRAITS = {
   clutch: { hitPp: 20, hsPp: 15 },                       // Clutch — +HR/HS when last alive
 } as const;
 
+// Story-arc TAG tunables (game/storyTags.ts + the combat/training/morale hooks).
+// NEVER rolled onto a random unit — only authored characters / arc payoffs carry
+// them (Unit.storyTags), so a tagless roster stays byte-identical. Combat pp are
+// penalties (negative). Tune once the arcs are live.
+export const STORY_TAGS = {
+  antiClutch: { hitPp: -30, hsPp: -20 }, // Moony's "curse" — chokes a winnable clutch (overwhelmingly-favored-to-lose, not scripted)
+  drained: { hitPp: -8 },                // t0ph after an all-nighter (cleared after next match)
+  nervous: { hitPp: -10 },               // Echo/Potter big-match nerves (cleared after next match)
+  busy: { trainingMult: 0.75 },          // MommaMay — day job + kids, under-trains
+  committed: { trainingMult: 1.25 },     // Busy resolved — over-delivers
+  shortFuse: { negMult: 2 },             // WonManArmy — bad news lands twice as hard
+  evenKeel: { negMult: 0.5 },            // Short Fuse resolved — softens the blow
+  homesick: { weeklyDrain: 3 },          // imissu — a small morale bleed each week
+  foundFamily: { floor: 35 },            // Homesick resolved — morale won't bottom out
+} as const;
+
+// Phase 4b — a mid-season arc departure stings the room.
+export const DEPARTURE = { teamMoraleHit: -8 } as const;
+
 // v0.29.0 — TACTICAL trait registry (8). Each unit draws TWO distinct. `tier`
 // gates v1 progression (Marksman is the prized 'earned' find). attrBonuses are
 // applied on top of the rolled attributes in rollUnitMeta.
@@ -943,7 +962,7 @@ export const PLAYBOOK_GATING = {
 // else, or a whole-squad session) recovers it by `recover`. So spamming one
 // player is strictly worse over time — spread the focus.
 export const TRAINING = {
-  perSession: 3,
+  perSession: 2,
   focus: { bonus: 1.0, othersMult: 0.5, decay: 0.34, recover: 0.34 },
   // R3 — extra whole-squad sessions bought with League Points on top of the free
   // weekly session. The Nth extra of the SAME track this week costs
@@ -951,8 +970,8 @@ export const TRAINING = {
   // across the four tracks is cheaper than stacking one — and a big stack is a
   // valid-but-costly call vs saving. The escalation IS the soft cap (no hard limit);
   // resets each week.
-  extraBaseCost: 12,
-  extraStepCost: 8,
+  extraBaseCost: 18,
+  extraStepCost: 12,
 } as const;
 
 // Match experience — Improvisation is NOT trainable; the squad banks it by
@@ -1211,10 +1230,23 @@ export const LEAGUE = {
   playerTeamIndex: 2,       // chosen so the player byes round 4 (the middle of 0..8)
   byeRound: 4,              // = the mid-season break
   playoffTeams: 4,          // top 4 make the playoffs
+  // Rivals GROW min–max "overall" points each of the player's training days
+  // (rounds), seeded off the season stream. Keyed on the round so the table's
+  // history stays stable across recomputes; applied to the schedule rosters, so
+  // the SAME growth toughens both the opponent you actually face AND its league
+  // rating. Divergent per fresh season. Dial down if late games get too steep.
+  rivalGrowth: { min: 1, max: 2 },  // dialed from max 3 → gentler late-season tail (~+12 overall by season's end)
   // Rival-vs-rival LIGHT sim (a seeded coin-flip, NOT a real match): P(A beats B)
   // = 0.5 + k·(ratingA − ratingB), clamped — keeps upsets possible.
   ratingToWinProbK: 0.06,
   winProbClamp: { min: 0.15, max: 0.85 },
+} as const;
+
+// Ambient (between-match) events — pacing. Arc beats own a slot: an ambient event
+// only fires when NO arc beat is ready there (never stack two story screens), and
+// even then only sometimes, so weeks aren't a guaranteed drumbeat of flavour modals.
+export const EVENTS = {
+  ambientChance: 0.5,       // chance an arc-free slot surfaces an ambient event (else the slot stays quiet)
 } as const;
 
 // --- Pass 8: cards (spec §15) --------------------------------------------

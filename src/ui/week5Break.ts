@@ -80,7 +80,7 @@ function buildBeats(roster: readonly Unit[], morale: MoraleMap, wins: number, pl
   const reactionFor = (focus: OffWeekFocus): StoryLine[] => {
     const u = pickNotable(roster, SPOTLIGHT[focus]);
     const lines: StoryLine[] = [];
-    if (u) { const p = persona(u); if (p) lines.push({ who: 'player', name: u.name, text: REACTION[focus][p] }); }
+    if (u) { const p = persona(u); if (p) lines.push({ who: 'player', speakerId: u.characterId, name: u.name, text: REACTION[focus][p] }); }
     lines.push(moodLine(morale, roster, wins, played));
     return lines;
   };

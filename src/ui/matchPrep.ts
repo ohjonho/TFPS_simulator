@@ -11,7 +11,8 @@ import type { MapDefinition, Unit } from '../game/types.ts';
 import { buildSignaturePlays } from '../game/signaturePlays.ts';
 import { strategyById } from '../game/strategies.ts';
 import { scoutReadForCustom } from '../game/playbookCoach.ts';
-import { playerRank } from '../game/standings.ts';
+import { playerRank, grownOpponentRoster } from '../game/standings.ts';
+import { runInStakesBanner } from './runInStakes.ts';
 import { teamMorale, moraleLabel } from '../game/morale.ts';
 import { LEAGUE } from '../game/config.ts';
 import { attachUnitStatsPopover, hideUnitStatsPopover } from './unitStatsPopover.ts';
@@ -103,6 +104,13 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
     // Live league position (top 4 make the playoffs) — the season-long stake.
     const rank = playerRank(season);
     const rankNote = rank <= LEAGUE.playoffTeams ? 'in the playoff places' : 'chasing the top 4';
+    // Run-in crescendo: the late-season playoff-race stakes for THIS match (league
+    // matches only — playoffs carry their own framing). Null until the run-in.
+    const stakes = override ? null : runInStakesBanner(season);
+    // Living league: is this opponent notably stronger than the week-one version of
+    // themselves? (rivals gain overall each round; surface it so the growth is felt.)
+    const oppGrowth = override ? 0 : teamRating(grownOpponentRoster(season, season.idx)) - teamRating(season.schedule[season.idx] ?? []);
+    const showEscalation = oppGrowth >= 4;
 
     // Detailed scouting (unlocked at the week-2 scout-kid beat) — Remi focuses on
     // the area you chose and surfaces a sharper read for that match.
@@ -130,6 +138,7 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
           <div class="mp-kicker">${override ? `Playoffs · ${override.label}` : `Match prep · match ${season.idx + 1} of ${season.K}`}</div>
           <h1>vs ${info?.name ?? 'the opponent'}</h1>
           <div class="mp-budget">League Points: <strong>${season.leaguePoints}</strong> · Currently <strong>${ordinal(rank)} of ${LEAGUE.teams}</strong> <span style="color:var(--text-dim);">(${rankNote})</span> · Morale: <strong>${moraleLabel(teamMorale(season.morale ?? {}, season.playerRoster))}</strong></div>
+          ${stakes ? `<div class="mp-stakes mp-stakes-${stakes.tier}"><span class="mp-stakes-kicker">${stakes.kicker}</span><span class="mp-stakes-line">${stakes.line}</span></div>` : ''}
         </div>
         <div class="mp-body">
           <div class="mp-left">
@@ -143,6 +152,7 @@ export function showMatchPrep(season: SeasonState, map: MapDefinition, onPlay: (
               ${info ? `<div class="mp-lean">On attack they lean ${leanText(info.atk)}.</div>
               <div class="mp-lean">On defense they lean ${leanText(info.def)}.</div>
               <div class="mp-scout-note">You'll pick the counter round by round once the match starts.</div>` : ''}
+              ${showEscalation ? `<div class="mp-escalation">📈 The league's leveled up since week one — ${info?.name ?? 'this lot'} are a tougher side now than the one you'd have drawn early on.</div>` : ''}
             </div>
             ${analystHtml}
           </div>
