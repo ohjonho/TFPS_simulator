@@ -66,6 +66,7 @@ import { showModal, dismissModal } from './ui/modal.ts';
 import { maybeShowFirstLoadHelp, showHelpModal } from './ui/helpModal.ts';
 import { renderRoundEndStats } from './ui/roundEndPanel.ts';
 import { renderMatchEndScoreboard } from './ui/matchEndScoreboard.ts';
+import { showPostMatchReview } from './ui/postMatchReview.ts';
 import { computeMatchStats, computeRoundStats } from './game/stats.ts';
 import { renderMainMenu } from './ui/mainMenu.ts';
 import { showSeasonOpening } from './ui/seasonOpening.ts';
@@ -78,6 +79,7 @@ import { showPlaybook } from './ui/playbook.ts';
 import { reviewPlay } from './ui/coachWorker.ts';
 import { showCoachmark, clearCoachmarks } from './ui/coachmark.ts';
 import { runWalkthrough, type WalkStep } from './ui/walkthrough.ts';
+import { tutorialsOn, setTutorialsOn, resetTutorialSeen } from './ui/tutorialPrefs.ts';
 import { showTrainingDay } from './ui/trainingDay.ts';
 import { showEventScreen } from './ui/eventScreen.ts';
 import { rollEvent, applyEvent, applyEffects, eventFlavor, ambientEventDue } from './game/events/runtime.ts';
@@ -501,7 +503,7 @@ function setState(next: GameState) {
 
 function renderMenu(): void {
   if (screen === 'menu') {
-    renderMainMenu(menuHost, 'v0.127.0', {
+    renderMainMenu(menuHost, 'v0.131.0', {
       onPlay: startMode,
       onSettings: showSettingsModal,
       onPatchNotes: () => showHelpModal('patch'),
@@ -526,6 +528,8 @@ function startMode(mode: MatchMode): void {
   // Season opens on the campaign intro story, then a player-only draft; the
   // other modes launch straight into a match on the Settings-selected map.
   if (mode === 'season') {
+    // Tutorials replay per campaign — re-arm every guided tour for this fresh run.
+    resetTutorialSeen();
     // Opening cutscene → welcome briefing → the draft, with Back stepping back up
     // the chain. The Worlds winner is rolled once here (stable across re-entry) and
     // the cutscene's choices + result are captured into seasonStoryFlags for the
@@ -630,7 +634,9 @@ function slotCtx(slot: 'pre-match' | 'post-match'): SlotContext {
 function runSlotContent(slot: 'pre-match' | 'post-match', slotKey: string, onDone: () => void): void {
   if (!season) { onDone(); return; }
   if (readyBeats(season, slotCtx(slot)).length > 0) { runArcBeats(slot, onDone); return; }
-  if (ambientEventDue(season, slotKey)) runWeekEvent(slotKey, () => runArcBeats(slot, onDone));
+  // Lean the runway: no ambient event before the very first match — go training → match.
+  const forceQuiet = slot === 'pre-match' && season.idx === 0;
+  if (!forceQuiet && ambientEventDue(season, slotKey)) runWeekEvent(slotKey, () => runArcBeats(slot, onDone));
   else runArcBeats(slot, onDone); // quiet slot — still resolves any due departures, then continues
 }
 
@@ -940,6 +946,7 @@ function showSettingsModal(): void {
     '<label style="font-size:13px;">Map <span style="color:#8a92a3;">(Standard / Draft)</span><br>' +
     `<select id="set-map" style="margin-top:4px;padding:6px;background:#0e1116;color:#d6dae3;border:1px solid #232838;border-radius:4px;width:100%;">${opts}</select></label>` +
     `<label style="font-size:13px;">Seed<br><input id="set-seed" type="number" value="${matchSeed}" style="margin-top:4px;padding:6px;background:#0e1116;color:#d6dae3;border:1px solid #232838;border-radius:4px;width:100%;"></label>` +
+    `<label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="set-tut" type="checkbox"${tutorialsOn() ? ' checked' : ''}> Show tutorials <span style="color:#8a92a3;">(guided tours + tips, replayed each new campaign)</span></label>` +
     '<p style="font-size:11px;color:#8a92a3;margin:0;">Season always plays on Canyon — its tight geometry keeps the campaign readable.</p>' +
     '</div>';
   showModal('Settings', body, [{ label: 'Done', primary: true, onClick: () => {} }]);
@@ -947,6 +954,8 @@ function showSettingsModal(): void {
   mapSel?.addEventListener('change', () => { selectedMap = mapSel.value as MapDefinition['name']; });
   const seedInp = document.getElementById('set-seed') as HTMLInputElement | null;
   seedInp?.addEventListener('change', () => { const s = parseInt(seedInp.value, 10); if (!Number.isNaN(s)) matchSeed = s >>> 0; });
+  const tutChk = document.getElementById('set-tut') as HTMLInputElement | null;
+  tutChk?.addEventListener('change', () => setTutorialsOn(tutChk.checked));
 }
 
 // Missed the playoffs (finished 5th–9th) — the season ends here. (Making the top
@@ -1122,11 +1131,13 @@ function showPlayoffResult(): void {
   saveSeason(season);
 
   const stageName = playedStage === 'final' ? 'Final' : 'Semifinal';
-  const headline = playerWon ? `You win the ${stageName}!` : `You lose the ${stageName}.`;
   const lpLine = `League Points: <strong>+${lp}</strong> earned · <strong>${season.leaguePoints}</strong> total.`;
-  showModal(playerWon ? `${stageName} won` : `${stageName} lost`,
-    `<p class="me-headline">${headline}</p><p class="me-headline">${lpLine}</p>${renderMatchEndScoreboard(state)}`,
-    [{ label: 'Continue', primary: true, onClick: runPlayoffs }]);
+  showPostMatchReview(state, {
+    playerWon,
+    seasonLines: [lpLine],
+    analyst: season.storyFlags?.['remi-met'] ? 'remi' : 'sam',
+    playoffLabel: stageName,
+  }, runPlayoffs);
 }
 
 // Bracket complete — champion / finalist (shop saved) / semifinalist ending.
@@ -1295,10 +1306,8 @@ function showMatchEndModal(): void {
   if (playoffActive) { showPlayoffResult(); return; }
   const w = state.matchWinner;
   const playerWon = w === state.playerTeam;
-  const headline =
-    w === 'draw'
-      ? 'Sudden-death tiebreaker is deferred to Pass 9. Match ends in a draw.'
-      : `Final score: ${state.scores.defenders} (defenders) – ${state.scores.attackers} (attackers).`;
+  // Sudden death guarantees a decisive result — no draws.
+  const headline = `Final score: ${state.scores.defenders} (defenders) – ${state.scores.attackers} (attackers).`;
   const scoreboard = renderMatchEndScoreboard(state);
 
   // Season: record this match, advance to the week's post-match event, then
@@ -1332,16 +1341,19 @@ function showMatchEndModal(): void {
     // v1 economy — League Points earned this match + running total (spend on training).
     const lpLine = `League Points: <strong>+${lpEarned}</strong> earned · <strong>${season.leaguePoints}</strong> total — spend them on training.`;
     const moraleLine = `Squad morale: <strong>${moraleLabel(teamMorale(season.morale, season.playerRoster))}</strong> — ${playerWon ? 'the win lifts the room' : 'a tough one to take'}.`;
-    const title = w === 'draw' ? 'Match drawn' : playerWon ? 'Match won' : 'Match lost';
-    showModal(title, `<p class="me-headline">${headline}</p><p class="me-headline">${seasonLine}</p><p class="me-headline">${lpLine}</p><p class="me-headline">${moraleLine}</p>${scoreboard}`, [
-      // Surface any tier the match XP pushed the squad across, then continue the week.
-      { label: 'Continue', primary: true, onClick: () => showBreakpoints(xpCrossings, afterRoster, () => runSeasonWeek()) },
-      { label: 'Main menu', onClick: goToMenu },
-    ]);
+    // Surface any tier the match XP pushed the squad across, then continue the week.
+    const done = (): void => showBreakpoints(xpCrossings, afterRoster, () => runSeasonWeek());
+    // Broadcast-style review: Player of the Game → analysis (scoreboard + round strip
+    // + your analyst's read + the LP/morale/standing follow-up).
+    showPostMatchReview(state, {
+      playerWon,
+      seasonLines: [seasonLine, lpLine, moraleLine],
+      analyst: season.storyFlags?.['remi-met'] ? 'remi' : 'sam',
+    }, done);
     return;
   }
 
-  const title = w === 'draw' ? 'Draw — 3–3' : `${playerWon ? 'You win!' : 'Opponent wins'}`;
+  const title = playerWon ? 'You win!' : 'Opponent wins';
   const currentMap = state.map.name;
   showModal(title, `<p class="me-headline">${headline}</p>${scoreboard}`, [
     {

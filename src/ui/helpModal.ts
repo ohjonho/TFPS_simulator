@@ -389,6 +389,54 @@ const GLOSSARY = `
 
 const PATCH_NOTES = `
   <section>
+    <h3>v0.131.0 — Sudden death + real defuses</h3>
+    <ul>
+      <li><strong>No more draws.</strong> A match level at the end of regulation now goes to sudden
+        death — decider rounds are played until someone takes the lead. Every match has a winner.</li>
+      <li><strong>The spike must be defused.</strong> Once the spike is planted, wiping the attackers is
+        no longer an automatic win — your defenders have to actually reach it and defuse before it
+        detonates. Kill the last attacker too far from the site and a late plant can still go off.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.130.0 — Post-match polish + aKAST</h3>
+    <ul>
+      <li><strong>VICTORY / DEFEAT.</strong> The analysis screen now leads with a bold result, and its
+        rounds are numbered from 1 — hover any round to see the strategies both sides picked and the score
+        at the time.</li>
+      <li><strong>aKAST.</strong> KAST% is replaced by aKAST — a sharper measure of impact (how <em>often</em>
+        you contribute × how <em>much</em> per round). Every stat header now has a hover tooltip explaining
+        it.</li>
+      <li><strong>Back button.</strong> You can step back from the analysis to the Player of the Game screen.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.129.0 — A proper post-match</h3>
+    <ul>
+      <li><strong>Player of the Game.</strong> Every match now opens its wrap-up with the match's top
+        performer — either team, so a monster game on a loss still gets its moment — with their headline
+        stats.</li>
+      <li><strong>Match analysis screen.</strong> Then a full review: the result, a round-by-round strip,
+        the scoreboard, and a short read from your analyst — Remi once he's aboard, otherwise Sam — plus
+        your League Points, morale and standing.</li>
+      <li><strong>Remi, junior analyst.</strong> When Remi joins, Sam now spells out his role — he does the
+        reads, you make the calls — so it's clear who he is.</li>
+    </ul>
+  </section>
+  <section>
+    <h3>v0.128.0 — Faster start, tutorials on your terms</h3>
+    <ul>
+      <li><strong>Tutorials replay each campaign — or turn them off.</strong> The guided tours and tips now
+        re-arm for every new campaign (so a fresh run gets them fresh), and there's a <strong>Show
+        tutorials</strong> toggle in Settings if you'd rather skip them.</li>
+      <li><strong>Quicker to the first match.</strong> The welcome briefing is now a short orientation
+        (the tours + guidebook teach the rest), and there's no ambient event before match one — it's
+        draft → meet the team → first training day → straight into the match.</li>
+      <li><strong>The league grows, and you feel it.</strong> Later in the season, match prep flags when an
+        opponent has leveled up since week one — the living league is no longer invisible.</li>
+    </ul>
+  </section>
+  <section>
     <h3>v0.127.0 — Your grand final</h3>
     <ul>
       <li><strong>The season comes full circle.</strong> You opened the game watching a grand-final clutch

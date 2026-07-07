@@ -21,7 +21,9 @@ const BEATS: readonly StoryBeat[] = [
   { who: 'npc', speakerId: 'remi', text: 'It\'s only MOSTLY complete!' },
   { who: 'sam', text: 'We\'re keeping them.' },
   { who: 'npc', speakerId: 'remi', set: { 'remi-met': 'true' }, text: 'Wait — really? You\'re keeping them? I— okay. Okay! Sorry, I never actually said — I\'m Remi. That\'s me. Hi.' },
-  { who: 'you', text: 'Alright, Remi — what should we dig into first?' },
+  { who: 'sam', text: 'Then welcome aboard, Remi — our junior analyst. You do the reads, the coach makes the calls. ...Fair warning, the pay is exactly nothing.' },
+  { who: 'npc', speakerId: 'remi', text: 'Analyst. On a real team. I would\'ve paid YOU.' },
+  { who: 'you', text: 'Alright, analyst — what should we dig into first?' },
   {
     art: 'Remi, suddenly all business, flipping the binder open',
     prompt: 'Point the scouting at:',

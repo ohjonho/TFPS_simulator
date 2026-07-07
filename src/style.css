@@ -1176,6 +1176,8 @@ button.ss-box:hover { border-color: var(--accent); }
 .mp-scout-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
 .mp-lean { font-size: 13px; line-height: 1.6; color: var(--text); }
 .mp-scout-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.mp-escalation { font-size: 12px; line-height: 1.5; color: var(--text); margin-top: 8px; padding: 7px 10px;
+  border-left: 3px solid #fbbf24; border-radius: 6px; background: rgba(251, 191, 36, 0.08); }
 .mp-outlook { margin-bottom: 0; }
 .mp-decisions { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
 .mp-group-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
@@ -2559,3 +2561,46 @@ button.selected:not(:disabled) {
   color: #fde68a;
   border-color: rgba(234, 179, 8, 0.35);
 }
+
+/* --- Post-match review — Player of the Game + analysis (ui/postMatchReview.ts) --- */
+#post-match-review { position: fixed; inset: 0; z-index: 1200; overflow-y: auto;
+  background: radial-gradient(140% 120% at 50% -10%, #1a2233, #0b0e14); color: var(--text); }
+.pmr-stage { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 40px 24px; gap: 24px; }
+.pmr-stage-analysis { justify-content: flex-start; align-items: stretch; }
+.pmr-title { font-size: 13px; letter-spacing: 0.28em; text-transform: uppercase; font-weight: 800; color: var(--accent); }
+.pmr-sub { color: var(--text-dim); }
+/* Player of the Game card */
+.pmr-mvp { display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.pmr-mvp-card { display: flex; gap: 28px; align-items: center; max-width: 720px; width: 100%; padding: 22px;
+  border: 1px solid var(--panel-border); border-left: 4px solid var(--tint); border-radius: 14px; background: rgba(0, 0, 0, 0.35); }
+.pmr-mvp-portrait { width: 148px; height: 178px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+  display: flex; align-items: flex-end; background: color-mix(in srgb, var(--tint) 20%, #0e1116); }
+.pmr-mvp-portrait svg { width: 100%; }
+.pmr-mvp-info { flex: 1; min-width: 0; }
+.pmr-mvp-name { font-size: 32px; font-weight: 800; line-height: 1.1; }
+.pmr-mvp-team { font-size: 13px; color: var(--text-dim); text-transform: capitalize; margin-top: 3px; }
+.pmr-mvp-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 18px; }
+.pmr-stat { text-align: center; }
+.pmr-stat-v { font-size: 18px; font-weight: 700; }
+.pmr-stat-l { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); margin-top: 3px; }
+/* Analysis */
+.pmr-analysis { max-width: 900px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.pmr-result { text-align: center; }
+.pmr-result-stage { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.pmr-result-word { font-size: 32px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 800; }
+.pmr-result.win .pmr-result-word { color: #34d399; }
+.pmr-result.loss .pmr-result-word { color: #f87171; }
+.pmr-score { font-size: 44px; font-weight: 800; }
+.pmr-score span { color: var(--text-dim); font-weight: 400; margin: 0 6px; }
+.pmr-rounds { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.pmr-round { width: 26px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.pmr-round.won { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.4); }
+.pmr-round.lost { background: rgba(248, 113, 113, 0.15); color: #fca5a5; border: 1px solid rgba(248, 113, 113, 0.35); }
+.pmr-analyst { border: 1px solid var(--panel-border); border-radius: 10px; padding: 12px 16px; background: rgba(0, 0, 0, 0.25); }
+.pmr-analyst-head { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.pmr-analyst-body p { margin: 4px 0; font-size: 14px; line-height: 1.5; }
+.pmr-season { font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column; gap: 3px; text-align: center; }
+.pmr-season strong { color: var(--text); }
+.pmr-actions { display: flex; justify-content: center; gap: 10px; margin-top: 6px; padding-bottom: 20px; }
+.pmr-round { cursor: help; }

@@ -51,7 +51,6 @@ import {
   HERO_ABILITIES_ENABLED,
   HOLD_TARGETING_OVERRIDE,
   FOLLOW_ROUTE,
-  MATCH_ROUND_COUNT,
   MATCH_WIN_SCORE,
   ROLE_AGGRESSION,
   ROLE_PROFILE,
@@ -662,27 +661,36 @@ export function aiTeamFor(playerTeam: Team): Team {
 // to the team currently on the defender side — consistent with the round-timer
 // rule "attackers ran out of time".
 export function eliminationWinner(state: GameState): Team | null {
-  let aliveDef = 0;
-  let aliveAtk = 0;
+  // Count alive by SIDE, not team identity — post-halftime the team labels
+  // and the attacker/defender roles are decoupled, and the plant rules are
+  // side-based (the attacker side plants; the defender side defuses).
+  const atkTeam = attackerTeam(state);
+  const defTeam = defenderTeam(state);
+  let aliveAtkSide = 0;
+  let aliveDefSide = 0;
   for (const u of state.units) {
     if (u.state !== 'alive') continue;
-    if (u.team === 'defenders') aliveDef++;
-    else aliveAtk++;
+    if (u.team === atkTeam) aliveAtkSide++;
+    else aliveDefSide++;
   }
+  const planted = state.plant.planted !== null;
   // Mutual annihilation: post-plant the spike still detonates with no
-  // defuser → attackers win. Pre-plant: defender side wins the tiebreaker
-  // (Pass 7.5 rule — "ran out of time" semantics).
-  if (aliveDef === 0 && aliveAtk === 0) {
-    return state.plant.planted ? attackerTeam(state) : defenderTeam(state);
+  // defuser → attacker side wins. Pre-plant: defender side wins the
+  // tiebreaker (Pass 7.5 rule — "ran out of time" semantics).
+  if (aliveAtkSide === 0 && aliveDefSide === 0) {
+    return planted ? atkTeam : defTeam;
   }
-  // H3.fix1 — these elimination outcomes are decisive regardless of plant
-  // state: all defenders dead → attackers win (no defuser possible, even if
-  // spike isn't planted yet); all attackers dead → defenders win
-  // (post-plant: defenders will walk to the spike and defuse uncontested;
-  // pre-plant: standard elim). Loop.ts used to gate the entire branch on
-  // `plant.planted === null`, which left planted+team-dead rounds frozen.
-  if (aliveDef === 0) return 'attackers';
-  if (aliveAtk === 0) return 'defenders';
+  // Defender side wiped → attacker side wins outright: no defuser is
+  // possible, and pre-plant the attackers will plant + detonate uncontested.
+  if (aliveDefSide === 0) return atkTeam;
+  // Attacker side wiped:
+  //   pre-plant  → defender side wins (standard elimination).
+  //   post-plant → the round is NOT over. The spike is live; the defenders
+  //     must actually reach it and defuse before it detonates. Return null so
+  //     the loop keeps ticking — tick.ts's Pass F walks the nearest defender
+  //     onto the spike, and the plant resolution ends the round on a completed
+  //     defuse (defenders) or detonation (attackers, if the defuse is too late).
+  if (aliveAtkSide === 0) return planted ? null : defTeam;
   return null;
 }
 
@@ -727,15 +735,13 @@ export function endRound(state: GameState, winner: Team | 'draw'): GameState {
   if (winner !== 'draw' && scores[winner] >= MATCH_WIN_SCORE) {
     return { ...next, matchOver: true, matchWinner: winner };
   }
-  // After regular rounds with no first-to-MATCH_WIN_SCORE: sudden death is
-  // deferred to Pass 9; the leader (or 'draw' at 3–3) ends the match.
-  if (state.round >= MATCH_ROUND_COUNT) {
-    if (scores.defenders === scores.attackers) {
-      return { ...next, matchOver: true, matchWinner: 'draw' };
-    }
-    const leader: Team = scores.defenders > scores.attackers ? 'defenders' : 'attackers';
-    return { ...next, matchOver: true, matchWinner: leader };
-  }
+  // Sudden death: no draws. The only score that reaches MATCH_ROUND_COUNT
+  // without a first-to-MATCH_WIN_SCORE winner is a 3–3 regulation tie (any
+  // 4th round win terminates above). Instead of ending on a draw, keep
+  // playing decider rounds on the current (round-6) sides — no extra
+  // halftime, since isHalftime only fires at HALFTIME_AFTER_ROUND — until
+  // one side reaches MATCH_WIN_SCORE. Every round has a decisive winner, so
+  // the next round resolves it (3–3 → 4–3).
   return next;
 }
 

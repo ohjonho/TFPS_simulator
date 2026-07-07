@@ -36,7 +36,8 @@ export type MatchStats = {
   headshotKills: number;
   acs: number;            // running ACS = sum(roundACS) / roundsPlayed
   adr: number;            // totalDamage / roundsPlayed
-  kastPct: number;        // 0-100
+  kastPct: number;        // 0-100 — rounds with ≥1 success event (K/A/S/T)
+  akast: number;          // advanced KAST = KAST(0-1) × KAST2(avg success events/round); 0-3
   hsPct: number;          // headshotKills / kills × 100; 0 if no kills
   roundsPlayed: number;
   // Per-round ACS history for the match-end sparkline.
@@ -230,7 +231,7 @@ export function computeMatchStats(
     out[u.id] = {
       kills: 0, deaths: 0, assists: 0,
       totalDamage: 0, headshotKills: 0,
-      acs: 0, adr: 0, kastPct: 0, hsPct: 0,
+      acs: 0, adr: 0, kastPct: 0, akast: 0, hsPct: 0,
       roundsPlayed: 0, acsByRound: [],
     };
   }
@@ -242,9 +243,12 @@ export function computeMatchStats(
   }
   const rounds = [...completedRounds].sort((a, b) => a - b);
 
-  // Accumulators.
+  // Accumulators. kastTotals = rounds with ANY success event (for KAST %);
+  // eventTotals = SUM of success events per round (kill + assist + survived-or-traded,
+  // ≤3/round) for KAST2 — their combination is aKAST.
   const kastTotals: Record<string, number> = {};
-  for (const u of units) kastTotals[u.id] = 0;
+  const eventTotals: Record<string, number> = {};
+  for (const u of units) { kastTotals[u.id] = 0; eventTotals[u.id] = 0; }
 
   for (const r of rounds) {
     const rs = computeRoundStats(events, r, units);
@@ -259,6 +263,7 @@ export function computeMatchStats(
       stat.headshotKills += round.headshotKills;
       stat.acsByRound.push(round.acs);
       if (round.k || round.a || round.s || round.t) kastTotals[u.id] += 1;
+      eventTotals[u.id] += (round.k ? 1 : 0) + (round.a ? 1 : 0) + ((round.s || round.t) ? 1 : 0);
     }
   }
 
@@ -270,6 +275,11 @@ export function computeMatchStats(
       stat.acs = Math.round(stat.acsByRound.reduce((a, b) => a + b, 0) / rounds.length);
       stat.adr = Math.round(stat.totalDamage / rounds.length * 10) / 10;
       stat.kastPct = Math.round(kastTotals[u.id] / rounds.length * 1000) / 10;
+      // aKAST = KAST (fraction of rounds with a success event) × KAST2 (avg success
+      // events per round) — consistency × impact; range 0-3.
+      const kast = kastTotals[u.id] / rounds.length;
+      const kast2 = eventTotals[u.id] / rounds.length;
+      stat.akast = Math.round(kast * kast2 * 100) / 100;
     }
     stat.hsPct = stat.kills > 0
       ? Math.round((stat.headshotKills / stat.kills) * 1000) / 10
@@ -288,6 +298,22 @@ export function mvpUnit(state: GameState): Unit | null {
   let bestAcs = -Infinity;
   for (const u of state.units) {
     if (u.team !== state.matchWinner) continue;
+    const s = stats[u.id];
+    if (!s) continue;
+    if (s.acs > bestAcs) { bestAcs = s.acs; best = u; }
+  }
+  return bestAcs > 0 ? best : null;
+}
+
+// The Player of the Game — highest ACS across BOTH teams (unlike mvpUnit, the
+// winning team's star). Usually the winner's, but a losing player can steal it with a
+// monster game. Used by the post-match review's MVP screen.
+export function matchMvpUnit(state: GameState): Unit | null {
+  if (!state.matchOver) return null;
+  const stats = computeMatchStats(state.events, state.units);
+  let best: Unit | null = null;
+  let bestAcs = -Infinity;
+  for (const u of state.units) {
     const s = stats[u.id];
     if (!s) continue;
     if (s.acs > bestAcs) { bestAcs = s.acs; best = u; }

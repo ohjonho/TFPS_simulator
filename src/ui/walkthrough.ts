@@ -3,6 +3,8 @@
 // onboarding. Runs once per browser (localStorage). Modal while open (clicks are
 // blocked except the tooltip) so the player can't act mid-tour. Pure DOM.
 
+import { tutorialsOn } from './tutorialPrefs.ts';
+
 const SEEN = 'tfps:walk:';
 const seen = (k: string): boolean => { try { return localStorage.getItem(SEEN + k) === '1'; } catch { return false; } };
 const mark = (k: string): void => { try { localStorage.setItem(SEEN + k, '1'); } catch { /* ignore */ } };
@@ -12,7 +14,7 @@ const mark = (k: string): void => { try { localStorage.setItem(SEEN + k, '1'); }
 export type WalkStep = { target?: () => HTMLElement | null; title: string; body: string };
 
 export function runWalkthrough(key: string, steps: readonly WalkStep[], onDone?: () => void): void {
-  if (seen(key) || !steps.length) { onDone?.(); return; }
+  if (!tutorialsOn() || seen(key) || !steps.length) { onDone?.(); return; }
   if (document.getElementById('walkthrough')) return; // already running
 
   const overlay = document.createElement('div');
